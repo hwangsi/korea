@@ -11,3 +11,6 @@ data/extracted/
 *.IMG
 *.BGI
 *.SAV
+
+# Private music arrangements of songs still under copyright (docs/audio.md): keep local, never publish
+data/private/

@@ -19,6 +19,11 @@ import { REMAKE_DEFAULTS, scenarioFileId, optionsForFile, toStartOptions } from 
 import type { GameOptions } from './engine/options.ts';
 import { renderNewGame, applyChoice } from './ui/newGame.ts';
 import { renderSaveDialog } from './ui/saveDialog.ts';
+import { renderSoundPanel } from './ui/soundPanel.ts';
+import { renderReports, overviewHexAt } from './ui/reports.ts';
+import type { ReportTab } from './ui/reports.ts';
+import { AudioManager } from './audio/index.ts';
+import { privateSongs } from './audio/songs.ts';
 import type { SlotView } from './ui/saveDialog.ts';
 import { saveGame, saveToText, parseSave, loadGame, resumeGame, saveBlocked } from './engine/save.ts';
 import type { SaveFile } from './engine/save.ts';
@@ -137,8 +142,58 @@ async function main() {
   const saveEl = $('#savegame');
   let saveOpen = false;
   let saveMsg: { kind: 'ok' | 'warn' | 'error'; text: string } | null = null;
+  /** Report screens (docs/rules/reports.md). */
+  const reportsEl = $('#reports');
+  let reportsOpen = false;
+  let reportTab: ReportTab = 'strategic';
+  let overviewMode: 'terrain' | 'supply' = 'terrain';
   /** Something modal is open: the map and the phase controls wait. */
-  const modal = () => !!banner || !!draft || saveOpen;
+  const modal = () => !!banner || !!draft || saveOpen || reportsOpen;
+
+  // ---------- sound (docs/audio.md) ----------
+  const audio = new AudioManager();
+  const soundEl = $('#sound-panel');
+  let soundOpen = false;
+  const renderSound = () => {
+    ($('#sound') as HTMLButtonElement).setAttribute('aria-pressed', String(soundOpen));
+    $('#sound').classList.toggle('muted-btn', !audio.settings.music && !audio.settings.sfx);
+    if (!soundOpen) { soundEl.hidden = true; return; }
+    // keep a volume slider that is being dragged
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active.tagName === 'INPUT' && soundEl.contains(active)) return;
+    renderSoundPanel(soundEl, audio);
+    soundEl.hidden = false;
+  };
+  audio.onChange = renderSound;
+  // browsers start audio only after a user gesture
+  const unlockAudio = () => { if (!audio.unlocked) { audio.unlock(); renderSound(); } };
+  window.addEventListener('pointerdown', unlockAudio, true);
+  window.addEventListener('keydown', unlockAudio, true);
+  // copyrighted arrangements (6.25의 노래) live in data/private, which is not in the repository
+  getJson<unknown>('data/private/music.json').then((j) => audio.addSongs(privateSongs(j))).catch(() => { /* not present */ });
+  $('#sound').addEventListener('click', () => { soundOpen = !soundOpen; renderSound(); });
+  soundEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-snd]');
+    if (!b || b.tagName === 'INPUT') return;
+    const what = b.dataset.snd;
+    if (what === 'music') audio.set({ music: !audio.settings.music });
+    else if (what === 'sfx') { audio.set({ sfx: !audio.settings.sfx }); audio.sfx('click'); }
+    else if (what === 'skip') audio.skip();
+    else if (what === 'choice') audio.set({ choice: b.dataset.value!, music: true });
+  });
+  soundEl.addEventListener('input', (e) => {
+    const r = e.target as HTMLInputElement;
+    if (r.dataset.snd === 'musicVolume') audio.set({ musicVolume: Number(r.value) / 100 });
+    if (r.dataset.snd === 'sfxVolume') audio.set({ sfxVolume: Number(r.value) / 100 });
+  });
+  soundEl.addEventListener('change', (e) => { if ((e.target as HTMLElement).dataset.snd === 'sfxVolume') audio.sfx('select'); });
+  document.addEventListener('pointerdown', (e) => {
+    if (!soundOpen) return;
+    const t = e.target as HTMLElement;
+    if (t.closest('#sound-panel') || t.closest('#sound')) return;
+    soundOpen = false;
+    renderSound();
+  });
 
   /** Side whose knowledge the screen shows. */
   const viewer = () => (game ? viewerSide(game) : 'un');
@@ -212,7 +267,9 @@ async function main() {
     if (!game) return;
     const d = gameDate(game);
     const info = SCENARIO_INFO_KO[game.scenarioNo - 1];
-    $('#scenario-name').textContent = `${game.scenarioNo}. ${info?.title ?? ''}${scenario?.variant === 'S' ? ` · ${OPTIONS_UI_KO.deployment}` : ''}`;
+    $('#scenario-name').textContent = `${game.scenarioNo}. ${info?.title ?? ''}`;
+    // the edition is in the settings line of the summary and the scenario report
+    $('#scenario-name').title = scenario?.variant === 'S' ? OPTIONS_UI_KO.deployment : '';
     $('#date').textContent = `${dateKo(d.year, d.month, d.day)} · ${game.turn}턴`;
     const t = TEMPERATURE_KO[game.temperature];
     const freeze = game.freezeLine > 0 ? ` · 결빙선 ${game.freezeLine}행` : '';
@@ -229,6 +286,7 @@ async function main() {
     const airOk = canPlanAir(game);
     airBtn.disabled = !airOk || modal();
     ($('#save-game') as HTMLButtonElement).setAttribute('aria-pressed', String(saveOpen));
+    ($('#reports-btn') as HTMLButtonElement).setAttribute('aria-pressed', String(reportsOpen));
     ($('#new-game') as HTMLButtonElement).setAttribute('aria-pressed', String(!!draft));
     airBtn.setAttribute('aria-pressed', String(airOpen && airOk));
   }
@@ -261,13 +319,74 @@ async function main() {
     renderBanner();
     renderDialog();
     renderSaveDlg();
+    renderReportsDlg();
   }
 
+  // ---------- report screens (docs/rules/reports.md) ----------
+
+  function renderReportsDlg() {
+    if (!reportsOpen || !game) { reportsEl.hidden = true; reportsEl.innerHTML = ''; return; }
+    renderReports(reportsEl, { tab: reportTab, game, options, variant: scenario?.variant, viewer: viewer(), overviewMode });
+    reportsEl.hidden = false;
+  }
+
+  function openReports(tab: ReportTab = reportTab) {
+    if (!game || draft || saveOpen) return;
+    reportsOpen = true;
+    reportTab = tab;
+    audio.sfx('news');
+    render();
+  }
+
+  function closeReports() {
+    reportsOpen = false;
+    render();
+  }
+
+  reportsEl.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const canvas = t.closest<HTMLCanvasElement>('canvas.rp-overview');
+    if (canvas) {
+      // the overview: the clicked hex becomes the centre of the map (DO_OVERVIEW)
+      const r = canvas.getBoundingClientRect();
+      const hex = overviewHexAt(((e as MouseEvent).clientX - r.left) * (canvas.width / r.width), ((e as MouseEvent).clientY - r.top) * (canvas.height / r.height));
+      if (hex) { view.centerOn(hex[0], hex[1]); audio.sfx('pin'); closeReports(); }
+      return;
+    }
+    const b = t.closest<HTMLElement>('[data-rp]');
+    if (!b) return;
+    const what = b.dataset.rp;
+    if (what === 'close') { closeReports(); return; }
+    if (what === 'tab') reportTab = b.dataset.value as ReportTab;
+    if (what === 'mode') overviewMode = b.dataset.value as 'terrain' | 'supply';
+    audio.sfx('click');
+    renderReportsDlg();
+  });
+
   // ---------- turn sequence ----------
+
+  /** Effects for what just happened (combat, airstrikes, news), then the call of the next phase (docs/audio.md). */
+  function soundForEvents(events: TurnEvent[]) {
+    let delay = 0;
+    if (events.some((e) => e.kind === 'gameOver')) { audio.sfx('drumroll'); return; }
+    const air = events.find((e) => e.kind === 'air');
+    if (air && air.kind === 'air' && air.report.sides.some((s) => s.strikes.length)) { audio.sfx('airstrike'); delay += 1.8; }
+    if (events.some((e) => e.kind === 'airstrikes')) { audio.sfx('plane', undefined, delay); return; }
+    const combat = events.find((e) => e.kind === 'combat');
+    if (combat && combat.kind === 'combat' && combat.reports.length) { audio.sfx('battle', { count: combat.reports.length }, delay); delay += 1.2 + 0.45 * Math.min(6, combat.reports.length); }
+    const res = events.find((e) => e.kind === 'resolution');
+    if (res && res.kind === 'resolution' && res.report.news.length) { audio.sfx('news', undefined, delay); delay += 0.8; }
+    const begin = [...events].reverse().find((e) => e.kind === 'ordersPhase');
+    if (begin && begin.kind === 'ordersPhase') {
+      audio.setSide(begin.player === 1 ? 'communist' : 'un');
+      audio.sfx(begin.player === 1 ? 'phaseRed' : 'phaseUn', undefined, delay);
+    }
+  }
 
   /** Turn engine events into the phase banner and the panel report. */
   function handleEvents(events: TurnEvent[]) {
     if (!game) return;
+    soundForEvents(events);
     const g = game;
     const lines: string[] = [];
     let combat: TurnView['combat'] = null;
@@ -360,6 +479,8 @@ async function main() {
     if (!game) return;
     if (action === 'end-game') {
       const result = finishGame(game);
+      const human = game.computerSide === 1 ? 'un' : game.computerSide === 2 ? 'communist' : null;
+      audio.sfx(!result.winner ? 'drumroll' : !human || result.winner === human ? 'victory' : 'defeat');
       banner = null;
       turnView = { combat: null, air: null, resolution: turnView?.resolution ?? null, result };
     } else if (action === 'override') {
@@ -395,6 +516,7 @@ async function main() {
     sel = [x, y];
     message = null;
     if (!forces.length) { orders = null; return; }
+    audio.sfx('select');
     // clicking the same hex again cycles through the (at most two) forces stacked there
     let k = 0;
     if (sameHex && orders) {
@@ -414,6 +536,7 @@ async function main() {
       : mode === 'air' ? airDrop(game, leader, orders.pinned)
       : moveForce(game, leader, path);
     if (res.ok) {
+      audio.sfx(res.destroyed ? 'explosion' : mode === 'rail' ? 'rail' : mode === 'sea' ? 'ship' : mode === 'air' ? 'drop' : 'march');
       const parts = [MOVE_UI_KO.done, mode === 'rail' ? `${path.length}칸 철도 수송` : `${res.usedAfter - res.usedBefore}${MOVE_UI_KO.points} 사용`];
       if (res.readinessLoss) parts.push(`${MOVE_UI_KO.readiness} −${res.readinessLoss}`);
       message = { kind: 'ok', text: parts.join(' · ') };
@@ -430,6 +553,7 @@ async function main() {
       startOrders(leader);
     } else {
       const found = res.error === 'enemyFound';
+      audio.sfx(found ? 'news' : 'error');
       message = { kind: found ? 'warn' : 'error', text: found ? BLOCK_KO.enemyFound : `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
       startOrders(leader, mode);
     }
@@ -441,6 +565,7 @@ async function main() {
     const t = orders.assault;
     if (orders.mode === 'sea') {
       const out = seaAssault(game, leader, t % game.width, Math.floor(t / game.width));
+      audio.sfx(!out.ok ? 'error' : out.result === 'overrun' ? 'overrun' : out.result === 'stranded' ? 'error' : 'bugle');
       if (!out.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[out.error ?? ''] ?? out.error}` };
       else if (out.result === 'overrun') message = { kind: 'ok', text: NAVAL_UI_KO.seaOverran };
       else if (out.result === 'stranded') message = { kind: 'warn', text: NAVAL_UI_KO.seaStranded };
@@ -449,6 +574,7 @@ async function main() {
       return;
     }
     const res = assault(game, leader, t % game.width, Math.floor(t / game.width));
+    audio.sfx(!res.ok ? 'error' : res.result === 'overrun' ? 'overrun' : res.result === 'stopped' ? 'march' : 'bugle');
     if (!res.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
     else if (res.result === 'overrun') message = { kind: 'ok', text: COMBAT_UI_KO.overran };
     else if (res.result === 'stopped') message = { kind: 'warn', text: COMBAT_UI_KO.stopped };
@@ -460,6 +586,7 @@ async function main() {
     if (!game) return;
     const leader = undoMove(game);
     if (leader === null) return;
+    audio.sfx('undo');
     message = { kind: 'ok', text: MOVE_UI_KO.undone };
     startOrders(leader, 'tactical');
     render();
@@ -467,6 +594,7 @@ async function main() {
 
   function cancel() {
     if (banner) return;
+    if (orders || sel) audio.sfx('cancel');
     if (orders && orders.assault !== null) orders.assault = null;
     else if (orders && orders.pinned !== null) orders.pinned = null;
     else if (orders) orders = null;
@@ -496,6 +624,7 @@ async function main() {
   function strikeAt(x: number, y: number) {
     if (!game) return;
     const res = flyAirstrike(game, x, y);
+    audio.sfx(res.ok ? 'airstrike' : 'error');
     if (!res.ok) {
       message = { kind: 'error', text: res.error === 'manchuria' ? AIR_UI_KO.manchuria : AIR_UI_KO.friendly };
     } else {
@@ -508,6 +637,7 @@ async function main() {
   function delegate(all: boolean) {
     if (!game) return;
     const done = delegateAirstrikes(game, all);
+    if (done.length) audio.sfx('airstrike');
     strikeMarks = [...strikeMarks, ...done.map(marker)];
     const last = done[done.length - 1];
     message = last ? { kind: 'ok', text: `${AIR_UI_KO.autoTag}: ${strikeText(last)}` } : null;
@@ -525,7 +655,7 @@ async function main() {
     if (orders) {
       if (isEnemyNeighbor(i)) {
         if (orders.assault === i) executeAssault();
-        else { orders.assault = i; orders.pinned = null; message = null; }
+        else { orders.assault = i; orders.pinned = null; message = null; audio.sfx('pin'); }
         render();
         return;
       }
@@ -533,7 +663,7 @@ async function main() {
       if (node && i !== orders.reach.origin) {
         if (node.canStop) {
           if (orders.pinned === i) execute();
-          else { orders.pinned = i; orders.assault = null; message = null; }
+          else { orders.pinned = i; orders.assault = null; message = null; audio.sfx('pin'); }
         }
         render();
         return;
@@ -628,6 +758,10 @@ async function main() {
       if (e.key === 'Escape') closeSave();
       return;
     }
+    if (reportsOpen) {
+      if (e.key === 'Escape') closeReports();
+      return;
+    }
     if (draft) {
       // the start menu: Enter begins the game (original key 7), Esc closes it while a game is running
       if (e.key === 'Enter') { e.preventDefault(); startGame(draft); }
@@ -704,6 +838,7 @@ async function main() {
     if (readSlot(key) && !window.confirm(SAVE_UI_KO.overwrite(key))) return;
     try {
       s.setItem(SAVE_KEY + key, saveToText(f));
+      audio.sfx('save');
       saveMsg = { kind: 'ok', text: SAVE_UI_KO.saved(key) };
     } catch { saveMsg = { kind: 'error', text: SAVE_UI_KO.storageFull }; }
   }
@@ -747,6 +882,7 @@ async function main() {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     saveMsg = { kind: 'ok', text: SAVE_UI_KO.downloaded };
+    audio.sfx('save');
   }
 
   const fileInput = document.createElement('input');
@@ -775,6 +911,7 @@ async function main() {
   }
 
   function openSave() {
+    reportsOpen = false;
     saveOpen = true;
     saveMsg = null;
     render();
@@ -843,6 +980,7 @@ async function main() {
   });
   $('#new-game').addEventListener('click', () => { if (!draft) openNewGame(); });
   $('#save-game').addEventListener('click', () => { if (saveOpen) closeSave(); else openSave(); });
+  $('#reports-btn').addEventListener('click', () => { if (reportsOpen) closeReports(); else openReports(); });
 
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;
@@ -884,6 +1022,12 @@ async function main() {
     /** Intelligence option for the next new game (true = limited); `load(id)` starts it. */
     setIntel: (limited: boolean) => { options = { ...options, limitedIntel: limited }; },
     get viewer() { return viewer(); },
+    /** Sound: the manager (settings, songs, sfx(name), renderOffline(id, s), renderSfx(name)). */
+    audio,
+    /** Reports: 'strategic' | 'facilities' | 'weather' | 'scenario' | 'overview'. */
+    openReports, closeReports,
+    get reportsOpen() { return reportsOpen; },
+    setOverviewMode: (m: 'terrain' | 'supply') => { overviewMode = m; renderReportsDlg(); },
     /** Save / load: the dialog, slots ('auto', '1'..'5'), and save files as text. */
     openSave, closeSave,
     get saveOpen() { return saveOpen; },

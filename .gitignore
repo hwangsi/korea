@@ -6,6 +6,7 @@ Conflict-Korea-The-First-Year-1950-51_DOS_EN/
 # Generated (rebuild with: node tools/extract/extract.ts, node tools/build.mjs)
 remake/dist/
 remake/data/extracted/
+remake/data/private/
 node_modules/
 
 # OS files

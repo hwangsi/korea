@@ -51,6 +51,7 @@ remake/
     engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, combat, supply, air, naval, intel, spotting,
                             options, save, turn, endturn, weather, hex, strength)
     engine/ai/              컴퓨터 플레이어 (원작 공산군 KIM, 공용 AISUBS, 등록부)
+    audio/                  배경 음악·효과음 (ABC 악보 → 행진 악대 편곡 → Web Audio FM 합성)
     data/places.ts          지명·산·호수 데이터(자체 제작)와 헥스→위경도 보정
     i18n/ko.ts              한글 용어집과 번역 규칙
     ui/                     지도 렌더러, 정보 패널
@@ -61,7 +62,9 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel, options, save, ai)
+  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel, options, save, ai, reports)
+  docs/audio.md             소리 (곡 목록, 저작권, 효과음)
+  data/private/             저작권이 남은 곡의 개인 편곡 (git 제외)
   docs/places.md            지명 판정 방법과 근거
   tests/                    단위 테스트 (node:test)
 ```
@@ -89,16 +92,18 @@ remake/
 - [x] 저장/불러오기 (명령 단계, 브라우저 슬롯 5개 + 자동 저장, 파일 내려받기/올리기, 난수 상태까지) → [`docs/rules/save.md`](docs/rules/save.md)
 - [x] 컴퓨터 공산군 (원작 KIM을 코드 그대로) + 개선판·유엔 AI를 붙일 등록부 → [`docs/rules/ai.md`](docs/rules/ai.md)
 - [ ] 유엔군 컴퓨터 (원작 WALTON, 구조 조사만: `docs/rules/ai-walton.md`), 개선판 AI
-- [ ] 보고서 화면, 전략 개관 지도
-- [ ] 전체 한글화 마무리, 새 그래픽과 사운드
+- [x] 보고서 화면 (전략 보고, 비행장·항구, 날씨, 시나리오 정보) + 전략 개관·보급망 미니맵 → [`docs/rules/reports.md`](docs/rules/reports.md)
+- [x] 배경 음악·효과음 (행진곡 메들리, FM 사운드카드풍) → [`docs/audio.md`](docs/audio.md)
+- [ ] 부대 편성 화면 (FULL_HEX)
+- [ ] 전체 한글화 마무리, 새 그래픽
 
 ## 다음 단계 제안
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **보고서 화면** (전략 보고, 비행장·항구, 날씨, 시나리오 정보)
-2. 전략 개관 지도
-3. 유엔군 컴퓨터(WALTON), 개선판 AI
+1. **부대 편성 화면** (FULL_HEX: 유닛 옮기기·부대 이름)
+2. 유엔군 컴퓨터(WALTON)
+3. 개선판 AI
 
 ## 저작권 주의
 

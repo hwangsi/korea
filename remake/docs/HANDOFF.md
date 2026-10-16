@@ -3,9 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **저장/불러오기 + 컴퓨터 공산군(원작 KIM) 완료**
-  (규칙 `docs/rules/save.md`, `docs/rules/ai.md`, 유엔 AI 조사 `docs/rules/ai-walton.md`; 엔진 `save.ts`, `ai/`; 화면 `ui/saveDialog.ts`;
-  테스트 82개 통과; standalone 검증: 기본값 UN Solitaire로 KIM 상대 몇 턴, 저장→진행→불러오기→같은 결과). 다음은 7장 보고서 화면
+- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **보고서 화면 + 배경 음악·효과음 완료**
+  (규칙 `docs/rules/reports.md`, 소리 `docs/audio.md`; 엔진 `reports.ts`, 소리 `src/audio/`; 화면 `ui/reports.ts`, `ui/soundPanel.ts`;
+  테스트 88개 통과; standalone 검증: 보고서 탭 5개, 전략 개관 클릭 이동, 소리 메뉴, 곡 오프라인 렌더링 음량). 다음은 7장 부대 편성 화면(FULL_HEX)
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -141,8 +141,18 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - 날씨 생성 표 = 매뉴얼 6.4 표의 누적값, 보충량 = 매뉴얼 6.21 표(1995 국군 4개만 다름)
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
+- **보고서 화면** (`docs/rules/reports.md`, `src/engine/reports.ts`, `src/ui/reports.ts`, `tests/reports.test.ts` 3개)
+  - 원작: 전략 보고(REPORTS `2f75`: 점령 헥스·비축·항공 수준은 양쪽 모두, 보충 풀과 중공군 개입 상태는 PLAYER 쪽만, 최근 소식 8줄),
+    비행장·항구(`0356`, 배열 순서 고정 이름), 날씨(`3699`, PLAYER의 예보 행 + 실제 날씨 효과), 시나리오 정보(`0010`, S_DATA),
+    보급망 표시(DETERMINE_SUPPLY(TRUE)), 전략 개관(EURSUBS1 `4421`, **38선은 36·37행 사이 직선으로 코드에 박혀 있음**). 모두 난수 없음·상태 변화 없음
+  - 화면: 상단 "보고서" → 탭 5개(모달). 전략 개관은 미니맵(지형·부대 / 보급망 모드), 헥스 클릭 → 지도 이동. 점령 점수·승리 수준은 "리메이크 추가"
+- **배경 음악·효과음** (`docs/audio.md`, `src/audio/`, `src/ui/soundPanel.ts`, `tests/audio.test.ts` 3개)
+  - ABC 악보 읽기 → 행진 악대 편곡(FM 금관, 리드, 쿵짝 베이스·화음, 북) → Web Audio 합성. 파일 없이 합성, 효과음 24가지
+  - 곡: 인터내셔널가, 보기 대령 행진곡, 포차는 굴러간다(저작권 만료, 저장소에), 6.25의 노래(저작권 있음 → `data/private/music.json`, git 제외)
+  - 상단 "♪": 음악·효과음 켜기/끄기·음량, 메들리/진영별/한 곡. 설정은 브라우저 저장소. 첫 클릭 때 오디오 시작
+
 아직 없음
-- 보고서 화면(전략 보고, 비행장·항구, 날씨, 시나리오 정보), 전략 개관 지도(DO_OVERVIEW), 전체 한글화, 새 그래픽/사운드
+- 부대 편성 화면(FULL_HEX: 유닛 옮기기·부대 이름 바꾸기), 전체 한글화, 새 그래픽
 - 유엔군 컴퓨터(WALTON), 개선판 AI (등록부와 선택 자리만 있음), 원작 .SAV 가져오기
 
 ## 3. 폴더 구조
@@ -171,6 +181,8 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/save.md                   저장/불러오기 (원작 저장 시점·재개, 리메이크 JSON 형식)
     docs/rules/ai.md                     컴퓨터 플레이어 (원작 KIM·AISUBS·침공 경로, 리메이크 구조, 확장 계획)
     docs/rules/ai-walton.md              유엔군 컴퓨터 WALTON 구조 조사(영문 메모) + ai-walton-script.txt(지정 목표 호출 목록)
+    docs/rules/reports.md                보고서 (전략 보고, 비행장·항구, 날씨, 시나리오 정보, 보급망 표시, 전략 개관, FULL_HEX 요약)
+    docs/audio.md                        배경 음악·효과음 (리메이크 추가, 곡 목록과 저작권)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -185,6 +197,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         intel.ts                         정보: 보는 쪽, 부대별 정찰 단계, 전력 보고, 아는 상태(perceivedState)
         options.ts                       새 게임 옵션 (메뉴 값, 기본값, 시나리오 파일, 표시 규칙)
         save.ts                          저장/불러오기 (GameState ↔ JSON, 저장 가능 여부, 재개)
+        reports.ts                       보고서 데이터 (전략 보고, 비행장·항구, 날씨, 전략 개관 칸)
         ai/                              컴퓨터 플레이어: types.ts(인터페이스), index.ts(등록부), common.ts(AISUBS·경로·합치기, 진영 무관), kim.ts(원작 공산군)
         spotting.ts                      이동·전투의 정찰 갱신 (CHEK_HEX, NEAR_THE_FRONT, 12점 규칙, 후퇴 주변)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
@@ -192,7 +205,9 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         weather.ts                       달력·날씨 생성·예보·결빙선
         hex.ts, strength.ts              헥스 수학, 전투력(부록 F)
       i18n/ko.ts                         한글 용어집·번역 규칙
-      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts)
+      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts),
+                                         보고서(reports.ts), 소리 메뉴(soundPanel.ts)
+      audio/                             소리: abc.ts(악보 읽기), arrange.ts(편곡), synth.ts(FM 악기), sfx.ts(효과음), songs.ts(곡), index.ts(재생기)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
     tools/
@@ -201,6 +216,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
       vendor/iced-x86/                   x86 디코더 (MIT, npm 패키지 그대로)
       dev-server.mjs, build.mjs          무설치 개발 서버, 정적 빌드
     data/extracted/                      생성물 (git 제외, 언제든 재생성)
+    data/private/music.json              저작권이 남은 곡의 편곡(6.25의 노래) ※ git 제외, 다른 PC로는 직접 복사
     dist/                                빌드 결과 (git 제외)
 ```
 
@@ -243,7 +259,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
   **기본 플레이 방식이 UN Solitaire(컴퓨터 공산군)** 로 바뀜: 두 사람 검증은 `__app.newGame({ playMode: 0 })`. 컴퓨터가 먼저면 새 게임이 사람 단계까지 진행된 채로 열림
   (용이 깨어나다는 0턴 유엔 2차 단계부터). 저장: `__app.openSave()`/`closeSave()`/`saveOpen`, `__app.saveSlot('1')`, `__app.loadSlot('auto')`,
-  `__app.saveText()`(명령 단계가 아니면 null), `__app.loadText(text)`. document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
+  `__app.saveText()`(명령 단계가 아니면 null), `__app.loadText(text)`.
+  보고서: `__app.openReports('strategic' | 'facilities' | 'weather' | 'scenario' | 'overview')`, `closeReports()`, `reportsOpen`, `setOverviewMode('terrain' | 'supply')`.
+  소리: `__app.audio`(settings, songs, `sfx(이름)`, `renderOffline(곡 id, 초)`·`renderSfx(이름)`은 OfflineAudioContext로 렌더링만). 자동화 탭은 렌더링이 느려 한 곡씩 비동기로 document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
   ("브라우저 저장소를 쓸 수 없어요" 표시) 슬롯 저장은 검증 불가, saveText/loadText로 확인
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
   (어기면 standalone.html 전체가 구문 오류로 아무것도 안 뜨고 오류도 안 보임)
@@ -289,22 +307,20 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 | 저장 | TACSUBS.SAVE_GAME `1ee0`, LOAD_OLD_GAME `3bf4` / KOREA.GAME_SAVE `0a3a` |
 | 턴 진행 | KOREA.PHASE_PULSE, PLAYER_PHASE / ENDTURN.NEXT_TURN, GROUND_REINFORCEMENTS, DO_INTEL, DO_PATROLS, MINE_WARFARE, CHECK_CHINA, GAME_OVER |
 | AI | WARRIORS.KIM (공산, 본문 `29df`~`2c30`, 중첩 `0000`~`29de`), WALTON (유엔, 본문 `5cf5`, 중첩 `2c85`~`5cf4`) / AISUBS.* / 유닛 초기화 `5e4a`(ROUTE). 심볼 길이는 믿지 말 것(ai.md 0) |
+| 보고서 | REPORTS.STRATEGIC_REPORT `2f75`, PORTS_AIRFIELDS_REPORT `0356`, W_REPORT `3699`, SCENARIO_REPORT `0010`, FULL_HEX `2c3c`(편성 화면, 중첩 `0a36`~) / EURSUBS1.DO_OVERVIEW `4421` / SUPPLY.DETERMINE_SUPPLY(TRUE) |
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 보고서 화면
+## 7. 다음 작업: 부대 편성 화면 (FULL_HEX)
 
-목표: 원작 명령 단계 메뉴의 보고서들을 한글 화면으로. KOREA.DO_ITEM `0c20`의 항목 번호와 프로시저:
-12h 전략 보고 REPORTS.STRATEGIC_REPORT `10fd:2f75`, 13h 날씨 보고 W_REPORT `3699`, 14h 보급망 표시 SUPPLY.DETERMINE_SUPPLY(1),
-15h 항구·비행장 보고 PORTS_AIRFIELDS_REPORT `0356`, 16h 시나리오 정보 SCENARIO_REPORT `0010`(S_DATA 재사용, 요약의 설정 줄로 이미 있음).
+목표: 원작의 "FULL HEX REPORT"(REPORTS.FULL_HEX `2c3c`, 중첩 `0a36`~`2c3b`, 요약은 `docs/rules/reports.md` 5장)를 옮겨, 같은 헥스의 아군 부대 두 개
+사이에서 유닛을 옮기고(Xfer) 부대 이름을 바꿀 수 있게 하기. 지금은 부대 구성이 시나리오대로 고정이라 플레이어가 편성을 바꿀 수 없음.
 
-1. 규칙 확인 → `docs/rules/reports.md`: 보고서마다 무엇을 어떤 공식으로 보여 주는지(전력 합계, 부대 수, 손실, 보급 상태, 승리 수준·점령 점수,
-   항구 기뢰·비행장 등급, 예보), **정보 제한일 때 적 정보를 어떻게 감추는지**, GET_STRENGTH 모드 3(전력 보고)을 부르면 STATUS 0x20을 세우는지(8장)
-2. 엔진: `src/engine/reports.ts`(DOM 없이 보고서 데이터만, 보는 쪽 `viewerSide` 기준)
-3. UI: 상단 "보고서" 버튼(상단 막대가 1440px에서 한 줄인지 확인) 또는 요약 패널의 탭. 단계 알림 창·저장 대화 상자처럼 모달이면 `modal()`에 포함
-4. 이어서: 전략 개관 지도(EURSUBS1.DO_OVERVIEW) → 유엔군 컴퓨터 WALTON(`docs/rules/ai-walton.md`, `ai/common.ts` 재사용, 등록부에 추가) →
-   개선판 AI(`ai.md` 5.1 목록) → 중공군 첫 참전 뉴스(GRCMBT), 전체 한글화
-
+1. 규칙 확인 → `docs/rules/movement.md` 또는 새 `docs/rules/forces.md`: 옮기기 허용 조건(`22cf`: MOVE(MASK) 비교, 이동력 맞추기, 거부 "This transfer is
+   not allowed!"), 옮긴 뒤 SORT_FORCE(`ai/common.ts`의 `sortForce`가 이미 원작대로), 빈 부대가 되면?, 공격 계획 중인 부대, 이름(NAME1, 20자)
+2. 엔진: `src/engine/forces.ts` — `transferUnit(g, unit, toLeader)`, `renameForce(g, leader, name)` + 테스트
+3. UI: 헥스 패널의 부대 카드에 "편성" 버튼 → 두 부대 나란히(유닛별 옮기기 버튼), 이름 바꾸기, 지형 보정 표시. 명령 단계, 자기 진영만
+4. 이어서: 유엔군 컴퓨터 WALTON(`ai-walton.md`, `ai/common.ts` 재사용, 등록부에 추가) → 개선판 AI(`ai.md` 5.1) → 중공군 첫 참전 뉴스(GRCMBT), 전체 한글화
 ## 8. 미해결 질문
 
 - (해결) STATUS 0x10 = 이번 턴 전력 보고 거짓, 0x20 = 전력 보고 정해짐(intel.md 2.4). 이제 모든 비트 확정
@@ -331,7 +347,7 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 - TERRITORY_BALANCE의 중국 미개입 제한이 24턴(`384a`)에서만 걸리는데 END_TEST의 미개입 종료는 26턴: 원작 버그인지 의도인지 (지금은 원작대로)
 - korea3 부대 205(미 2사단 9연대, 9,24)의 파일 MOVE가 보급망 계산과 다름: REST_UP 뒤 순찰·게릴라로 바뀐 점령인지 수동 편집인지 미확인
 - 이동 중 버그아웃(`3070`)이 비교하는 두 헥스가 정확히 "출발·도착"인지 (MOVE_UNIT 프레임 `[di-12h]`/`[di-14h]`, 지금은 매뉴얼대로 두 헥스)
-- 38선 표시 데이터의 위치 (미그 앨리는 규칙 코드로 확정: x < 15, y < 27)
+- (해결) 38선 표시: 데이터 표 없이 DO_OVERVIEW가 1950년대에만 36·37행 사이 직선으로 그림(reports.md 4). 미그 앨리는 x < 15, y < 27
 - 기본 DAT와 S DAT: 둘 다 새 게임으로 읽힌다(LOAD_NEW_GAME이 UTILITY_SPACE[11]을 0으로). S는 사단 단위 편성에 시작 시점의 이동·공격 명령이 미리 들어 있음(korea1s 북한군 공격 계획 등)
 - 밀집 지역 부대 마커 겹침 (UI 개선 과제)
 

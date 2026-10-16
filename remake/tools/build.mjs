@@ -48,6 +48,13 @@ const indexHtml = readFileSync(join(ROOT, 'index.html'), 'utf8');
 writeFileSync(join(DIST, 'index.html'), indexHtml.replace('src/main.ts', 'src/main.js'));
 const hasData = existsSync(join(DATA, 'map.json'));
 if (hasData) for (const name of ['map.json', 'scenarios']) cpSync(join(DATA, name), join(DIST, 'data', 'extracted', name), { recursive: true });
+// private music (copyrighted arrangements, docs/audio.md): only on this machine, never in the repository
+const PRIVATE_MUSIC = join(ROOT, 'data', 'private', 'music.json');
+const hasPrivateMusic = existsSync(PRIVATE_MUSIC);
+if (hasPrivateMusic) {
+  mkdirSync(join(DIST, 'data', 'private'), { recursive: true });
+  cpSync(PRIVATE_MUSIC, join(DIST, 'data', 'private', 'music.json'));
+}
 
 // ---------- standalone.html: tiny module bundler for our own code style ----------
 function bundleModule(id, src) {
@@ -84,6 +91,7 @@ if (hasData) {
     embedded[`data/extracted/scenarios/${f}`] = s;
   }
 }
+if (hasPrivateMusic) embedded['data/private/music.json'] = JSON.parse(readFileSync(PRIVATE_MUSIC, 'utf8'));
 const css = readFileSync(join(ROOT, 'src', 'styles.css'), 'utf8');
 const script = `window.__EMBEDDED_DATA__ = ${JSON.stringify(embedded)};\n(() => {\nconst __modules = {};\n${order.map((id) => bundleModule(id, modules.get(id))).join('\n')}\n})();`;
 const standalone = indexHtml

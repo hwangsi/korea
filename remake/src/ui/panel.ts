@@ -203,8 +203,9 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         <li>상단 ▶ ${esc(TURN_UI_KO.endPhase)}: 다음 진영·단계로 (1차 명령 → 전투 → 2차 명령 → 정리)</li>
         <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
         <li>드래그 또는 방향키: 지도 이동 (Shift+방향키: 빠르게) · 휠: 확대·축소</li>
+        <li>상단 저장: 슬롯·자동 저장·파일 · 보고서: 전략 보고·항구와 비행장·날씨·전략 개관 · ♪: 음악·효과음</li>
       </ul>
-      <p class="muted small">두 사람이 번갈아 하는 방식입니다 (컴퓨터 AI는 아직 없음). ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
+      <p class="muted small">${g.computerSide ? '컴퓨터가 한 진영을 맡습니다 (공산군은 원작 AI).' : '두 사람이 번갈아 하는 방식입니다.'} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
     </section>`;
 }
 
