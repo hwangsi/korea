@@ -11,7 +11,7 @@ import type { GameState, UnitState } from '../engine/state.ts';
 import { allowance, frozen } from '../engine/movement.ts';
 import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
-import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO } from '../i18n/ko.ts';
+import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO } from '../i18n/ko.ts';
 import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
@@ -55,9 +55,19 @@ export interface MoveOverlay {
   reach: Reach;
   path: number[] | null;
   pinned: boolean;
-  /** Adjacent enemy hex under the mouse / pinned for an assault. */
-  assault?: { hex: number; pinned: boolean; allowed: boolean } | null;
+  /** Adjacent enemy hex under the mouse / pinned for an assault. `from`: launch hex of an assault from the sea. */
+  assault?: { hex: number; pinned: boolean; allowed: boolean; from?: number } | null;
+  /** Airborne movement: drop loss ratio (percent) of the previewed drop hex. */
+  dropLoss?: number | null;
 }
+
+/** Reach colours per movement mode: tint of the stop hexes, outline, path. */
+const MODE_STYLE: Record<string, { fill: string; line: string; path: string }> = {
+  tactical: { fill: 'rgba(255, 210, 40, 0.26)', line: '#e09a00', path: '#14325c' },
+  rail: { fill: 'rgba(60, 150, 255, 0.24)', line: '#1f6fd1', path: '#1f5fbf' },
+  sea: { fill: 'rgba(0, 190, 200, 0.30)', line: '#0a8f9e', path: '#0b5f6b' },
+  air: { fill: 'rgba(160, 110, 235, 0.20)', line: '#7a4cc2', path: '#5b2f9e' },
+};
 
 /** Airstrike of this turn's combat phase: struck hex, explosions (0 = nothing found), striking side. */
 export interface StrikeMarker { hex: number; explosions: number; found: boolean; player: number; }
@@ -803,6 +813,7 @@ export class MapView {
     ctx.strokeStyle = 'rgba(0,0,0,0.55)';
     ctx.lineWidth = HEX * 0.04;
     ctx.stroke();
+    this.shipBadge(lead, x, y);
     if (z < 0.4) { ctx.restore(); return; }
 
     // NATO frame
@@ -863,6 +874,39 @@ export class MapView {
     }
     ctx.restore();
     ctx.restore();
+  }
+
+  /** A force at sea carries a small ship badge (the original replaces its counter with a ship icon). */
+  private shipBadge(lead: UnitState, x: number, y: number) {
+    const g = this.game;
+    if (!g || lead.x < 0 || lead.y < 0 || lead.x >= g.width || lead.y >= g.height) return;
+    const code = g.hexes[lead.y * g.width + lead.x].code;
+    if (!(code >= 0xa5 && code < 0xdb)) return;
+    const ctx = this.ctx;
+    const r = HEX * 0.3;
+    const bx = x - r * 0.15, by = y + r * 0.15;
+    ctx.beginPath();
+    ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#0b3d5c';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = HEX * 0.04;
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); // hull
+    ctx.moveTo(bx - r * 0.62, by + r * 0.08);
+    ctx.lineTo(bx + r * 0.62, by + r * 0.08);
+    ctx.lineTo(bx + r * 0.36, by + r * 0.46);
+    ctx.lineTo(bx - r * 0.36, by + r * 0.46);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(bx - r * 0.06, by - r * 0.58, r * 0.12, r * 0.62); // mast
+    ctx.beginPath(); // sail
+    ctx.moveTo(bx + r * 0.1, by - r * 0.52);
+    ctx.lineTo(bx + r * 0.5, by - r * 0.02);
+    ctx.lineTo(bx + r * 0.1, by - r * 0.02);
+    ctx.closePath();
+    ctx.fill();
   }
 
   // ---------- assault orders ----------
@@ -1018,7 +1062,8 @@ export class MapView {
     const map = this.map!;
     const px = 1 / this.cam.zoom;
     const nodes = m.reach.nodes;
-    const rail = m.reach.mode === 'rail';
+    const mode = m.reach.mode;
+    const style = MODE_STYLE[mode] ?? MODE_STYLE.tactical;
     const inReach = (i: number) => nodes.has(i);
     ctx.beginPath();
     for (const h of vis) if (!inReach(h.y * map.width + h.x)) this.hexPath(hexCenter(h.x, h.y, HEX), false);
@@ -1029,16 +1074,19 @@ export class MapView {
       const n = nodes.get(h.y * map.width + h.x);
       if (n && n.hex !== m.reach.origin && n.canStop) this.hexPath(hexCenter(h.x, h.y, HEX), false);
     }
-    ctx.fillStyle = rail ? 'rgba(60, 150, 255, 0.24)' : 'rgba(255, 210, 40, 0.26)';
+    ctx.fillStyle = style.fill;
     ctx.fill();
-    // pass-through only (estuary under the amphibious rule, full stacks during rail moves)
-    ctx.beginPath();
-    for (const h of vis) {
-      const n = nodes.get(h.y * map.width + h.x);
-      if (n && n.hex !== m.reach.origin && !n.canStop) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+    // pass-through only (estuary under the amphibious rule, full stacks during rail moves); the open sea of a
+    // sea move stays undimmed instead
+    if (mode !== 'sea') {
+      ctx.beginPath();
+      for (const h of vis) {
+        const n = nodes.get(h.y * map.width + h.x);
+        if (n && n.hex !== m.reach.origin && !n.canStop) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+      }
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
+      ctx.fill();
     }
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
-    ctx.fill();
     // outline of the reachable area
     ctx.beginPath();
     for (const h of vis) {
@@ -1058,10 +1106,10 @@ export class MapView {
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.lineWidth = 5 * px;
     ctx.stroke();
-    ctx.strokeStyle = rail ? '#1f6fd1' : '#e09a00';
+    ctx.strokeStyle = style.line;
     ctx.lineWidth = 2.5 * px;
     ctx.stroke();
-    // enemy forces next to the reachable area (assault targets once combat exists)
+    // enemy forces next to the reachable area (assault targets); airborne: drop hexes held by enemy forces
     ctx.save();
     ctx.setLineDash([6 * px, 4 * px]);
     ctx.strokeStyle = '#d0312d';
@@ -1070,6 +1118,16 @@ export class MapView {
       if (why !== 'enemy') continue;
       this.hexPath(hexCenter(i % map.width, Math.floor(i / map.width), HEX));
       ctx.stroke();
+    }
+    if (mode === 'air' && this.game) {
+      const g = this.game;
+      for (const h of vis) {
+        const i = h.y * map.width + h.x;
+        if (nodes.has(i) && g.possession[i] === 2 && g.stacks[i].length > 0) {
+          this.hexPath(hexCenter(h.x, h.y, HEX));
+          ctx.stroke();
+        }
+      }
     }
     ctx.restore();
     // origin ring
@@ -1087,12 +1145,14 @@ export class MapView {
     const z = this.cam.zoom;
     const r = m.reach;
     const rail = r.mode === 'rail';
+    const special = r.mode !== 'tactical'; // rail, sea, air: no movement point numbers
+    const style = MODE_STYLE[r.mode] ?? MODE_STYLE.tactical;
     const onPath = new Set(m.path ?? []);
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    if (z >= 0.45 && !rail) {
+    if (z >= 0.45 && !special) {
       ctx.font = `600 ${Math.max(9, Math.min(13, 10 * z))}px ${FONT}`;
       for (const h of vis) {
         const i = h.y * map.width + h.x;
@@ -1123,7 +1183,25 @@ export class MapView {
       ctx.lineWidth = 3.5 / z;
       ctx.stroke();
       ctx.restore();
-      this.arrow(oc, tc, m.assault.allowed ? '#d0312d' : '#777', Math.max(3.5, 5 * z), m.assault.pinned ? [] : [8, 6]);
+      // an assault from the sea sails to the launch hex first
+      const from = m.assault.from;
+      if (from !== undefined && from >= 0 && from !== r.origin) {
+        const fc = hexCenter(from % map.width, Math.floor(from / map.width), HEX);
+        const a = this.toScreen(oc), b = this.toScreen(fc);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = 6;
+        ctx.setLineDash([8, 6]);
+        ctx.stroke();
+        ctx.strokeStyle = style.path;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        this.arrow(fc, tc, m.assault.allowed ? '#d0312d' : '#777', Math.max(3.5, 5 * z), m.assault.pinned ? [] : [8, 6]);
+      } else this.arrow(oc, tc, m.assault.allowed ? '#d0312d' : '#777', Math.max(3.5, 5 * z), m.assault.pinned ? [] : [8, 6]);
     }
     // path
     if (m.path && m.path.length) {
@@ -1135,7 +1213,7 @@ export class MapView {
       ctx.strokeStyle = 'rgba(255,255,255,0.95)';
       ctx.lineWidth = m.pinned ? 9 : 7;
       ctx.stroke();
-      ctx.strokeStyle = rail ? '#1f5fbf' : '#14325c';
+      ctx.strokeStyle = style.path;
       ctx.lineWidth = m.pinned ? 5 : 3.5;
       if (!m.pinned) ctx.setLineDash([8, 6]);
       ctx.stroke();
@@ -1149,10 +1227,10 @@ export class MapView {
       ctx.lineTo(b.x - Math.cos(ang - 0.5) * ah, b.y - Math.sin(ang - 0.5) * ah);
       ctx.lineTo(b.x - Math.cos(ang + 0.5) * ah, b.y - Math.sin(ang + 0.5) * ah);
       ctx.closePath();
-      ctx.fillStyle = rail ? '#1f5fbf' : '#14325c';
+      ctx.fillStyle = style.path;
       ctx.fill();
       // step markers with remaining points
-      if (!rail) {
+      if (!special) {
         ctx.font = `700 ${Math.max(9, Math.min(12, 9 * z))}px ${FONT}`;
         m.path.forEach((i, k) => {
           if (k === m.path!.length - 1) return;
@@ -1174,14 +1252,17 @@ export class MapView {
       const end = r.nodes.get(m.path[m.path.length - 1]);
       if (end) {
         const spent = end.used - r.usedStart;
-        const label = rail ? MOVE_MODE_KO.rail : pathLabelKo(spent, r.rate - end.used);
+        const label = rail ? MOVE_MODE_KO.rail
+          : r.mode === 'sea' ? (end.step.lands ? NAVAL_UI_KO.landing : NAVAL_UI_KO.atSeaStep)
+          : r.mode === 'air' ? `${NAVAL_UI_KO.drop}${m.dropLoss != null ? ` · −${m.dropLoss}%` : ''}`
+          : pathLabelKo(spent, r.rate - end.used);
         ctx.font = `700 ${Math.max(11, Math.min(14, 11 * z + 2))}px ${FONT}`;
         const tw = ctx.measureText(label).width + 16;
         const th = 22;
         const bx = b.x - tw / 2, by = b.y - HEX * z * 0.9 - th;
         ctx.beginPath();
         ctx.roundRect(bx, by, tw, th, 11);
-        ctx.fillStyle = m.pinned ? (rail ? '#1f5fbf' : '#14325c') : 'rgba(20, 50, 92, 0.85)';
+        ctx.fillStyle = m.pinned ? style.path : 'rgba(20, 50, 92, 0.85)';
         ctx.fill();
         ctx.fillStyle = '#fff';
         ctx.fillText(label, b.x, by + th / 2 + 0.5);

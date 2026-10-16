@@ -3,6 +3,7 @@
 // -> General Resolution -> next turn. "단계 종료" ends the current player's phase.
 // Movement orders: click a force -> reachable hexes, hover -> path preview, click -> pin, click again
 // -> move. Right click / Esc cancels, Ctrl+Z undoes the last move (docs/rules/movement.md).
+// Sea and airborne movement are modes of the same orders (docs/rules/naval.md).
 
 import type { MapData, Scenario } from './data/types.ts';
 import { MapView, forcesInHex } from './ui/mapView.ts';
@@ -11,7 +12,8 @@ import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstri
 import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
-import { reach, pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
+import { pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
+import { orderReach, defaultMode, seaMove, seaAssault, seaAssaultPreview, airDrop, airdropLoss, dropOnEnemy } from './engine/naval.ts';
 import { assault, assaultPreview, cancelAssault } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
 import { startNewGame, endPlayerPhase, finishGame, continuePastEnd } from './engine/turn.ts';
@@ -24,7 +26,7 @@ import { territoryBalance } from './engine/endturn.ts';
 import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
-  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO,
+  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
@@ -116,9 +118,11 @@ async function main() {
 
   // ---------- rendering ----------
 
-  /** Enemy-occupied hex next to the selected force (assault target). */
+  /** Enemy-occupied hex next to the selected force (assault target); sea mode: any enemy-held coast in reach. */
   function isEnemyNeighbor(i: number): boolean {
-    if (!orders || !game || orders.reach.origin < 0) return false;
+    if (!orders || !game || orders.reach.origin < 0 || orders.reach.cannot) return false;
+    if (orders.mode === 'air') return false;
+    if (orders.mode === 'sea') return orders.reach.blocked.get(i) === 'enemy';
     const o = orders.reach.origin;
     if (!sideMask(o % game.width, Math.floor(o / game.width), i % game.width, Math.floor(i / game.width))) return false;
     return orders.reach.blocked.get(i) === 'enemy';
@@ -128,7 +132,9 @@ async function main() {
     if (!orders || !game) return null;
     const hex = orders.assault ?? (orders.pinned === null && orders.hover !== null && isEnemyNeighbor(orders.hover) ? orders.hover : null);
     if (hex === null) return null;
-    return { hex, pinned: orders.assault !== null, preview: assaultPreview(game, orders.leader, hex % game.width, Math.floor(hex / game.width)) };
+    const x = hex % game.width, y = Math.floor(hex / game.width);
+    if (orders.mode === 'sea') return { hex, pinned: orders.assault !== null, preview: null, sea: seaAssaultPreview(game, orders.leader, x, y) };
+    return { hex, pinned: orders.assault !== null, preview: assaultPreview(game, orders.leader, x, y), sea: null };
   }
 
   function previewPath(): { path: number[] | null; pinned: boolean } {
@@ -144,11 +150,16 @@ async function main() {
     view.selectedLeader = orders?.leader ?? null;
     // a force that cannot move keeps its highlight but gets no reach overlay
     const av = assaultView();
+    const dest = p.path?.length ? p.path[p.path.length - 1] : null;
     view.movement = orders && !orders.reach.cannot
-      ? { reach: orders.reach, path: p.path, pinned: p.pinned, assault: av && { hex: av.hex, pinned: av.pinned, allowed: av.preview.allowed } }
+      ? {
+        reach: orders.reach, path: p.path, pinned: p.pinned,
+        assault: av && { hex: av.hex, pinned: av.pinned, allowed: av.sea ? av.sea.allowed : av.preview!.allowed, from: av.sea?.from },
+        dropLoss: orders.mode === 'air' && dest !== null && game ? airdropLoss(game, dest % game.width, Math.floor(dest / game.width)) : null,
+      }
       : null;
     view.airstrikes = strikeMarks;
-    view.showMigAlley = !!game && game.scenarioNo < 4 && (airOpen || inStrikes());
+    view.showMigAlley = !!game && game.scenarioNo < 4 && (airOpen || inStrikes() || orders?.mode === 'air');
     if (!inStrikes() || !pendingAirstrike(game!)) view.strikeAim = null;
     view.invalidate();
   }
@@ -304,10 +315,11 @@ async function main() {
 
   // ---------- orders ----------
 
-  function startOrders(leader: number, mode: MoveMode = 'tactical') {
+  function startOrders(leader: number, mode?: MoveMode) {
     if (!game) return;
     if (!canCommand(leader)) { orders = null; return; }
-    orders = { leader, mode, reach: reach(game, leader, mode), pinned: null, hover: null, assault: null };
+    const m = mode ?? defaultMode(game, leader);
+    orders = { leader, mode: m, reach: orderReach(game, leader, m), pinned: null, hover: null, assault: null };
     const at = forceHex(game, leader);
     if (at >= 0) sel = [at % game.width, Math.floor(at / game.width)];
   }
@@ -333,14 +345,20 @@ async function main() {
     const path = pathTo(orders.reach, orders.pinned);
     if (!path) return;
     const { leader, mode } = orders;
-    const res = mode === 'rail' ? railMove(game, leader, path) : moveForce(game, leader, path);
+    const res = mode === 'rail' ? railMove(game, leader, path)
+      : mode === 'sea' ? seaMove(game, leader, path)
+      : mode === 'air' ? airDrop(game, leader, orders.pinned)
+      : moveForce(game, leader, path);
     if (res.ok) {
       const parts = [MOVE_UI_KO.done, mode === 'rail' ? `${path.length}칸 철도 수송` : `${res.usedAfter - res.usedBefore}${MOVE_UI_KO.points} 사용`];
       if (res.readinessLoss) parts.push(`${MOVE_UI_KO.readiness} −${res.readinessLoss}`);
       message = { kind: 'ok', text: parts.join(' · ') };
       if (res.interdictionLoss) message = { kind: 'warn', text: `${MOVE_UI_KO.interdicted} (${res.interdictionLoss}%)` };
       if (res.bugOuts?.length) message = { kind: 'warn', text: `${MOVE_UI_KO.bugOutMoving}: ${res.bugOuts.map((id) => unitNameKo(unit(game!, id).name)).join(', ')}` };
-      startOrders(leader, 'tactical');
+      if (mode === 'sea') message = { kind: res.beachLoss ? 'warn' : 'ok', text: NAVAL_UI_KO.seaDone(res.sealift ?? 0) + (res.beachLoss ? ` · ${NAVAL_UI_KO.beachWarn}` : '') };
+      if (mode === 'air') message = res.destroyed ? { kind: 'error', text: NAVAL_UI_KO.airDestroyed } : { kind: 'ok', text: NAVAL_UI_KO.airDone(res.dropLoss ?? 0) };
+      if (res.destroyed) { orders = null; sel = null; return; }
+      startOrders(leader);
     } else {
       message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
       startOrders(leader, mode);
@@ -351,6 +369,15 @@ async function main() {
     if (!game || !orders || orders.assault === null) return;
     const { leader } = orders;
     const t = orders.assault;
+    if (orders.mode === 'sea') {
+      const out = seaAssault(game, leader, t % game.width, Math.floor(t / game.width));
+      if (!out.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[out.error ?? ''] ?? out.error}` };
+      else if (out.result === 'overrun') message = { kind: 'ok', text: NAVAL_UI_KO.seaOverran };
+      else if (out.result === 'stranded') message = { kind: 'warn', text: NAVAL_UI_KO.seaStranded };
+      else message = { kind: 'ok', text: NAVAL_UI_KO.seaPlotted };
+      startOrders(leader);
+      return;
+    }
     const res = assault(game, leader, t % game.width, Math.floor(t / game.width));
     if (!res.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
     else if (res.result === 'overrun') message = { kind: 'ok', text: COMBAT_UI_KO.overran };
@@ -472,10 +499,17 @@ async function main() {
       const n = orders.reach.nodes.get(i);
       const blocked = orders.reach.blocked.get(i);
       if (n && i !== orders.reach.origin) {
-        text += orders.mode === 'rail' ? ` · ${MOVE_UI_KO.railStops}` : ` · ${MOVE_UI_KO.after} ${orders.reach.rate - n.used}`;
-        if (!n.canStop) text += ` · ${MOVE_UI_KO.cannotStopHere}`;
+        if (orders.mode === 'sea') text += ` · ${n.step.lands ? NAVAL_UI_KO.landing : `${NAVAL_UI_KO.atSeaStep} (${MOVE_UI_KO.cannotStopHere})`}`;
+        else if (orders.mode === 'air') {
+          text += ` · ${NAVAL_UI_KO.dropLoss} ${airdropLoss(game, x, y)}%`;
+          if (dropOnEnemy(game, i)) text += ` · ${NAVAL_UI_KO.dropConfirmDanger}`;
+          if (!n.canStop) text += ` · ${MOVE_UI_KO.cannotStopHere}`;
+        } else {
+          text += orders.mode === 'rail' ? ` · ${MOVE_UI_KO.railStops}` : ` · ${MOVE_UI_KO.after} ${orders.reach.rate - n.used}`;
+          if (!n.canStop) text += ` · ${MOVE_UI_KO.cannotStopHere}`;
+        }
       } else if (blocked) text += ` · ${BLOCK_KO[blocked]}`;
-      if (isEnemyNeighbor(i)) text += ` · ${COMBAT_UI_KO.assault}`;
+      if (isEnemyNeighbor(i)) text += ` · ${orders.mode === 'sea' ? NAVAL_UI_KO.seaPlot : COMBAT_UI_KO.assault}`;
       if (orders.hover !== i) {
         orders.hover = i;
         if (orders.pinned === null && orders.assault === null) render();
@@ -584,6 +618,8 @@ async function main() {
     closeBanner: () => { if (banner) onBanner(banner.buttons[0].action); },
     bannerAction: (a: string) => onBanner(a),
     cancel, undo,
+    /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
+    setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },
   };
 }
 

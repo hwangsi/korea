@@ -286,7 +286,7 @@ export function victoryKo(level: number): string {
 
 // ---------- movement (docs/rules/movement.md) ----------
 
-export const MOVE_MODE_KO = { tactical: '일반 이동', rail: '철도 이동' } as const;
+export const MOVE_MODE_KO = { tactical: '일반 이동', rail: '철도 이동', sea: '해상 이동', air: '공수 낙하' } as const;
 
 export const BLOCK_KO: Record<string, string> = {
   offMap: '지도 밖',
@@ -295,7 +295,7 @@ export const BLOCK_KO: Record<string, string> = {
   water: '바다·하구 (해상 이동 필요)',
   noRail: '연결된 아군 철도 없음',
   stackFull: '아군 부대 2개로 꽉 참',
-  enemy: '적 부대 (공격은 전투 시스템에서)',
+  enemy: '적 부대 있음',
   allowance: '이동력 부족',
   notOnMap: '지도에 배치되지 않은 부대',
   notEnemy: '적 부대가 없는 헥스',
@@ -306,6 +306,23 @@ export const BLOCK_KO: Record<string, string> = {
   cannotEntrain: '철도 이동 조건이 맞지 않음',
   cannotStop: '그 헥스에서는 멈출 수 없음',
   emptyPath: '경로 없음',
+  // sea and airborne movement (docs/rules/naval.md)
+  atSea: '바다 위의 부대는 해상 이동만 가능',
+  mined: '기뢰가 깔린 항구에는 상륙할 수 없음',
+  seaRoute: '해상 이동은 먼저 바다로 나가야 함',
+  notCoastal: '해안(깊은 바다에 닿은 헥스)이 아님',
+  moved: '이번 턴에 이미 움직임',
+  storm: '폭풍 턴에는 불가',
+  notUn: '유엔군만 가능',
+  sealift: '이번 턴 해상 수송 여유 부족 (턴당 4점)',
+  sealift1995: '1995년: 이번 턴 해상 수송을 이미 씀',
+  usmcOnly: '1995년: 단독 미 해병 유닛만 가능',
+  notAirborne: '공수 부대(미 187 공정연대전투단)만 가능',
+  scenario: '1995년 시나리오에는 공수 부대가 없음',
+  notAirfield: '비행장이나 일본에 있어야 함',
+  notAlone: '다른 유닛이 붙어 있지 않아야 함',
+  noLaunch: '그 옆에 들어갈 수 있는 바다 헥스가 없음',
+  seaAssaultLimit: '상륙 공격 명령은 턴당 2개까지 (돌파도 불가)',
 };
 
 export const MOVE_UI_KO = {
@@ -345,6 +362,52 @@ export const MOVE_UI_KO = {
   points: '점',
   unlimited: '무제한',
   cannotStopHere: '멈출 수 없음 (통과만)',
+} as const;
+
+// ---------- sea and airborne movement (docs/rules/naval.md) ----------
+
+export const NAVAL_UI_KO = {
+  seaHint: '바다 헥스는 거리와 상관없이 지나갈 수 있고, 해안 헥스를 클릭하면 상륙합니다. 상륙하면 이번 턴 이동이 끝나요. 적 부대가 있는 해안은 상륙 공격입니다.',
+  airHint: '아무 육지 헥스나 골라 낙하합니다. 낙하하면 이번 턴 이동이 끝나요.',
+  landings: '상륙할 수 있는 헥스',
+  drops: '낙하할 수 있는 헥스',
+  seaTargets: '상륙 공격 가능한 적 해안',
+  sealiftUsed: (used: number, max: number) => `이번 턴 해상 수송 ${used}/${max}점 사용`,
+  sealiftLabel: '해상 수송 점수',
+  sealift1995: '1995년: 턴당 단독 미 해병 1개',
+  startCost: (pts: number) => (pts === 0 ? '바다에서 출발: 0점' : pts === 2 ? '항구에서 승선: 2점' : '해안에서 승선: 3점 (선두 유닛 버그아웃 손실)'),
+  portRefund: '항구에 상륙: 1점 반환',
+  seaAssaults: (n: number) => `이번 턴 상륙 공격 명령 ${n}/2`,
+  airlift: '공수하면 턴 끝 유엔 비축이 2 줄어요 (공중 수송 수요)',
+  embark: '승선',
+  atSeaStep: '해상',
+  landing: '상륙',
+  drop: '낙하',
+  dropLoss: '낙하 손실률',
+  dropBreakdown: (terrain: number, weather: number, mig: number) =>
+    `지형 ${terrain}%${weather ? ` · 흐림 +${weather}%` : ''}${mig ? ` · 미그 앨리 공산 요격 +${mig}%` : ''}`,
+  friendlyAirfield: '아군 비행장: 손실 없음',
+  enemyTerritory: '적 점령지에 낙하하면 그 헥스를 점령합니다.',
+  dropOnEnemy: '적 부대가 있는 헥스: 원작 규칙에서는 낙하 직후 돌파에 필요한 이동력이 없어 공수 부대가 전멸합니다.',
+  dropConfirmDanger: '낙하 (전멸 위험)',
+  confirmSea: '상륙 확정',
+  confirmAir: '낙하 확정',
+  seaWarn: '해상 이동은 되돌릴 수 없고, 상륙하면 이번 턴에 더 움직일 수 없어요. 준비도는 줄지 않습니다.',
+  beachWarn: '항구가 아닌 해안에서 승선하면 선두 유닛이 버그아웃 손실(장비 일부, 준비도 50 이하)을 입어요.',
+  seaDone: (pts: number) => `상륙 완료 · 해상 수송 ${pts}점`,
+  airDone: (loss: number) => `낙하 완료 · 장비 손실률 ${loss}%`,
+  airDestroyed: '공수 부대가 적 부대 한가운데 낙하해 전멸했습니다',
+  seaAssaultPreview: '상륙 공격 미리보기',
+  seaAssaultNote: '전투 단계에서 바다에서 공격합니다. 방어 부대를 후퇴시키면 그 헥스로 상륙 전진, 못 하면 모든 유닛이 버그아웃 손실을 입고 일본으로 철수해요. 명령은 취소할 수 없어요.',
+  seaAssaultLast: '이번 턴 상륙 공격 명령을 다 썼어요. 돌파에 실패하면 부대가 바다에 남고 이번 턴 이동이 끝납니다.',
+  seaOverrun: '돌파 가능: 50% 확률로 방어 부대를 즉시 격멸하고 상륙, 실패하면 상륙 공격 명령',
+  seaPlotted: '상륙 공격 명령을 내렸습니다. 부대는 바다에서 전투 단계를 기다립니다',
+  seaOverran: '돌파 상륙 성공! 방어 부대를 격멸하고 해안을 점령했습니다',
+  seaStranded: '돌파에 실패했고 상륙 공격 명령도 남지 않아 부대가 바다에 머뭅니다',
+  seaPlot: '상륙 공격 명령',
+  seaTry: '돌파 상륙 시도',
+  atSea: '바다 위 (해상 수송 중)',
+  noCancelAtSea: '바다에서 내린 상륙 공격 명령은 취소할 수 없어요',
 } as const;
 
 // ---------- ground combat (docs/rules/combat.md) ----------
@@ -392,6 +455,8 @@ export function combatEventKo(e: { kind: string; name?: string; to?: [number, nu
     case 'bugout': return `${unitNameKo(e.name ?? '')} 버그아웃 (장비 버리고 도주)`;
     case 'moveIn': return `${forceName(leader ?? 0)} 진입 → (${e.to?.[0]}, ${e.to?.[1]})`;
     case 'advance': return `${forceName(leader ?? 0)} 전진 → (${e.to?.[0]}, ${e.to?.[1]})`;
+    case 'evacuated': return `${forceName(leader ?? 0)} 상륙 실패: 버그아웃 손실 후 일본으로 철수 (${e.to?.[0]}, ${e.to?.[1]})`;
+    case 'lostAtSea': return `${forceName(leader ?? 0)} 상륙 실패: 일본에 자리가 없어 괴멸`;
     default: return '';
   }
 }
@@ -417,6 +482,9 @@ export function costItemKo(item: { kind: string; points: number; terrain?: strin
     case 'disengage': return '적 인접 이탈';
     case 'rail': return '철도';
     case 'amphibious': return '해병 상륙 (하구·저수지)';
+    case 'sea': return '해상 (거리 무관)';
+    case 'landing': return '상륙 (이동 종료)';
+    case 'air': return '공수 (거리 무관)';
     default: return item.kind;
   }
 }

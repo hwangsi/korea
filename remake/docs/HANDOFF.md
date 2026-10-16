@@ -3,8 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16 19:40, 노트북(C:\Users\hwang\AIprojects\korea). **항공 작전 완료** (규칙 `docs/rules/air.md`, 엔진 `air.ts`,
-  항공 작전 패널·전투 단계 공습 UI, 테스트 51개 통과, standalone 브라우저 검증: 크로마이트·차가운 강철·내일의 전쟁). 다음은 7장 해상·공수 이동
+- 마지막 갱신: 2026-10-16 21:10, 노트북(C:\Users\hwang\AIprojects\korea). **해상·공수 이동 완료** (규칙 `docs/rules/naval.md`, 엔진 `naval.ts`
+  + `movement.ts` MOVE_COST 해상·공수 분기 + `combat.ts` 상륙 공격 처리, 이동 모드 4개 UI, 테스트 57개 통과,
+  standalone 브라우저 검증: 크로마이트 인천 상륙(돌파·상륙 공격·전진), 차가운 강철 187공수 낙하). 다음은 7장 정보(안개) 화면
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -71,6 +72,19 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     예상치(공습 가능·차단 수준·공산 요격 수준 이번/다음 턴 또는 1995 제공 전력), 증원·철수 예정. 전투 단계: 공습 알림 창 → 지도에서 적 헥스 클릭
     (마우스 오버 시 살상률, 조준선), "컴퓨터가 목표 선택"·"남은 공습 모두 맡기기", 결과 목록, 지도 폭발 표시, "지상전으로 ▶".
     1950년대는 미그 앨리 경계(보라색 점선). 전투 결과 패널 위에 항공 결과, 요약에 유엔 차단 수준·공산 요격(또는 차단) 수준, 항공 뉴스 한글화
+- **해상·공수 이동** (`docs/rules/naval.md`, `src/engine/naval.ts`, `tests/naval.test.ts` 6개)
+  - 규칙: AMPHIBIOUS(+중첩 `19a0` 출발 수송 점수), UNIT_COCKED, MOVE_UNIT 모드 시작(`46fd`~, SYMBOL 81/82, 수요 가산, 해안 승선 선두 BUGOUT),
+    MOVE_COST 해상·공수 분기(거리 무관, 기뢰 항구, "Come ashore" = 비용 한도로 이동 종료, 육지→육지 불가), 한 걸음 처리(`3848` 바다 MOVE 0,
+    `3a8f` 공수 헥스 건너뛰기), 멈춤 `2536`(바다에서 못 멈춤), 상륙 공격 `23f2`/`22e3`(UTILITY_SPACE[9] = 턴당 상륙 공격 명령 수, 2개까지),
+    이동 끝 `44fd`(항구 상륙 수요 −1), 낙하 손실 `2645`, 적 부대 위 낙하 `274d`/`24a1`(MOVE 24라 OVERRUN이 늘 실패 → 전멸),
+    GRCMBT 바다 위 공격 부대 `0105`, 일본 철수 `1e11`, 전진 `2458`/`2e7f`. 매뉴얼과 다른 점 7가지 기록(항구→항구는 턴당 3개, 2차 단계 공수 가능 등)
+  - 엔진: `stepCost`에 'sea'/'air' 모드, `cannotMove`의 'atSea'. `naval.ts`: seaMoveBlock/seaReach/seaMove/seaAssaultPreview/seaAssault,
+    airMoveBlock/airReach/airDrop/airdropLoss(Parts), orderReach/defaultMode. `combat.ts`: atSea, evacuateToJapan, advanceInto,
+    estimateCombat(from), 바다에서 낸 공격 명령 취소 불가
+  - UI: 이동 명령 카드에 모드 4개(일반·철도·해상·공수, 안 되는 모드는 이유 툴팁), 해상: 상륙 헥스 청록색·바다는 통과,
+    승선→해상→상륙 경로와 수송 점수, 적 해안 클릭 = 상륙 공격 미리보기(출발 바다 헥스, 예상 전투, 돌파 가능, n/2).
+    공수: 보라색 범위, 낙하 손실률과 내역(지형·흐림·미그 앨리), 적 부대 헥스 전멸 경고, 미그 앨리 경계 표시.
+    바다 위 부대는 선택하면 바로 해상 모드, 지도 말에 배 배지. 전투 결과에 "상륙 실패: 일본으로 철수"·"전진"
 
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
@@ -83,8 +97,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- 해상·공수 이동(상륙 공격, 공수 낙하의 RED_AIR·비행장 사용 포함),
-  정보(안개) 화면 표시(엔진의 정찰 단계 계산은 있음, UI는 완전 정보), 옵션 화면(역량·개입·정보·플레이 모드), AI, 저장/불러오기,
+- 정보(안개) 화면 표시(엔진의 정찰 단계 계산은 있음, UI는 완전 정보), 옵션 화면(역량·개입·정보·플레이 모드), AI, 저장/불러오기,
   보고서 화면(전략 보고, 비행장·항구), 전체 한글화, 새 그래픽/사운드
 - 컴퓨터 진영을 고르면 AI가 없어 그 진영 단계가 그냥 지나감 (기본은 두 사람 대전)
 
@@ -107,6 +120,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/turn.md                   턴 진행 (단계, 선공, 정리 단계, 날씨, 종료·승리, UTILITY_SPACE)
     docs/rules/supply.md                 보급 (보급망, 재보급, 비축, 보충·재편성)
     docs/rules/air.md                    항공 (약화, 기지, 임무, 공산 요격 수준, 1995 제공권, 차단, 공습)
+    docs/rules/naval.md                  해상·공수 이동 (자격, 수송 수요, 상륙, 상륙 공격, 일본 철수, 공수 낙하)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -117,6 +131,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         combat.ts                        전투력·돌파·공격 명령·전투 해결
         supply.ts                        보급망·재보급·턴 시작 이동력
         air.ts                           항공 작전 (기지·임무·예상치·DO_AIR_COMBAT·공습)
+        naval.ts                         해상·공수 이동 명령 (자격·범위·상륙·상륙 공격·공수 낙하)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
@@ -165,6 +180,7 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   `__app.game`, `__app.orders`, `__app.click(x, y)`, `__app.hover(x, y)`, `__app.cancel()`, `__app.undo()` (마우스 조작 흉내),
   `__app.endPhase()` (확인 없이 단계 종료, 전투 단계에서는 남은 공습을 프로그램에 맡기고 지상전), `__app.banner`, `__app.closeBanner()`,
   `__app.bannerAction('end-game' | 'override')`, `__app.toggleAir()` (항공 작전 패널), `__app.airOpen`. 전투 단계 공습 중에는 `__app.click(x, y)`가 공습.
+  `__app.setMode('tactical' | 'rail' | 'sea' | 'air')` (선택한 부대의 이동 모드). 해상 모드에서는 적 해안 `click` 두 번이 상륙 공격
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
   (어기면 standalone.html 전체가 구문 오류로 아무것도 안 뜨고 오류도 안 보임)
@@ -203,32 +219,40 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 | 이동 | MOVEUNIT.MOVE_COST, MOVE_UNIT, OVERRUN, BUGOUT, AMPHIBIOUS, CAN_ENTRAIN, UNIT_ATTRITION, NEAR_THE_FRONT / EURSUBS1.NATIONAL_MOVEMENT_RATE, ENEMY_ADJACENT, TERRAIN_HELD |
 | 지상전 | GRCMBT.DO_GROUND_COMBAT, CHECK_ELIM, NAVAL_GUNS, ELIMINATE_UNIT / EURSUBS1.GET_STRENGTH, GET_FORCE_STRENGTH |
 | 항공 | OPSSUBS.AIR_OPERATIONS, EFFECTIVE_STRENGTH, DETERMINE_INTERDICTION, DETERMINE_INTERCEPTION, CHOOSE_BASES / AIRCMBT.DO_AIR_COMBAT |
+| 해상·공수 | MOVEUNIT.AMPHIBIOUS, UNIT_COCKED, MOVE_UNIT(`46fd`, 중첩 `2536`·`23f2`·`22e3`·`2645`·`274d`), MOVE_COST `1588`~`1717` / GRCMBT `0105`·`1e11`·`2458` |
 | 보급 | SUPPLY.DETERMINE_SUPPLY, REST_UP |
 | 턴 진행 | KOREA.PHASE_PULSE, PLAYER_PHASE / ENDTURN.NEXT_TURN, GROUND_REINFORCEMENTS, DO_INTEL, DO_PATROLS, MINE_WARFARE, CHECK_CHINA, GAME_OVER |
 | AI | WARRIORS.KIM (공산), WALTON (유엔) / AISUBS.* |
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 해상·공수 이동
+## 7. 다음 작업: 정보(안개) 화면
 
-목표: 해상 수송(항구 ↔ 항구, 바다 헥스 이동), 상륙 공격(AMPHIBIOUS), 공수 낙하를 원작대로. 지금 이동은 육상·철도만 있고,
-바다 헥스 부대 수는 정리 단계가 SEALIFT_DEMAND로 이미 청구한다(supply.md 3).
+목표: 정보 제한 옵션(REALITY[4], 바이트 0x8A77)일 때 원작처럼 적 부대를 정찰 단계(TERRAIN 바이트 2, 0/1/2)에 따라 감추거나
+대략만 보여주기. 엔진은 정찰 단계를 이미 계산한다(FORCE_SPOTTING, DO_INTEL, UNSPOT_EVERYTHING, 이동·전투·공습의 정찰 갱신). 지금 UI는 완전 정보.
 
-1. 규칙 확정 → `docs/rules/movement.md` 3.5 보강 또는 `docs/rules/naval.md`
-   - MOVEUNIT.AMPHIBIOUS, MOVE_UNIT의 해상·공수 모드(SYMBOL을 잠시 81/82/83으로 바꾼다: state.ts 주석), CAN_ENTRAIN 옆의 승선 조건
-   - 공수 낙하 MOVEUNIT `26cb`~(산악 25, 날씨 나쁘면 +5, 미그 앨리면 +RED_AIR, 비행장 헥스 검사 `2705`~): 손실·조건
-   - 상륙 공격과 함포 지원(GRCMBT.NAVAL_GUNS는 이미 구현)의 연결, 1995 해병 해상 이동(UTILITY_SPACE[9], MOVEUNIT `23e8`)
-   - 매뉴얼 5.3~5.4(해상·공수), 2차 명령 단계 제한(turn.md 2)
-2. 엔진: `movement.ts`에 모드 추가(또는 `naval.ts`), SEALIFT/AIRLIFT_DEMAND 기록, 테스트
-3. UI: 이동 모드 버튼에 해상·공수 추가, 도달 범위·비용 미리보기
-4. 이어서: 정보(안개) 화면: 정찰 단계로 적 부대 감추기, 되돌리기 제한, MOVE_UNIT `3a26`(공산군 12점 초과 이동 정찰),
-   LOSS_INFLATOR(공습·전투 피해 보고 과장) → 옵션 화면(역량·개입·플레이 모드·Air Campaign·정보: REALITY[1..4]) → 저장 → AI
+1. 규칙 확정 → `docs/rules/intel.md`
+   - 표시: EURSUBS1.SHOW_HEX `1db8:0713`(2397바이트, 부대 그리기), IDENTIFY_UNIT `2ab4`, LOCATE_UNIT `27fd`, HEXSTUFF `0db1`·`1085`(헥스 화면의 REALITY[4] 분기)
+   - 정찰 갱신: KOREA.FORCE_SPOTTING, ENDTURN.DO_INTEL·UNSPOT_EVERYTHING(`1482`의 REALITY[4]), MOVE_UNIT `3a26`(공산군 12점 초과 이동 시 정찰 +1),
+     상륙 공격 목표 정찰(`22e3`), 공수 낙하 헥스(정찰 1)
+   - 되돌리기 제한(movement.md 4: 정찰 0인 적 점령 헥스 인접 이동은 되돌릴 수 없음), LOSS_INFLATOR(ENDTURN `1339` 근처, 공습·전투 피해 보고 과장)
+   - 매뉴얼의 정보 절(Limited Intelligence)과 대조
+2. 엔진: "보이는 상태"를 구하는 순수 함수(진영별), 되돌리기 제한 연결, 테스트
+3. UI: 지도 말·헥스 패널·공격 미리보기·상륙 공격 미리보기·공수 낙하 경고가 보이는 정보만 쓰도록. 두 사람 대전은 단계 알림 창이 이미 교대를 막음
+   (공수 낙하의 "적 부대 있음 → 전멸" 경고는 정보 제한이면 원작처럼 "적 점령지: 전멸할 수 있음"으로만)
+4. 이어서: 옵션 화면(역량·개입·플레이 모드·Air Campaign·정보: REALITY[1..4]) → 저장/불러오기 → AI(WARRIORS.KIM/WALTON,
+   해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀) → 보고서 화면
    (항공은 이미 컴퓨터 진영이면 자동 임무·자동 목표로 동작)
 
 ## 8. 미해결 질문
 
 - STATUS 0x10의 정확한 의미 (지상전이 해제하고 0x20을 설정). 나머지는 확정: 0x01 재보급, 0x02 후퇴, 0x04 이동, 0x08 제거, 0x40 준비도 75+, 0x80 공중 보급
-- SCENARIO[1], [4], [7], REALITY[1]·[3], 점령값 3 (쓰는 코드 없음), UTILITY_SPACE[9](MOVEUNIT `23e8`)
+- SCENARIO[1], [4], [7], REALITY[1]·[3], 점령값 3 (쓰는 코드 없음). UTILITY_SPACE[9]는 확정: 턴당 상륙 공격 명령 수(naval.md 3)
+- 해상: 바다 헥스에도 점령값(0/1/2)이 들어 있음(예: 11,41은 유엔). 해상 이동은 바꾸지 않지만 ENEMY_ADJACENT·순찰이 이 값을 읽음(원작 그대로 둠)
+- 해상: 바다에서 턴을 시작한 부대는 정리 단계가 미리 1점 청구해 두고, 항구에 상륙하면 1점이 돌아옴(원작 그대로). 항구→항구는 턴당 3개(매뉴얼은 4개).
+  상륙 공격이 막혀 바다에 남는 "드문 경우"는 테스트로만 확인(원본 게임 비교 필요)
+- 공수: 적 부대 위 낙하가 늘 전멸하는 것(MOVE = 24 뒤 OVERRUN의 6점 검사)이 의도인지 버그인지. 매뉴얼은 "아주 약한 적이면 성공"
+  (지금은 원작 코드대로, 원본 게임에서 187공수를 적 부대 위에 떨어뜨려 확인해 볼 것)
 - 항공: 공습 목표 유무 검사(`1e1b`)가 진영과 상관없이 "유엔 점령 육지가 있는가"를 봄 (원작 그대로). 프로그램 목표 선택의 무작위 탐색 플래그 `[bp−26h]`는 초기화되지 않은 지역 변수(0으로 봄)
 - 항공: CHOOSE_BASES는 연속 호출이 같은 결과를 내지 않을 수 있음(24번 MAG-12). 원작처럼 항공 작전 패널을 열 때와 전투 단계에서만 부름
 - 시나리오 파일의 항공대 기지·INTERDICTION 값은 제작자가 손으로 넣은 것으로 보임(korea2·3의 제트기가 비행장이 있는데도 일본). korea2의 INTERDICTION 10은 직전 턴이 흐림·CIL 0이었다고 보면 계산값과 같음(미검증)

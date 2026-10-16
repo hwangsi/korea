@@ -4,7 +4,7 @@
 //   overrunCheck / assault         MOVE_COST enemy branch + MOVEUNIT.OVERRUN + the assault plot (MOVE += d*100 + 6)
 //   cancelAssault                  MOVEUNIT.CLEAR_PLOTS (refunds the 5 reserved points, 1 MP stays spent)
 //   resolveGroundCombat            GRCMBT.DO_GROUND_COMBAT (armies in turn, support, loss ratios, losses,
-//                                  elimination, retreat, bug-out)
+//                                  elimination, retreat, bug-out, seaborne assaults: docs/rules/naval.md 4)
 
 import { neighbor } from './hex.ts';
 import type { GameState, Side, UnitState } from './state.ts';
@@ -14,7 +14,7 @@ import {
 } from './state.ts';
 import {
   nationalMovementRate, stepCost, stepAllowed, clearPlots, usedMove, plottedAssault, frozen, oceanAdjacent,
-  bugOutUnit, unitAttrition, sideMask,
+  bugOutUnit, unitAttrition, sideMask, isDeepOcean,
 } from './movement.ts';
 import type { StepCost } from './movement.ts';
 
@@ -300,9 +300,18 @@ export function assault(g: GameState, leader: number, tx: number, ty: number): A
   return { ok: true, result: 'plotted' };
 }
 
-/** Cancel a plotted assault (MOVEUNIT.CLEAR_PLOTS): the 5 reserved points come back, 1 point stays spent. */
+/** GRCMBT 0105: the unit stands in a deep ocean hex (a seaborne force). */
+export function atSea(g: GameState, id: number): boolean {
+  const u = g.units.get(id);
+  return !!u && onMap(g, u.x, u.y) && isDeepOcean(g.hexes[idx(g, u.x, u.y)].code);
+}
+
+/**
+ * Cancel a plotted assault (MOVEUNIT.CLEAR_PLOTS): the 5 reserved points come back, 1 point stays spent.
+ * Assaults from the sea cannot be cancelled (MOVE_UNIT 49B7 skips the "Cancel assault order?" at sea).
+ */
 export function cancelAssault(g: GameState, leader: number): boolean {
-  if (!plottedAssault(unit(g, leader).move)) return false;
+  if (!plottedAssault(unit(g, leader).move) || atSea(g, leader)) return false;
   for (const u of forceUnits(g, leader)) u.move = clearPlots(u.move);
   g.version++;
   return true;
@@ -390,8 +399,11 @@ function plottedAgainst(g: GameState, corps: number, tx: number, ty: number): nu
   return out;
 }
 
-/** Expected result if `leader` (plus forces of the same army already plotted there) assaulted tx, ty. */
-export function estimateCombat(g: GameState, leader: number, tx: number, ty: number): CombatEstimate {
+/**
+ * Expected result if `leader` (plus forces of the same army already plotted there) assaulted tx, ty.
+ * `from`: the hex the leader would attack from (a seaborne assault is launched from a deep ocean hex).
+ */
+export function estimateCombat(g: GameState, leader: number, tx: number, ty: number, from?: [number, number]): CombatEstimate {
   const corps = corpsOf(g, leader);
   const attackers = plottedAgainst(g, corps, tx, ty);
   if (!attackers.includes(leader)) attackers.push(leader);
@@ -399,7 +411,8 @@ export function estimateCombat(g: GameState, leader: number, tx: number, ty: num
   let aL = 0, aS = 0, dL = 0, dS = 0;
   for (const a of attackers) {
     const u = unit(g, a);
-    const s = forceStrength(g, a, u.x, u.y, 1);
+    const [ax, ay] = a === leader && from ? from : [u.x, u.y];
+    const s = forceStrength(g, a, ax, ay, 1);
     aL += Math.trunc(s.L / 5); aS += Math.trunc(s.S / 50);
   }
   const artA = support(g, corps, tx, ty, 'L', false);
@@ -435,7 +448,11 @@ export type CombatEvent =
   | { kind: 'retreat'; leader: number; to: [number, number] }
   | { kind: 'blocked'; leader: number }
   | { kind: 'bugout'; unit: number; name: string }
-  | { kind: 'expGain'; unit: number };
+  | { kind: 'expGain'; unit: number }
+  /** Seaborne assault repulsed: bug-out losses, the force is shipped back to Japan (GRCMBT 1E11). */
+  | { kind: 'evacuated'; leader: number; to: [number, number] }
+  /** ... and no Japan hex had room: the units are eliminated. */
+  | { kind: 'lostAtSea'; leader: number };
 
 export interface CombatReport {
   army: number;
@@ -581,6 +598,50 @@ function retreat(g: GameState, leader: number, ratio: number, events: CombatEven
   }
 }
 
+/**
+ * GRCMBT 1E11: a seaborne assault that did not make the defenders retreat. Every unit suffers bug-out
+ * losses and the force goes back to the lowest Japan hex (33, 59..64) with room; with no room it is lost.
+ */
+function evacuateToJapan(g: GameState, leader: number, events: CombatEvent[]) {
+  const from = forceHex(g, leader);
+  if (from >= 0) g.stacks[from].splice(g.stacks[from].indexOf(leader), 1);
+  let y0 = 0;
+  for (let y = 64; y >= 59; y--) if (g.stacks[idx(g, 33, y)].length < 2) y0 = y;
+  let id = leader;
+  let first = true;
+  while (id > 0) {
+    const v = unit(g, id);
+    const next = v.attached;
+    bugOutUnit(g, v);
+    if (y0 > 0) {
+      v.x = 33; v.y = y0;
+      if (first) g.stacks[idx(g, 33, y0)].push(leader);
+    } else eliminateUnit(g, v);
+    first = false;
+    id = next;
+  }
+  events.push(y0 > 0 ? { kind: 'evacuated', leader, to: [33, y0] } : { kind: 'lostAtSea', leader });
+}
+
+/**
+ * GRCMBT 2458: forces whose assault targeted a hex that is now free. Each rolls RND(1,100); it advances if
+ * its leader's readiness beats the roll and the hex is empty, or **always** if it attacked from the sea.
+ * (The original would overwrite a full hex; the remake stops at two forces.)
+ */
+function advanceInto(g: GameState, entries: { leader: number }[], x: number, y: number, events: CombatEvent[]) {
+  const ti = idx(g, x, y);
+  for (const e of entries) {
+    executePlot(g, e.leader);
+    const r = rnd(g, 1, 100);
+    if (forceHex(g, e.leader) < 0) continue;
+    const empty = g.stacks[ti].length === 0;
+    if (((unit(g, e.leader).readiness > r && empty) || atSea(g, e.leader)) && g.stacks[ti].length < 2) {
+      enterHex(g, e.leader, x, y);
+      events.push({ kind: 'advance', leader: e.leader, to: [x, y] });
+    }
+  }
+}
+
 /** GRCMBT.DO_GROUND_COMBAT: execute every plotted assault, army by army. */
 export function resolveGroundCombat(g: GameState): CombatReport[] {
   const reports: CombatReport[] = [];
@@ -626,14 +687,8 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       if (g.stacks[ti].length === 0) {
         // target vacated: advance (original bug fixed: the other entries are retired too)
         const events: CombatEvent[] = [];
-        for (const e of same) {
-          e.active = false;
-          executePlot(g, e.leader);
-          if (unit(g, e.leader).readiness > rnd(g, 1, 100) && g.stacks[ti].length === 0) {
-            enterHex(g, e.leader, x, y);
-            events.push({ kind: 'advance', leader: e.leader, to: [x, y] });
-          }
-        }
+        for (const e of same) e.active = false;
+        advanceInto(g, same, x, y, events);
         reports.push({
           army: corps, target: [x, y], attackers: same.map((e) => ({ leader: e.leader, name: forceName(g, e.leader) })), defenders: [],
           aL: 0, aS: 0, dL: 0, dS: 0, attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, moveIn: true, events,
@@ -680,6 +735,8 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       for (const e of same) {
         applyLosses(g, e.leader, ra, false, report.events);
         checkElimEvents(g, e.leader, report.events);
+        // 22C0: a seaborne assault that failed to make the defenders retreat goes back to Japan
+        if (atSea(g, e.leader) && !retreated) evacuateToJapan(g, e.leader, report.events);
       }
       for (const d of defenders) {
         applyLosses(g, d, rd, retreated, report.events);
@@ -689,6 +746,8 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         // second force first (TERRAIN byte 4, then byte 3), as the original
         const still = g.stacks[ti].slice().reverse();
         for (const d of still) if (g.stacks[ti].includes(d)) retreat(g, d, rd, report.events);
+        // 2E7F: only a seaborne assault advances into the hex the defenders left (manual 4.253)
+        if (atSea(g, entry.leader) && g.stacks[ti].length === 0) advanceInto(g, same, x, y, report.events);
       }
       reports.push(report);
     }

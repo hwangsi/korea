@@ -56,6 +56,8 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - standalone 번들러는 `export { a }`, `export default`, `export *`를 모른다. 쓰면 standalone.html이 조용히 아무것도 띄우지 않는다.
 - 화면 검증은 `window.confirm = () => true`를 먼저 넣고, 단계 알림 창은 `__app.closeBanner()`, 단계 종료는 `__app.endPhase()`.
 - 항공: `__app.toggleAir()`로 항공 작전 패널(1차 명령 단계). 전투 단계 공습 중에는 `__app.click(x, y)`가 공습이고 `__app.endPhase()`는 남은 공습을 프로그램에 맡긴 뒤 지상전으로 넘어감.
+- 해상·공수: 부대를 `click`으로 고른 뒤 `__app.setMode('sea' | 'air')`. 크로마이트(korea2) 해병 212번은 일본 항구(33,59), 차가운 강철(korea3) 187공수(221)는 평양 비행장(7,29).
+- 같은 파일을 동시에 두 번 `edit_file`하지 말 것(병렬 호출이면 한쪽 수정이 사라진다).
 - 브라우저 창이 1440px이면 상단 막대가 꽉 차니 버튼을 더 넣을 때는 줄바꿈(높이 > 60px)을 확인한다.
 
 ## 마무리

@@ -5,10 +5,12 @@ import type { EquipmentType, Force, Hex, MapData, Scenario } from '../data/types
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import type { GameState, UnitState } from '../engine/state.ts';
 import { forceUnits, sideOf, unit, activeSide } from '../engine/state.ts';
-import { allowance, canEntrain, canBugOut } from '../engine/movement.ts';
+import { allowance, canEntrain, canBugOut, inPort, isDeepOcean } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
-import { assaultTarget } from '../engine/combat.ts';
+import { assaultTarget, atSea } from '../engine/combat.ts';
 import type { AssaultPreview, CombatReport } from '../engine/combat.ts';
+import { seaMoveBlock, airMoveBlock, seaStartCost, airdropLossParts, dropOnEnemy, MAX_SEALIFT } from '../engine/naval.ts';
+import type { SeaAssaultPreview } from '../engine/naval.ts';
 import type { ResolutionReport } from '../engine/turn.ts';
 import {
   airUnitsOf, airProjections, displayedStrengths, expectedAirChanges, canPlanAir, pendingAirstrike, groundAttackStrength,
@@ -22,7 +24,7 @@ import { gameDate } from '../engine/weather.ts';
 import {
   TERRAIN_KO, NATION_KO, KIND_KO, EXPERIENCE_KO, EQUIPMENT_KO, POSSESSION_KO, SIDE_OF, SIDE_KO,
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
-  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO,
+  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
@@ -75,8 +77,8 @@ export interface OrdersView {
   /** Previewed path (hex indices, origin excluded). */
   path: number[] | null;
   pinned: boolean;
-  /** Adjacent enemy hex under the mouse or pinned, with what an assault would do. */
-  assault: { hex: number; pinned: boolean; preview: AssaultPreview } | null;
+  /** Adjacent enemy hex under the mouse or pinned, with what an assault would do (sea mode: from the sea). */
+  assault: { hex: number; pinned: boolean; preview: AssaultPreview | null; sea: SeaAssaultPreview | null } | null;
 }
 
 export interface PanelMessage { kind: 'ok' | 'warn' | 'error'; text: string; }
@@ -393,20 +395,43 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
   const r = o.reach;
   const avgReady = Math.trunc(members.reduce((s, u) => s + u.readiness, 0) / members.length);
   const railOk = canEntrain(g, o.leader);
+  const seaWhy = seaMoveBlock(g, o.leader);
+  const airWhy = airMoveBlock(g, o.leader);
+  const ox = r.origin % g.width, oy = Math.floor(r.origin / g.width);
+  const onSea = r.origin >= 0 && isDeepOcean(g.hexes[r.origin].code);
   const pct = a.rate ? Math.round((a.remaining / a.rate) * 100) : 0;
   const reachable = [...r.nodes.values()].filter((n) => n.hex !== r.origin && n.canStop).length;
   const status = [
     a.moved ? `<span class="tag">${MOVE_UI_KO.moved}</span>` : `<span class="tag">${MOVE_UI_KO.notMoved}</span>`,
-    a.assault ? `<span class="tag warn">${esc(MOVE_UI_KO.assaultPlotted)}</span>` : '',
+    onSea ? `<span class="tag sea">${esc(NAVAL_UI_KO.atSea)}</span>` : '',
+    a.assault ? `<span class="tag warn">${esc(onSea ? NAVAL_UI_KO.seaPlot : MOVE_UI_KO.assaultPlotted)}</span>` : '',
   ].join(' ');
   let body: string;
   if (r.cannot) {
     body = `<p class="note warn">${esc(BLOCK_KO[r.cannot] ?? r.cannot)}</p>`;
-    if (canBugOut(g, o.leader)) body += `<button class="btn danger" data-action="bugout">${esc(MOVE_UI_KO.bugOut)}</button>`;
+    if (o.mode === 'tactical' && canBugOut(g, o.leader)) body += `<button class="btn danger" data-action="bugout">${esc(MOVE_UI_KO.bugOut)}</button>`;
+  } else if (o.mode === 'sea') {
+    const targets = [...r.blocked.values()].filter((w) => w === 'enemy').length;
+    const start = seaStartCost(g, ox, oy);
+    body = `<p class="muted small">${esc(NAVAL_UI_KO.seaHint)}</p>
+      <p class="muted small">${esc(NAVAL_UI_KO.landings)} ${reachable}개 · ${esc(NAVAL_UI_KO.seaTargets)} ${targets}개</p>
+      <p class="note">${esc(g.scenarioNo === 4 ? NAVAL_UI_KO.sealift1995 : NAVAL_UI_KO.sealiftUsed(g.sealiftDemand, MAX_SEALIFT))} · ${esc(NAVAL_UI_KO.startCost(start))} · ${esc(NAVAL_UI_KO.seaAssaults(g.utility[9] ?? 0))}</p>`;
+  } else if (o.mode === 'air') {
+    body = `<p class="muted small">${esc(NAVAL_UI_KO.airHint)}</p>
+      <p class="muted small">${esc(NAVAL_UI_KO.drops)} ${reachable}개</p>
+      <p class="note">${esc(NAVAL_UI_KO.airlift)}</p>`;
   } else {
-    body = `<p class="muted small">${esc(MOVE_UI_KO.hint)} ${ctx.forcesAt(r.origin % g.width, Math.floor(r.origin / g.width)).length > 1 ? esc(MOVE_UI_KO.cycleHint) : ''}</p>
+    body = `<p class="muted small">${esc(MOVE_UI_KO.hint)} ${ctx.forcesAt(ox, oy).length > 1 ? esc(MOVE_UI_KO.cycleHint) : ''}</p>
       <p class="muted small">${esc(o.mode === 'rail' ? MOVE_UI_KO.railStops : MOVE_UI_KO.reachable)} ${reachable}개${!a.moved && o.mode === 'tactical' ? ` · ${esc(MOVE_UI_KO.minMoveNote)}` : ''}</p>`;
   }
+  const modeBtn = (mode: MoveMode, ok: boolean, why: string | null) =>
+    `<button type="button" data-action="mode" data-mode="${mode}" aria-pressed="${o.mode === mode}" ${ok || o.mode === mode ? '' : `disabled title="${esc(BLOCK_KO[why ?? ''] ?? why ?? '')}"`}>${esc(MOVE_MODE_KO[mode])}</button>`;
+  const buttons = [
+    modeBtn('tactical', !onSea, 'atSea'),
+    modeBtn('rail', railOk, onSea ? 'atSea' : 'cannotEntrain'),
+    sideOf(lead) === 'un' ? modeBtn('sea', !seaWhy, seaWhy) : '',
+    lead.symbol === 3 && g.scenarioNo < 4 ? modeBtn('air', !airWhy, airWhy) : '',
+  ].join('');
   const card = `
     <section class="card orders">
       <p class="eyebrow">${esc(MOVE_UI_KO.orders)} · ${esc(MOVE_MODE_KO[o.mode])}</p>
@@ -418,13 +443,10 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
         <div class="bar mp-bar"><i style="width:${pct}%"></i></div>
       </div>
       <p class="tags">${status}</p>
-      <div class="seg" role="group">
-        <button type="button" data-action="mode" data-mode="tactical" aria-pressed="${o.mode === 'tactical'}">${esc(MOVE_MODE_KO.tactical)}</button>
-        <button type="button" data-action="mode" data-mode="rail" aria-pressed="${o.mode === 'rail'}" ${railOk || o.mode === 'rail' ? '' : `disabled title="${esc(BLOCK_KO.cannotEntrain)}"`}>${esc(MOVE_MODE_KO.rail)}</button>
-      </div>
+      <div class="seg modes" role="group">${buttons}</div>
       ${body}
       ${plotLine(ctx, o.leader)}
-      ${!r.cannot ? `<p class="muted small">${esc(COMBAT_UI_KO.hint)}</p>` : ''}
+      ${!r.cannot && o.mode === 'tactical' ? `<p class="muted small">${esc(COMBAT_UI_KO.hint)}</p>` : ''}
       ${g.undo ? `<button class="btn ghost" data-action="undo">↶ ${esc(MOVE_UI_KO.undo)} <span class="muted small">Ctrl+Z</span></button>` : ''}
     </section>`;
   return card + (o.assault ? assaultCard(ctx, o) : previewCard(ctx, o));
@@ -433,13 +455,56 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
 function plotLine(ctx: PanelContext, leader: number): string {
   const t = assaultTarget(ctx.game, leader);
   if (!t) return '';
-  return `<div class="note plot"><b>${esc(COMBAT_UI_KO.plotted)}</b> → ${esc(placeName(ctx, t[1] * ctx.game.width + t[0]))}
-    <button class="btn small" data-action="cancel-plot">${esc(COMBAT_UI_KO.cancelPlot)}</button></div>`;
+  const sea = atSea(ctx.game, leader);
+  return `<div class="note plot"><b>${esc(sea ? NAVAL_UI_KO.seaPlot : COMBAT_UI_KO.plotted)}</b> → ${esc(placeName(ctx, t[1] * ctx.game.width + t[0]))}
+    ${sea ? `<span class="muted small">${esc(NAVAL_UI_KO.noCancelAtSea)}</span>` : `<button class="btn small" data-action="cancel-plot">${esc(COMBAT_UI_KO.cancelPlot)}</button>`}</div>`;
+}
+
+function versusBlock(g: GameState, est: NonNullable<AssaultPreview['estimate']>): string {
+  const rows = (ids: number[]) => ids.map((l) => `<li>${esc(forceTitle(g, l))}</li>`).join('');
+  return `
+      <div class="versus">
+        <div><span class="label">${esc(COMBAT_UI_KO.attackerSide)}</span><b>${est.aL}</b><span class="muted"> / ${est.aS}</span><ul>${rows(est.attackers)}</ul></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.defenderSide)}</span><b>${est.dL}</b><span class="muted"> / ${est.dS}</span><ul>${rows(est.defenders)}</ul></div>
+      </div>
+      <p class="muted small">${esc(COMBAT_UI_KO.lethality)} / ${esc(COMBAT_UI_KO.survivability)} (원작 전투 합산 단위: 살상÷5, 생존÷50)${est.artillery.attacker || est.artillery.defender ? ` · ${esc(COMBAT_UI_KO.artillery)} ${est.artillery.attacker}/${est.artillery.defender}` : ''}${est.naval ? ` · ${esc(COMBAT_UI_KO.naval)} ${est.naval}` : ''}</p>
+      <div class="stats compact">
+        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.attackerSide)})</span><span class="value small">${est.attackerLoss}%</span></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.defenderSide)})</span><span class="value small">${est.defenderLoss}%</span></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.retreatChance)}</span><span class="value small">${est.retreatChance}%</span></div>
+      </div>
+      ${est.attackers.length > 1 ? `<p class="muted small">${esc(COMBAT_UI_KO.joined)}</p>` : ''}`;
+}
+
+/** Assault from the sea (docs/rules/naval.md 3). */
+function seaAssaultCard(ctx: PanelContext, a: NonNullable<OrdersView['assault']>): string {
+  const p = a.sea!;
+  const g = ctx.game;
+  const overrun = p.overrun?.possible;
+  const notes: string[] = [];
+  if (p.allowed) {
+    notes.push(`<p class="muted small">${esc(NAVAL_UI_KO.seaAssaultNote)}</p>`);
+    if (overrun) notes.push(`<p class="note">${esc(NAVAL_UI_KO.seaOverrun)}</p>`);
+    if (!p.canPlot) notes.push(`<p class="note warn">${esc(NAVAL_UI_KO.seaAssaultLast)}</p>`);
+    if (p.beachLoss) notes.push(`<p class="note warn">${esc(NAVAL_UI_KO.beachWarn)}</p>`);
+  } else notes.push(`<p class="note warn">${esc(BLOCK_KO[p.error ?? ''] ?? p.error ?? '')}</p>`);
+  const from = p.from >= 0 ? `<p class="muted small">${esc(NAVAL_UI_KO.atSeaStep)}: ${esc(placeName(ctx, p.from))} · ${esc(NAVAL_UI_KO.startCost(p.sealift))} · ${esc(NAVAL_UI_KO.seaAssaults(p.assaultsUsed))}</p>` : '';
+  const label = overrun ? NAVAL_UI_KO.seaTry : NAVAL_UI_KO.seaPlot;
+  return `
+    <section class="card preview assault ${a.pinned ? 'pinned' : ''}">
+      <p class="eyebrow">${esc(NAVAL_UI_KO.seaAssaultPreview)}</p>
+      <h3>${esc(placeName(ctx, a.hex))}</h3>
+      ${from}
+      ${p.estimate ? versusBlock(g, p.estimate) : ''}
+      ${notes.join('')}
+      ${a.pinned && p.allowed ? `<div class="actions"><button class="btn primary danger-fill" data-action="confirm-assault">${esc(label)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
+    </section>`;
 }
 
 function assaultCard(ctx: PanelContext, o: OrdersView): string {
   const a = o.assault!;
-  const p = a.preview;
+  if (a.sea) return seaAssaultCard(ctx, a);
+  const p = a.preview!;
   const g = ctx.game;
   const est = p.estimate;
   const overrun = p.overrun?.possible;
@@ -486,7 +551,7 @@ function combatCard(ctx: PanelContext, reports: CombatReport[]): string {
     return `
       <article class="report ${r.moveIn ? '' : r.retreated ? 'win' : 'hold'}">
         <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(target)}</b><span class="tag">${esc(head)}</span></header>
-        ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => unitNameKo(a.name)).join(', '))} vs ${esc(r.defenders.map((d) => unitNameKo(d.name)).join(', '))}</p>
+        ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => name(a.leader)).join(', '))} vs ${esc(r.defenders.map((d) => name(d.leader)).join(', '))}</p>
         <p class="small">${esc(COMBAT_UI_KO.lossRatio)}: ${esc(COMBAT_UI_KO.attackerSide)} ${r.attackerLoss}% · ${esc(COMBAT_UI_KO.defenderSide)} ${r.defenderLoss}% · ${esc(COMBAT_UI_KO.retreatChance)} ${r.retreatChance}%</p>`}
         ${events ? `<ul class="events">${events}</ul>` : ''}
       </article>`;
@@ -494,8 +559,78 @@ function combatCard(ctx: PanelContext, reports: CombatReport[]): string {
   return `<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><h2>${reports.length}건</h2>${cards || `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>`}</section>`;
 }
 
+/** Sea move preview: embarkation, the sea, the landing hex (docs/rules/naval.md 2). */
+function seaPreviewCard(ctx: PanelContext, o: OrdersView): string {
+  const g = ctx.game;
+  const r = o.reach;
+  const dest = o.path![o.path!.length - 1];
+  const end = r.nodes.get(dest);
+  if (!end) return '';
+  if (!end.canStop) {
+    return `<section class="card preview"><p class="eyebrow">${esc(MOVE_UI_KO.preview)}</p><h3>${esc(placeName(ctx, dest))}</h3>
+      <p class="muted small">${esc(MOVE_UI_KO.cannotStopHere)} · ${esc(NAVAL_UI_KO.seaHint)}</p></section>`;
+  }
+  const ox = r.origin % g.width, oy = Math.floor(r.origin / g.width);
+  const start = seaStartCost(g, ox, oy);
+  const refund = inPort(g, dest % g.width, Math.floor(dest / g.width)) ? 1 : 0;
+  const rows: string[] = [];
+  if (start > 0) rows.push(`<li><span class="step-n">⚓</span><div><b>${esc(NAVAL_UI_KO.embark)} · ${esc(placeName(ctx, r.origin))}</b><div class="muted small">${esc(NAVAL_UI_KO.startCost(start))}</div></div><span class="pts">${start}</span></li>`);
+  o.path!.forEach((i, k) => {
+    const n = r.nodes.get(i)!;
+    const land = !!n.step.lands;
+    rows.push(`<li><span class="step-n">${k + 1}</span><div><b>${esc(land ? NAVAL_UI_KO.landing : NAVAL_UI_KO.atSeaStep)} · ${esc(placeName(ctx, i))}</b>${land && refund ? `<div class="muted small">${esc(NAVAL_UI_KO.portRefund)}</div>` : ''}</div><span class="pts">${land && refund ? '−1' : 0}</span></li>`);
+  });
+  const warn = [NAVAL_UI_KO.seaWarn];
+  if (start === 3) warn.push(NAVAL_UI_KO.beachWarn);
+  if (end.captures) warn.push(MOVE_UI_KO.capturesWarn);
+  return `
+    <section class="card preview ${o.pinned ? 'pinned' : ''}">
+      <p class="eyebrow">${esc(MOVE_UI_KO.preview)} · ${esc(MOVE_MODE_KO.sea)}</p>
+      <h3>${esc(placeName(ctx, dest))}</h3>
+      <div class="stats compact">
+        <div><span class="label">${esc(NAVAL_UI_KO.sealiftLabel)}</span><span class="value small">+${start - refund}</span></div>
+        <div><span class="label">${esc(MOVE_UI_KO.after)}</span><span class="value small">0</span></div>
+        <div><span class="label">${esc(MOVE_UI_KO.readinessLoss)}</span><span class="value small">0</span></div>
+      </div>
+      ${warn.map((w) => `<p class="note warn">${esc(w)}</p>`).join('')}
+      <details ${o.pinned ? 'open' : ''}><summary class="muted small">${esc(MOVE_UI_KO.breakdown)}</summary><ol class="steps">${rows.join('')}</ol></details>
+      ${o.pinned ? `<div class="actions"><button class="btn primary" data-action="confirm">${esc(NAVAL_UI_KO.confirmSea)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
+    </section>`;
+}
+
+/** Airborne drop preview: loss ratio and its parts, enemy territory and enemy forces (docs/rules/naval.md 5). */
+function airPreviewCard(ctx: PanelContext, o: OrdersView): string {
+  const g = ctx.game;
+  const dest = o.path![o.path!.length - 1];
+  const n = o.reach.nodes.get(dest);
+  if (!n) return '';
+  const x = dest % g.width, y = Math.floor(dest / g.width);
+  const parts = airdropLossParts(g, x, y);
+  const enemy = dropOnEnemy(g, dest);
+  const warn: { kind: string; text: string }[] = [];
+  if (!n.canStop) warn.push({ kind: 'warn', text: BLOCK_KO.cannotStop });
+  if (enemy) warn.push({ kind: 'warn danger', text: NAVAL_UI_KO.dropOnEnemy });
+  else if (g.possession[dest] !== 1) warn.push({ kind: 'warn', text: NAVAL_UI_KO.enemyTerritory });
+  return `
+    <section class="card preview ${o.pinned ? 'pinned' : ''}">
+      <p class="eyebrow">${esc(MOVE_UI_KO.preview)} · ${esc(MOVE_MODE_KO.air)}</p>
+      <h3>${esc(placeName(ctx, dest))}</h3>
+      <div class="stats compact">
+        <div><span class="label">${esc(NAVAL_UI_KO.dropLoss)}</span><span class="value small">${parts.total}%</span></div>
+        <div><span class="label">${esc(MOVE_UI_KO.after)}</span><span class="value small">0</span></div>
+        <div><span class="label">${esc(MOVE_UI_KO.readinessLoss)}</span><span class="value small">−${parts.total}</span></div>
+      </div>
+      <p class="muted small">${esc(parts.airfield ? NAVAL_UI_KO.friendlyAirfield : NAVAL_UI_KO.dropBreakdown(parts.terrain, parts.weather, parts.mig))}</p>
+      ${warn.map((w) => `<p class="note ${w.kind}">${esc(w.text)}</p>`).join('')}
+      <p class="muted small">${esc(NAVAL_UI_KO.airlift)}</p>
+      ${o.pinned && n.canStop ? `<div class="actions"><button class="btn primary ${enemy ? 'danger-fill' : ''}" data-action="confirm">${esc(enemy ? NAVAL_UI_KO.dropConfirmDanger : NAVAL_UI_KO.confirmAir)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
+    </section>`;
+}
+
 function previewCard(ctx: PanelContext, o: OrdersView): string {
   if (!o.path || !o.path.length) return '';
+  if (o.mode === 'sea') return seaPreviewCard(ctx, o);
+  if (o.mode === 'air') return airPreviewCard(ctx, o);
   const g = ctx.game;
   const r = o.reach;
   const end = r.nodes.get(o.path[o.path.length - 1]);

@@ -8,6 +8,8 @@
 //   railMove / canEntrain  rail movement (CAN_ENTRAIN, interdiction, finish rules)
 //   bugOut                 zero-allowance bug-out order (MOVE_UNIT nested 317F + BUGOUT)
 //   turnStartMove          start-of-turn allowance (SUPPLY nested code, called by REST_UP)
+// Sea and airborne movement (MOVE_COST's sea / air branches are here, the orders in naval.ts):
+// docs/rules/naval.md.
 
 import { neighbor } from './hex.ts';
 import type { GameState, Side, UnitState } from './state.ts';
@@ -16,7 +18,11 @@ import {
   forceHex, corpsOf, isStorm, rnd, snapshot, restore,
 } from './state.ts';
 
-export type MoveMode = 'tactical' | 'rail';
+/** Movement modes of MOVE_UNIT: tactical, rail (SYMBOL 83), sea (81) and air (82). */
+export type MoveMode = 'tactical' | 'rail' | 'sea' | 'air';
+
+/** NATIONAL_MOVEMENT_RATE while SYMBOL is 81/82/83 ("unlimited"). */
+export const SPECIAL_RATE = 98;
 
 export type BlockReason =
   | 'offMap' // outside the playable map (ON_MAP)
@@ -25,10 +31,14 @@ export type BlockReason =
   | 'water' // ocean / estuary / reservoir without sea or amphibious movement
   | 'noRail' // rail movement: hex is not a connected friendly rail hex
   | 'stackFull' // two friendly forces already in the hex
-  | 'enemy' // enemy-occupied: assault / overrun (combat, not implemented yet)
-  | 'allowance'; // not enough movement points left
+  | 'enemy' // enemy-occupied: assault / overrun
+  | 'allowance' // not enough movement points left
+  | 'mined' // sea movement: a mined port cannot be entered ("Can't land in mined hex")
+  | 'seaRoute'; // sea movement: from land the force must first put to sea (deep ocean)
 
-export type CostItemKind = 'terrain' | 'river' | 'cpla' | 'congestion' | 'enemyTerritory' | 'disengage' | 'rail' | 'amphibious';
+export type CostItemKind =
+  | 'terrain' | 'river' | 'cpla' | 'congestion' | 'enemyTerritory' | 'disengage' | 'rail' | 'amphibious'
+  | 'sea' | 'landing' | 'air';
 
 export interface CostItem {
   kind: CostItemKind;
@@ -50,12 +60,16 @@ export interface StepCost {
   amphibious: boolean;
   /** The hex was not friendly controlled: entering it captures it and the order cannot be taken back. */
   captures: boolean;
+  /** Sea movement: the step goes ashore (the original returns the full rate, so the move ends there). */
+  lands?: boolean;
 }
 
 // ---------- terrain codes ----------
 
-const isDeepOcean = (c: number) => c >= 0xa5 && c < 0xdb;
-const isWater = (c: number) => c >= 0xa5;
+/** WATERHEX(x, y, false): deep ocean (0xA5..0xDA). */
+export const isDeepOcean = (c: number) => c >= 0xa5 && c < 0xdb;
+/** WATERHEX(x, y, true): ocean, estuary or reservoir. */
+export const isWater = (c: number) => c >= 0xa5;
 const isRailCode = (c: number) => (c >= 0x1e && c <= 0x57) || (c >= 0x7f && c <= 0x8e) || (c >= 0x95 && c <= 0x9e) || c === 0x93;
 const CITY = 0x93;
 
@@ -232,9 +246,20 @@ export interface StepContext {
   leaderMove?: number;
 }
 
+/** Port hex free of mines (MOVEUNIT 01F0 IN_PORT, PORTS[i].mined = 0). */
+export function inPort(g: Pick<GameState, 'ports'>, x: number, y: number): boolean {
+  return g.ports.some((p) => p.x === x && p.y === y && !p.mined);
+}
+
+/** MOVE_COST 161C: a mined port cannot be entered by sea. */
+export function minedPort(g: Pick<GameState, 'ports'>, x: number, y: number): boolean {
+  return g.ports.some((p) => p.x === x && p.y === y && p.mined);
+}
+
 /**
- * MOVEUNIT.MOVE_COST for tactical and rail movement. Sea and air movement are not implemented yet;
- * enemy-occupied hexes return `blocked: 'enemy'` instead of running OVERRUN.
+ * MOVEUNIT.MOVE_COST for every mode. Enemy-occupied hexes return `blocked: 'enemy'` instead of running
+ * OVERRUN (combat.ts / naval.ts roll it). Sea: deep ocean costs 0 at any distance, the step ashore
+ * sets `lands`. Air: any hex but the map edge and Manchuria costs 0 (the drop hex is checked in naval.ts).
  */
 export function stepCost(
   g: GameState, leader: number, fx: number, fy: number, tx: number, ty: number,
@@ -245,6 +270,8 @@ export function stepCost(
   const own = POSSESSION_CODE[side];
   const possAt = ctx.possAt ?? ((i: number) => g.possession[i]);
   const rail = mode === 'rail';
+  const sea = mode === 'sea';
+  const air = mode === 'air';
   const members = forceUnits(g, leader);
   const commando = hasCommando(g, members);
   const items: CostItem[] = [];
@@ -252,11 +279,21 @@ export function stepCost(
     ({ cost, blocked, items, amphibious: false, captures: false, ...extra });
 
   if (!onMap(g, tx, ty)) return out(0, 'offMap');
-  if (!sideMask(fx, fy, tx, ty)) return out(0, 'notAdjacent');
   const ti = idx(g, tx, ty);
   const t = g.hexes[ti];
   const s = g.hexes[idx(g, fx, fy)];
   const code = t.code;
+  // 0F79: adjacent hexes only, except air movement (any hex) and sea movement into deep ocean
+  if (!sideMask(fx, fy, tx, ty) && !air && !(sea && isDeepOcean(code))) return out(0, 'notAdjacent');
+  // 16F5: land to land is not a sea move (put to sea first); 161C: no landing in a mined port
+  if (sea && !isDeepOcean(s.code) && !isDeepOcean(code)) return out(0, 'seaRoute');
+  if (sea && minedPort(g, tx, ty)) return out(0, 'mined');
+  if (air) {
+    // 1717: the airborne unit flies over anything; stacks and enemies are dealt with at the drop hex
+    if (code === 0x8f || code === 0x94) return out(0, 'impassable');
+    items.push({ kind: 'air', points: 0 });
+    return out(0);
+  }
   const occupants = g.stacks[ti].length;
   const ownOrWater = possAt(ti) === own || isWater(code);
   const roadOk = () => roadConnected(g, side, fx, fy, tx, ty);
@@ -280,13 +317,16 @@ export function stepCost(
   else if (code === 0x8f || code === 0x94) return out(0, 'impassable');
   else if (isWater(code)) {
     if (code >= 0xdb) {
-      // USMC organic amphibious capability (manual 3.41210)
+      // USMC organic amphibious capability (manual 3.41210); SYMBOL is 81 during sea movement
       const move = ctx.leaderMove ?? usedMove(clearPlots(lead.move));
-      if (lead.symbol === 12 && move === 0 && lead.attached === 0 && g.computerSide !== 2 && s.code < 0xdb && !rail) {
+      if (lead.symbol === 12 && move === 0 && lead.attached === 0 && g.computerSide !== 2 && s.code < 0xdb && !rail && !sea) {
         cost = 0;
         amphibious = true;
         items.push({ kind: 'amphibious', points: 0 });
-      } else return out(0, 'water');
+      } else return out(0, sea ? 'impassable' : 'water');
+    } else if (sea) {
+      cost = 0;
+      items.push({ kind: 'sea', points: 0 });
     } else return out(0, 'water'); // deep ocean: sea movement only
   } else if (code >= 0x01 && code <= 0x0a) {
     const r = riverCost(g, tx, ty, commando);
@@ -316,17 +356,17 @@ export function stepCost(
     items.push({ kind: 'cpla', points: -1 });
   }
   if (rail && cost > 0) return out(0, 'noRail');
-  if (occupants > 0 && ownOrWater) {
+  if (occupants > 0 && ownOrWater && !sea) {
     cost++;
     items.push({ kind: 'congestion', points: 1 });
   }
   if (occupants > 1 && ownOrWater && !rail) return out(0, 'stackFull');
   const captures = !ownOrWater && occupants === 0;
-  if (captures && !commando) {
+  if (captures && !commando && !sea) {
     cost++;
     items.push({ kind: 'enemyTerritory', points: 1 });
   }
-  if (enemyAdjacent(g, fx, fy, possAt) && (occupants === 0 || ownOrWater) && !independentCommando(g, lead)) {
+  if (!sea && enemyAdjacent(g, fx, fy, possAt) && (occupants === 0 || ownOrWater) && !independentCommando(g, lead)) {
     cost += 4;
     items.push({ kind: 'disengage', points: 4 });
   }
@@ -336,16 +376,22 @@ export function stepCost(
     for (let i = items.length - 1; i >= 0; i--) if (items[i].kind !== 'rail') items.splice(i, 1);
   }
   if (amphibious) cost = 0;
-  return out(cost, undefined, { amphibious, captures: captures && !isWater(code) });
+  // 16A5: "Come ashore in hex?" -> the original turns the land cost into the full rate, ending the move
+  const lands = sea && !isDeepOcean(code);
+  if (lands) items.push({ kind: 'landing', points: 0 });
+  return out(cost, undefined, { amphibious, captures: captures && !isWater(code), lands });
 }
 
 // ---------- start-of-move checks ----------
 
-export type CannotMove = 'notOnMap' | 'noAllowance';
+export type CannotMove = 'notOnMap' | 'noAllowance' | 'atSea';
 
 /** MOVE_UNIT nested 317F: can the force start a tactical move? (bug-out is offered separately) */
 export function cannotMove(g: GameState, leader: number): CannotMove | null {
-  if (forceHex(g, leader) < 0) return 'notOnMap';
+  const at = forceHex(g, leader);
+  if (at < 0) return 'notOnMap';
+  // HEXSTUFF 07DC / 09C8: a force at sea can only be given sea movement orders
+  if (isDeepOcean(g.hexes[at].code)) return 'atSea';
   const a = allowance(g, leader);
   if (a.used >= a.rate) return 'noAllowance';
   return null;
@@ -386,7 +432,8 @@ export interface Reach {
   nodes: Map<number, ReachNode>;
   /** Hexes next to the reachable area that the force cannot enter, with the reason. */
   blocked: Map<number, BlockReason>;
-  cannot: CannotMove | 'cannotEntrain' | null;
+  /** Why the force cannot use this mode at all (CannotMove, 'cannotEntrain', or a naval.ts reason). */
+  cannot: string | null;
 }
 
 export function reach(g: GameState, leader: number, mode: MoveMode = 'tactical'): Reach {
@@ -395,6 +442,7 @@ export function reach(g: GameState, leader: number, mode: MoveMode = 'tactical')
   const own = POSSESSION_CODE[sideOf(lead)];
   const a = allowance(g, leader);
   const r: Reach = { leader, mode, origin, rate: a.rate, usedStart: a.used, nodes: new Map(), blocked: new Map(), cannot: null };
+  if (mode === 'sea' || mode === 'air') throw new Error('sea and air reach: use naval.ts orderReach');
   if (mode === 'rail') {
     if (!canEntrain(g, leader)) { r.cannot = origin < 0 ? 'notOnMap' : 'cannotEntrain'; return r; }
   } else {
@@ -512,7 +560,8 @@ export interface StepRecord { hex: number; cost: number; items: CostItem[]; capt
 
 export interface MoveResult {
   ok: boolean;
-  error?: BlockReason | CannotMove | 'cannotStop' | 'cannotEntrain' | 'emptyPath';
+  /** BlockReason, CannotMove, 'cannotStop', 'cannotEntrain', 'emptyPath' or a naval.ts reason. */
+  error?: string;
   steps: StepRecord[];
   usedBefore: number;
   usedAfter: number;
@@ -522,18 +571,26 @@ export interface MoveResult {
   interdictionLoss?: number;
   /** Second Orders Phase: green UN units that bugged out while moving between enemy-adjacent hexes. */
   bugOuts?: number[];
+  /** Sea movement: change of SEALIFT_DEMAND (port 2 / beach 3 / at sea 0, -1 when landing in a port). */
+  sealift?: number;
+  /** Sea movement from a non-port hex: the leader unit suffered bug-out losses. */
+  beachLoss?: boolean;
+  /** Airborne movement: drop loss ratio (percent) and whether the unit was destroyed. */
+  dropLoss?: number;
+  destroyed?: boolean;
 }
 
-function fail(error: MoveResult['error'], usedBefore = 0): MoveResult {
+export function fail(error: MoveResult['error'], usedBefore = 0): MoveResult {
   return { ok: false, error, steps: [], usedBefore, usedAfter: usedBefore, readinessLoss: 0, undoable: false };
 }
 
 /** CLEAR_PLOTS for every unit of the force (called when a force starts moving). */
-function clearForcePlots(g: GameState, leader: number) {
+export function clearForcePlots(g: GameState, leader: number) {
   for (const u of forceUnits(g, leader)) u.move = clearPlots(u.move);
 }
 
-function relocate(g: GameState, leader: number, from: number, to: number) {
+/** Move a force leader between the TERRAIN force slots of two hexes. */
+export function relocate(g: GameState, leader: number, from: number, to: number) {
   const a = g.stacks[from];
   const k = a.indexOf(leader);
   if (k >= 0) a.splice(k, 1);
@@ -541,7 +598,7 @@ function relocate(g: GameState, leader: number, from: number, to: number) {
 }
 
 /** Possession and airfield changes when a force enters a land hex (MOVE_UNIT nested code at 3E07). */
-function capture(g: GameState, side: Side, hex: number) {
+export function capture(g: GameState, side: Side, hex: number) {
   if (isWater(g.hexes[hex].code)) return;
   const own = POSSESSION_CODE[side];
   const enemy = POSSESSION_CODE[enemyOf(side)];

@@ -78,6 +78,7 @@ korea2는 부산 교두보 미군이 준비도 75이면서 STATUS 0x40이 없는
   `STOCKPILE[1] += u − 수요`
 - 둘 다 1~100(1995 1~200)으로 제한
 - SEALIFT_DEMAND = 바다 헥스에 있는 부대 수(다음 턴에 청구), AIRLIFT_DEMAND = 0, RAIL_DEMAND[1] = 0
+- 턴 중의 수요: 해상 이동 승선 항구 +2 / 해안 +3, 항구 상륙 −1, 공수 이동 AIRLIFT +2 (`naval.md` 2·4·5). REST_UP의 공중 보급은 AIRLIFT를 1로 **덮어씁니다**(더하지 않음, 원작 그대로)
 
 STOCKPILE은 DUAL 배열 **[0] 공산, [1] 유엔** (예전 문서의 [유엔, 공산]은 잘못).
 

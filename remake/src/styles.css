@@ -69,6 +69,7 @@ select {
 .facts dd { margin: 0; }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: #efece4; color: #4a4d52; }
 .tag.warn { background: #fbe3e1; color: var(--red); }
+.tag.sea { background: #dff1f3; color: #0b5f6b; }
 
 .news { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 .news li { padding: 6px 0; border-top: 1px solid #f0ede6; display: grid; gap: 2px; }
@@ -138,8 +139,12 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .seg button:last-child { border-right: 0; }
 .seg button[aria-pressed="true"] { background: #1f2328; color: #fff; }
 .seg button:disabled { color: #b5b2aa; cursor: not-allowed; }
+.seg.modes { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.seg.modes button[data-mode="sea"][aria-pressed="true"] { background: #0b5f6b; }
+.seg.modes button[data-mode="air"][aria-pressed="true"] { background: #5b2f9e; }
 .note { margin: 8px 0 0; font-size: 12px; padding: 8px 10px; border-radius: 8px; background: #f4f2ec; }
 .note.warn { background: #fff4dc; color: #7a5300; }
+.note.warn.danger { background: #fbe3e1; color: #7a1c17; font-weight: 600; }
 .orders > .btn.ghost { margin-top: 8px; }
 
 .preview.pinned { border-color: #14325c; box-shadow: 0 0 0 2px rgba(20, 50, 92, 0.2); }
