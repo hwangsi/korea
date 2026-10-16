@@ -12,6 +12,7 @@ import {
   airShownAsProgram, toStartOptions,
 } from '../src/engine/options.ts';
 import type { GameOptions, PlayMode, ScenarioNo } from '../src/engine/options.ts';
+import { gameDelay, moveStepMs, PLAY_DEFAULTS, loadPlaySettings, MOVE_STEP_MS, MOVE_CAP_MS } from '../src/ui/playSettings.ts';
 
 const DATA = join(import.meta.dirname, '..', 'data', 'extracted');
 const HAVE_DATA = existsSync(join(DATA, 'map.json'));
@@ -99,4 +100,16 @@ test('Random competence is rolled first with RND(1,5)', opts, () => {
   rnd(b, 1, 5);
   startNewGame(b, { competence: 4 });
   assert.notEqual(a.rng, b.rng);
+});
+
+test('play settings: GAMEDELAY is ms x DELAYVALUE div 2, medium speed and centering off by default (options.md 5)', () => {
+  assert.deepEqual(PLAY_DEFAULTS, { speed: 2, follow: false });
+  assert.deepEqual(loadPlaySettings(), PLAY_DEFAULTS); // no browser storage in Node
+  assert.deepEqual([1, 2, 3].map((s) => gameDelay(1000, s as 1 | 2 | 3)), [500, 1000, 1500]);
+  assert.equal(gameDelay(25, 3), 37); // integer division like the original
+  // per-hex time, capped for long rail / sea moves
+  assert.equal(moveStepMs(5, 2), MOVE_STEP_MS);
+  assert.equal(moveStepMs(30, 2), MOVE_CAP_MS / 30);
+  assert.equal(moveStepMs(4, 1), MOVE_STEP_MS / 2);
+  assert.equal(moveStepMs(0, 2), 0);
 });

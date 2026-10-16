@@ -75,6 +75,11 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - 소리: `__app.audio`. 자동화 탭에서는 소리를 들을 수 없으니 `renderOffline(곡 id, 초)`/`renderSfx(이름)`로 렌더링해 최대값·RMS를 본다(한 번에 하나씩, 비동기로 window에 결과를 두고 폴링: CDP 시간 초과 주의).
   6.25의 노래는 `remake/data/private/music.json`(git 제외)에 있고 빌드가 standalone에 넣는다.
 - 같은 파일을 동시에 두 번 `edit_file`하지 말 것(병렬 호출이면 한쪽 수정이 사라진다).
+- `edit_file`의 appendText는 첫 줄 앞부분이 잘려 들어갈 때가 있다(예: `test('... = ...` 줄). 추가한 뒤 그 줄을 확인하거나 기존 줄에 붙이는 edits를 쓴다.
+- 자동화 탭은 requestAnimationFrame이 거의 돌지 않는다(1초에 0~3프레임). 이동 애니메이션(`__app.animating`)은 스크린샷을 찍을 때만 진행하므로
+  중간 프레임은 이동 직후 `page.screenshot()`을 몇 번 찍어 확인. 설정은 `__app.setPlay({ speed: 1|2|3, follow })`.
+- 원작 세이브 변환: `node --preserve-symlinks --preserve-symlinks-main tools/extract/sav2json.ts <파일> <out.json>`. 화면 검증은 그 JSON을 `__app.loadText(text)`.
+  KOREA1S·3S·4S.DAT가 실제 원작 세이브라 입력으로 쓸 수 있다(`tests/sav.test.ts`는 원본 KOREA.EXE가 있어야 돈다).
 - 브라우저 창이 1440px이면 상단 막대가 꽉 차니 버튼을 더 넣을 때는 줄바꿈(높이 > 60px)을 확인한다.
 
 ## 마무리

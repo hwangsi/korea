@@ -10,7 +10,7 @@ import { neighbor } from './hex.ts';
 import type { GameState, Side, UnitState } from './state.ts';
 import {
   POSSESSION_CODE, STATUS_MOVED, STATUS_READY, idx, onMap, unit, sideOf, enemyOf, forceUnits, forceHex, corpsOf,
-  isStorm, rnd,
+  isStorm, rnd, newsFlash,
 } from './state.ts';
 import {
   nationalMovementRate, stepCost, stepAllowed, clearPlots, usedMove, plottedAssault, frozen, oceanAdjacent,
@@ -77,6 +77,19 @@ export function unitStrength(g: GameState, u: UnitState, x: number, y: number, m
     L += Math.trunc(L / 10) * (g.competence - 3);
   }
   return { L, S };
+}
+
+/**
+ * What the original screens print: GET_STRENGTH mode 0 of each unit in its own hex, summed, then div 10
+ * (REPORTS `0b55` force line, `1751` unit line). Pass one unit for a unit row or all units of a force for its total.
+ */
+export function shownStrength(g: GameState, units: UnitState[]): Strength {
+  let L = 0, S = 0;
+  for (const u of units) {
+    const s = unitStrength(g, u, u.x, u.y, 0);
+    L += s.L; S += s.S;
+  }
+  return { L: Math.trunc(L / 10), S: Math.trunc(S / 10) };
 }
 
 /** EURSUBS1.GET_FORCE_STRENGTH: every unit of the force, evaluated in the same hex. */
@@ -651,6 +664,18 @@ function advanceInto(g: GameState, entries: { leader: number }[], x: number, y: 
   }
 }
 
+/**
+ * GRCMBT `0031` (nested, string at `0000`): called with every attacking and defending force leader just before its
+ * strength-report bit is set (`1c0d` attackers, `1001` defenders). The first ground combat that involves a Chinese
+ * leader (SYMBOL div 10 = 6) in a 1950s scenario flashes the news once; UTILITY_SPACE[16] remembers it.
+ */
+export function ccfFirstCombat(g: GameState, leader: number) {
+  if (g.utility[16] !== 0 || g.scenarioNo >= 4) return;
+  if (Math.trunc(unit(g, leader).symbol / 10) !== 6) return;
+  g.utility[16] = 1;
+  newsFlash(g, 'Red Chinese army units have intervened in Korea!');
+}
+
 /** GRCMBT.DO_GROUND_COMBAT: execute every plotted assault, army by army. */
 export function resolveGroundCombat(g: GameState): CombatReport[] {
   const reports: CombatReport[] = [];
@@ -721,6 +746,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       let aL = 0, aS = 0, dL = 0, dS = 0;
       for (const e of same) {
         e.active = false;
+        ccfFirstCombat(g, e.leader);
         for (const v of forceUnits(g, e.leader)) v.status = (v.status | 0x20) & ~0x10;
         const lead = unit(g, e.leader);
         const s = forceStrength(g, e.leader, lead.x, lead.y, 1);
@@ -729,6 +755,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       aL += support(g, corps, x, y, 'L', true);
       aS += support(g, corps, x, y, 'S', true);
       for (const d of defenders) {
+        ccfFirstCombat(g, d);
         for (const v of forceUnits(g, d)) v.status = (v.status | 0x20) & ~0x10;
         const s = forceStrength(g, d, x, y, 2);
         dL += Math.trunc(s.L / 5); dS += Math.trunc(s.S / 50);

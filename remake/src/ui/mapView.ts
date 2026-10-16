@@ -4,9 +4,8 @@
 import type { Force, Hex, MapData, Nation, Scenario } from '../data/types.ts';
 import { hexCenter, hexCorners, sideMidpoint, neighbor, pixelToHex, directionsOf, SQRT3 } from '../engine/hex.ts';
 import type { Pt } from '../engine/hex.ts';
-import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import { forceUnits, sideOf } from '../engine/state.ts';
-import { plottedAssaults } from '../engine/combat.ts';
+import { plottedAssaults, shownStrength } from '../engine/combat.ts';
 import type { GameState, Side, UnitState } from '../engine/state.ts';
 import { fogActive, forceIntel, knownEnemyAt, strengthReport } from '../engine/intel.ts';
 import type { IntelLevel } from '../engine/intel.ts';
@@ -17,6 +16,8 @@ import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO, INTEL_UI_
 import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
+/** Offset (in hex radii, up and right) of each force stacked under the top counter. */
+const STACK_STEP = 0.13;
 
 export interface Layers { possession: boolean; units: boolean; names: boolean; nature: boolean; grid: boolean; coords: boolean; supply: boolean; }
 
@@ -98,6 +99,10 @@ export class MapView {
   viewer: Side = 'un';
   /** Hand-over screen of a two-player game with limited intelligence: draw no forces at all. */
   hideForces = false;
+  /** Screen rectangles of the counters drawn this frame: place and mountain labels keep clear of them. */
+  private counterRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  /** A force sliding along the hexes it just moved through (movement animation, ui/playSettings.ts). */
+  private anim: { leader: number; pts: Pt[]; start: number; stepMs: number; follow: boolean } | null = null;
   onClick: (x: number, y: number) => void = () => {};
   onContext: () => void = () => {};
   onHover: (x: number, y: number) => void = () => {};
@@ -141,7 +146,64 @@ export class MapView {
     this.netCache = null;
     this.movement = null;
     this.selectedLeader = null;
+    this.anim = null;
     this.invalidate();
+  }
+
+  // ---------- movement animation (original MOVEUNIT `1c87`: CENTER on = recentre every step, off = only when the
+  // force would leave the screen) ----------
+
+  /** Slide `leader` through `hexes` (start hex first), `stepMs` per hex. The game state has already moved it. */
+  animateMove(leader: number, hexes: [number, number][], stepMs: number, follow: boolean) {
+    if (hexes.length < 2 || stepMs <= 0) { this.anim = null; return; }
+    this.anim = { leader, pts: hexes.map(([x, y]) => hexCenter(x, y, HEX)), start: performance.now(), stepMs, follow };
+    requestAnimationFrame(this.animStep);
+  }
+
+  get animating(): boolean { return !!this.anim; }
+
+  /** Jump to the end of a running animation (any click or key does this). */
+  finishAnimation() {
+    if (!this.anim) return;
+    const end = this.anim.pts[this.anim.pts.length - 1];
+    if (this.anim.follow) this.centerWorld(end); else this.keepInView(end);
+    this.anim = null;
+    this.invalidate();
+  }
+
+  private animPos(t = performance.now()): Pt | null {
+    const a = this.anim;
+    if (!a) return null;
+    const f = Math.max(0, (t - a.start) / a.stepMs);
+    const i = Math.min(a.pts.length - 1, Math.floor(f));
+    if (i >= a.pts.length - 1) return a.pts[a.pts.length - 1];
+    const k = f - i, p = a.pts[i], q = a.pts[i + 1];
+    return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
+  }
+
+  private animStep = (t: number) => {
+    const a = this.anim;
+    if (!a) return;
+    if (t - a.start >= (a.pts.length - 1) * a.stepMs) { this.finishAnimation(); return; }
+    const p = this.animPos(t)!;
+    if (a.follow) this.centerWorld(p); else this.keepInView(p);
+    this.invalidate();
+    requestAnimationFrame(this.animStep);
+  };
+
+  private centerWorld(p: Pt) {
+    const { w, h } = this.viewSize();
+    this.cam.x = p.x - w / 2 / this.cam.zoom;
+    this.cam.y = p.y - h / 2 / this.cam.zoom;
+  }
+
+  /** Recentre on `p` only when it is outside the view (less a one-hex margin). */
+  private keepInView(p: Pt) {
+    const { w, h } = this.viewSize();
+    const m = HEX * 1.2;
+    const x0 = this.cam.x + m, y0 = this.cam.y + m;
+    const x1 = this.cam.x + w / this.cam.zoom - m, y1 = this.cam.y + h / this.cam.zoom - m;
+    if (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) this.centerWorld(p);
   }
 
   /** Rebuild force lists when the game state or the viewer changed (moves, undo, a new phase). */
@@ -365,6 +427,7 @@ export class MapView {
 
   draw() {
     this.syncForces();
+    this.counterRects = [];
     const ctx = this.ctx;
     const z = this.cam.zoom;
     const map = this.map;
@@ -425,7 +488,7 @@ export class MapView {
       ctx.fill();
     }
 
-    if (this.movement) this.drawReach(vis, this.movement);
+    if (this.movement && !this.anim) this.drawReach(vis, this.movement);
     if (this.showMigAlley) this.drawMigAlley(vis);
     this.drawPlaces();
     if (this.layers.units && sc) this.drawUnits(vis);
@@ -444,7 +507,7 @@ export class MapView {
     if (this.layers.units && sc) this.drawAssaultPlots();
     if (this.airstrikes.length || this.strikeAim) this.drawAirstrikes();
     if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
-    if (this.movement) this.drawMoveLabels(vis, this.movement);
+    if (this.movement && !this.anim) this.drawMoveLabels(vis, this.movement);
 
     if (this.layers.coords && z > 0.9) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -649,9 +712,11 @@ export class MapView {
       2: { size: Math.max(10, Math.min(15, 10 * z + 5)), weight: 600, color: '#2a2f36', minZoom: 0 },
       3: { size: Math.max(9.5, Math.min(13, 8 * z + 4.5)), weight: 500, color: '#3d4652', minZoom: 0.3 },
     };
-    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
-    const free = (r: { x0: number; y0: number; x1: number; y1: number }) =>
-      !placed.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
+    type Rect = { x0: number; y0: number; x1: number; y1: number };
+    const placed: Rect[] = [];
+    const hits = (r: Rect, list: Rect[]) => list.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
+    // labels keep clear of other labels and of the counters (crowded fronts); only major cities may sit on a counter
+    const free = (r: Rect) => !hits(r, placed) && !hits(r, this.counterRects);
     const items = this.layers.names ? placesFor(is1995).slice().sort((a, b) => a.rank - b.rank) : [];
     for (const p of items) {
       const st = style[p.rank];
@@ -659,13 +724,16 @@ export class MapView {
       const c = hexCenter(p.x, p.y, HEX);
       ctx.font = `${st.weight} ${st.size}px ${FONT}`;
       const tw = ctx.measureText(p.label).width;
-      let spot: { x: number; y: number; r: { x0: number; y0: number; x1: number; y1: number } } | null = null;
+      let spot: { x: number; y: number; r: Rect } | null = null;
+      let fallback: { x: number; y: number; r: Rect } | null = null;
       for (const dy of [-0.95, 0.95]) {
         const s = this.toScreen({ x: c.x, y: c.y + HEX * dy });
         const r = { x0: s.x - tw / 2 - 3, y0: s.y - st.size / 2 - 2, x1: s.x + tw / 2 + 3, y1: s.y + st.size / 2 + 2 };
         if (r.x1 < 0 || r.y1 < 0 || r.x0 > w || r.y0 > h) break;
         if (free(r)) { spot = { x: s.x, y: s.y, r }; break; }
+        if (!fallback && p.rank === 1 && !hits(r, placed)) fallback = { x: s.x, y: s.y, r };
       }
+      spot ??= fallback;
       if (!spot) continue;
       placed.push(spot.r);
       ctx.lineWidth = 3.5;
@@ -733,9 +801,9 @@ export class MapView {
       const sub = peak && f.elevation && z >= NATURE_ZOOM.elevation ? `${f.elevation.toLocaleString('ko-KR')}m` : '';
       const tw = Math.max(ctx.measureText(text).width, sub ? ctx.measureText(sub).width * 0.85 : 0);
       const lines = sub ? size * 1.95 : size;
-      // centre of the hex, or a little lower if a town label is in the way
+      // centre of the hex, or a little lower if a town label is in the way; below a counter in the hex; else skipped
       let spot: { x: number; y: number; r: { x0: number; y0: number; x1: number; y1: number } } | null = null;
-      for (const dy of [0, 0.5, -0.5]) {
+      for (const dy of [0, 0.5, -0.5, 0.62]) {
         const s = this.toScreen({ x: c.x, y: c.y + HEX * dy });
         const r = { x0: s.x - tw / 2 - 3, y0: s.y - size / 2 - 2, x1: s.x + tw / 2 + 3, y1: s.y - size / 2 + lines + 2 };
         if (r.x1 < 0 || r.y1 < 0 || r.x0 > w || r.y0 > h) break;
@@ -798,22 +866,49 @@ export class MapView {
   private drawUnits(vis: Hex[]) {
     const map = this.map!;
     const z = this.cam.zoom;
+    const moving = this.anim?.leader;
+    let movingForce: Force | null = null;
+    this.counterRects = [];
     for (const h of vis) {
-      const forces = this.forcesByHex.get(h.y * map.width + h.x);
-      if (!forces || !forces.length) continue;
+      const all = this.forcesByHex.get(h.y * map.width + h.x);
+      if (!all || !all.length) continue;
+      const forces = moving === undefined ? all : all.filter((f) => f.leader !== moving);
+      if (forces.length < all.length) movingForce = all.find((f) => f.leader === moving) ?? null;
+      if (!forces.length) continue;
       const c = hexCenter(h.x, h.y, HEX);
-      forces.slice(0, 3).forEach((f, i) => {
-        const off = (i - (Math.min(forces.length, 3) - 1) / 2) * HEX * 0.22;
-        this.counter(f, { x: c.x + off, y: c.y + off * 0.8 }, z);
+      // stacked forces: the first (or the selected) force sits in the middle with its numbers; the others peek out
+      // up and to the right as plain coloured edges, so no half-covered numbers or badges collide in crowded fronts
+      const top = forces.find((f) => f.leader === this.selectedLeader) ?? forces[0];
+      const under = forces.filter((f) => f !== top).slice(0, 2);
+      under.reverse().forEach((f, k) => {
+        const d = (under.length - k) * HEX * STACK_STEP;
+        this.counter(f, { x: c.x + d, y: c.y - d }, z, true);
       });
+      this.counter(top, c, z);
+      this.counterRects.push(this.counterRect(c, under.length));
     }
+    if (moving !== undefined && !movingForce) {
+      // the destination hex may be off screen while the counter is still on it
+      for (const all of this.forcesByHex.values()) { const f = all.find((v) => v.leader === moving); if (f) { movingForce = f; break; } }
+    }
+    const p = this.animPos();
+    if (movingForce && p) this.counter(movingForce, p, z);
   }
 
   private unit(id: number): UnitState | undefined {
     return this.game?.units.get(id);
   }
 
-  private counter(f: Force, c: Pt, z: number) {
+  /** Screen rectangle of a hex's counters (front counter plus the stacked edges and the unit-count badge). */
+  private counterRect(c: Pt, stacked: number) {
+    const w = HEX * 1.08, h = HEX * 0.82, d = stacked * HEX * STACK_STEP, b = HEX * 0.22;
+    const p0 = this.toScreen({ x: c.x - w / 2, y: c.y - h / 2 - d - b });
+    const p1 = this.toScreen({ x: c.x + w / 2 + d + b, y: c.y + h / 2 });
+    return { x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y };
+  }
+
+  /** One counter; `stub` = a stacked force under the top one (box only). */
+  private counter(f: Force, c: Pt, z: number, stub = false) {
     const ctx = this.ctx;
     const lead = this.unit(f.leader);
     if (!lead) return;
@@ -844,6 +939,7 @@ export class MapView {
     ctx.strokeStyle = 'rgba(0,0,0,0.55)';
     ctx.lineWidth = HEX * 0.04;
     ctx.stroke();
+    if (stub) { ctx.restore(); return; }
     this.shipBadge(lead, x, y);
     if (z < 0.4) { ctx.restore(); return; }
 
@@ -871,12 +967,9 @@ export class MapView {
 
     // echelon + strength + stack size in screen space for crisp text
     if (z < 0.55) { ctx.restore(); return; }
-    const total = f.units.reduce((acc, id) => {
-      const u = this.unit(id);
-      if (!u || !this.game) return acc;
-      const s = displayStrength(effectiveStrength(u, this.game.equipmentTypes));
-      return { l: acc.l + s.lethality, s: acc.s + s.survivability };
-    }, { l: 0, s: 0 });
+    const members = f.units.map((id) => this.unit(id)).filter((u): u is UnitState => !!u);
+    const shown = this.game ? shownStrength(this.game, members) : { L: 0, S: 0 };
+    const total = { l: shown.L, s: shown.S };
     const ctxS = (p: Pt) => this.toScreen(p);
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);

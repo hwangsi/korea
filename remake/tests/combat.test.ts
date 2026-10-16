@@ -9,8 +9,9 @@ import { createGameState, idx, unit, forceUnits, forceHex, sideOf, POSSESSION_CO
 import type { GameState } from '../src/engine/state.ts';
 import {
   unitStrength, lossRatios, assault, assaultPreview, assaultTarget, cancelAssault, resolveGroundCombat, overrunCheck,
-  checkElim, retreatHexes, directionCode, decodeDirection, STATUS_BURIED,
+  checkElim, retreatHexes, directionCode, decodeDirection, STATUS_BURIED, shownStrength,
 } from '../src/engine/combat.ts';
+import { forcePresence } from '../src/engine/forces.ts';
 import { usedMove, allowance } from '../src/engine/movement.ts';
 import { neighbor } from '../src/engine/hex.ts';
 
@@ -155,4 +156,64 @@ test('elimination hands the force to the next unit; retreat rules', opts, () => 
     if (sideOf(u) !== 'un') continue;
     for (const [nx, ny] of retreatHexes(g, l)) assert.equal(g.possession[idx(g, nx, ny)], POSSESSION_CODE.un);
   }
+});
+
+test('first ground combat with a Chinese force flashes the CCF news once (GRCMBT 0031, UTILITY_SPACE[16])', opts, () => {
+  const NEWS = 'Red Chinese army units have intervened in Korea!';
+  const isCcf = (g: GameState, l: number) => Math.trunc(unit(g, l).symbol / 10) === 6;
+  const plotFirst = (g: GameState, want: (l: number, j: number) => boolean) => {
+    for (const [l, , j] of [...frontPairs(g, 'communist'), ...frontPairs(g, 'un')]) {
+      if (!want(l, j)) continue;
+      const tx = j % g.width, ty = Math.floor(j / g.width);
+      const pv = assaultPreview(g, l, tx, ty);
+      if (!pv.allowed || (pv.overrun && pv.overrun.possible)) continue;
+      if (assault(g, l, tx, ty).result === 'plotted') return l;
+    }
+    return -1;
+  };
+  const withCcf = (g: GameState) => (l: number, j: number) => isCcf(g, l) || g.stacks[j].some((d) => isCcf(g, d));
+
+  const g = load('korea3');
+  assert.equal(g.utility[16], 0, 'Cold Steel starts without the flag');
+  assert.ok(plotFirst(g, withCcf(g)) >= 0, 'an assault involving a Chinese force');
+  resolveGroundCombat(g);
+  assert.equal(g.news.filter((n) => n.text === NEWS).length, 1);
+  assert.equal(g.utility[16], 1);
+  // another Chinese combat: no repeat
+  if (plotFirst(g, withCcf(g)) >= 0) resolveGroundCombat(g);
+  assert.equal(g.news.filter((n) => n.text === NEWS).length, 1, 'only once per game');
+
+  // combats without Chinese leaders leave the flag alone
+  const k = load('korea1');
+  assert.ok(plotFirst(k, (l, j) => !isCcf(k, l) && !k.stacks[j].some((d) => isCcf(k, d))) >= 0);
+  resolveGroundCombat(k);
+  assert.equal(k.utility[16], 0);
+  assert.ok(!k.news.some((n) => n.text === NEWS));
+
+  // 1995 (SCENARIO 4) never flashes it, even with a Chinese symbol
+  const m = load('korea4');
+  const l4 = plotFirst(m, () => true);
+  assert.ok(l4 >= 0);
+  unit(m, l4).symbol = 62;
+  resolveGroundCombat(m);
+  assert.equal(m.utility[16], 0);
+});
+
+test('shown strength: GET_STRENGTH mode 0 summed then div 10 (REPORTS 0b55 and 1751), same as the organize screen', opts, () => {
+  const g = load('korea1');
+  const u = [...g.units.values()].find((v) => v.name.trim() === 'NKPA 50/15 Inf Rgt')!;
+  u.readiness = 100; u.experience = 1; u.status = 0;
+  assert.deepEqual(shownStrength(g, [u]), { L: 41, S: 23 });
+  g.competence = 5; // communists x1.2 also shows on screen (mode 0 applies competence)
+  assert.deepEqual(shownStrength(g, [u]), { L: Math.trunc((418 + 41 * 2) / 10), S: Math.trunc((234 + 23 * 2) / 10) });
+  // a force total divides once, after summing (may exceed the sum of the unit rows)
+  const leader = g.stacks.flat().find((l) => forceUnits(g, l).length >= 2)!;
+  assert.ok(leader !== undefined, 'a force with several units');
+  const members = forceUnits(g, leader);
+  const at = forceHex(g, leader);
+  const total = shownStrength(g, members);
+  const p = forcePresence(g, leader, at % g.width, Math.floor(at / g.width));
+  assert.deepEqual(total, { L: p.lethality, S: p.survivability });
+  const rows = members.map((m) => shownStrength(g, [m]));
+  assert.ok(total.L >= rows.reduce((a, r) => a + r.L, 0));
 });

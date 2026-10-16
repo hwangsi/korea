@@ -123,6 +123,9 @@ export interface GameState {
   ccfFixed: boolean;
   /** The players continued past the end of the game: victory levels no longer count. */
   victoryVoid: boolean;
+  /** NOTES of the data file: the original's news lines ("25-June-1950: text") from before this game began.
+   *  A scenario's opening news, or the last eight lines of an imported original save (tools/extract/sav2json.ts). */
+  notes: string[];
   news: NewsItem[];
   /** End of game reason once END_TEST fired. */
   gameOver: string | null;
@@ -219,6 +222,7 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     limitedIntel: false,
     ccfFixed: false,
     victoryVoid: false,
+  notes: (scenario.news ?? []).slice(),
     news: [],
     gameOver: null,
     interdiction: [scenario.interdiction?.[0] ?? 0, scenario.interdiction?.[1] ?? 0],

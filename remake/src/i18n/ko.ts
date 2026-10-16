@@ -7,6 +7,16 @@ export const TERRAIN_KO: Record<TerrainKind, string> = {
   ocean: '바다', estuary: '하구·갯벌', reservoir: '저수지·호수', undefined: '미정의', japan: '일본 (배치 지역)',
 };
 
+/** Parts of the original terrain code names (map.json hex.label, e.g. "Rough/RR/River"). */
+const TERRAIN_CODE_PART_KO: Record<string, string> = {
+  Open: '개활지', Rough: '험지', Mountain: '산악', Urban: '도시', River: '강', Road: '도로', RR: '철도',
+  Estuary: '하구', Reservoir: '저수지', 'Deep Ocean': '깊은 바다', 'Map edge': '지도 끝', 'Off Map': '지도 밖',
+};
+
+export function terrainCodeKo(label: string): string {
+  return label.split('/').map((p) => TERRAIN_CODE_PART_KO[p.trim()] ?? p.trim()).join('·');
+}
+
 export const NATION_KO: Record<Nation, string> = {
   US: '미군', USMC: '미 해병대', CW: '영연방군', UN: '유엔군', ROK: '국군', NKPA: '북한군', CPLA: '중공군',
 };
@@ -41,7 +51,10 @@ export const AIRCRAFT_KO: Record<string, string> = {
   'Twin Mustang': 'F-82 트윈 머스탱', Mustang: 'F-51 머스탱', 'Sea Fury': '시퓨리', Skyraider: 'AD 스카이레이더',
   Thunderjet: 'F-84 선더제트', Panther: 'F9F 팬서', Sabre: 'F-86 세이버',
   // 1995
-  'H-5': 'H-5 (Il-28) 폭격기', 'J-5': 'J-5 (MiG-17)', 'J-6': 'J-6 (MiG-19)', 'MiG-21/J-7': 'MiG-21 / J-7', 'F-18': 'F/A-18',
+  'H-5': 'H-5 (Il-28) 폭격기', 'J-5': 'J-5 (MiG-17)', 'J-6': 'J-6 (MiG-19)', 'MiG-21/J-7': 'MiG-21 / J-7', 'F-18': 'F/A-18 호넷',
+  'MiG-23': 'MiG-23 플로거', 'MiG-29': 'MiG-29 펄크럼', 'F-4': 'F-4 팼텀 II', 'F-5': 'F-5 타이거 II', 'F-14': 'F-14 톰캣',
+  'F-15': 'F-15 이글', 'F-16': 'F-16 파이팅 팰컨', 'F-111': 'F-111 아드바크', 'A-10': 'A-10 썬더볼트 II',
+  'B-52': 'B-52 스트래토포트리스',
 };
 
 export const PLACE_KO: Record<string, string> = {
@@ -174,6 +187,7 @@ const NEWS_RULES: Rule[] = [
   [/^(North Korean|United Nations) air force has been neutralized\.$/, (m) => `${m[1] === 'North Korean' ? '북한' : '유엔'} 공군 무력화`],
   [/^United Nations units enter North Korea\.$/, () => '유엔군, 38선 넘어 북한 진입'],
   [/^China pledges to halt imperialist aggression in Korea\.$/, () => "중국, '조선에서의 제국주의 침략 저지' 천명"],
+  [/^Red Chinese army units have intervened in Korea!$/, () => '중공군 부대, 한국전쟁에 참전!'],
   [/^North Korean commandos attack South Korean supply dumps\.$/, () => '북한 특수부대, 한국군 보급 기지 습격'],
   [/^United Nations forces occupy (.+)\.$/, (m) => `유엔군, ${PLACE_KO[m[1]] ?? m[1]} 점령`],
   [/^U\.N\. forces discover bodies of POW's executed by NKPA\.$/, () => '유엔군, 북한군이 처형한 포로 시신 발견'],
@@ -716,7 +730,7 @@ export const SAVE_UI_KO = {
   deleteShort: '지우기',
   download: '파일로 내려받기',
   upload: '파일 불러오기…',
-  fileHint: '.json 파일로 다른 브라우저나 PC에 옮길 수 있어요.',
+  fileHint: '.json 파일로 다른 브라우저나 PC에 옮길 수 있어요. 원작 .SAV는 node tools/extract/sav2json.ts로 바꾼 뒤 올리세요.',
   close: '닫기',
   vsComputer: (side: string) => `컴퓨터: ${side}`,
   blockedPhase: '저장은 명령 단계에서만 할 수 있어요 (원작과 같음).',
@@ -735,15 +749,38 @@ export const SAVE_UI_KO = {
     newerVersion: '더 새 버전의 리메이크에서 만든 저장 파일이에요.',
     scenarioMismatch: '시나리오 데이터가 저장 파일과 맞지 않아요.',
     noScenario: '저장 파일의 시나리오 데이터를 찾을 수 없어요.',
+    originalSav: '원작 저장 파일(.SAV)은 바로 올릴 수 없어요. remake 폴더에서 node tools/extract/sav2json.ts <파일.SAV>로 .json을 만든 뒤 그 파일을 올리세요.',
   } as Record<string, string>,
   fromNewGame: '저장한 게임 불러오기',
 } as const;
 
 // ---------- sound (docs/audio.md) ----------
 
+/** The "조작" card of the summary panel. */
+export const HELP_KO = {
+  title: '조작',
+  lines: (newGame: string, air: string, endPhase: string) => [
+    `상단 ${newGame}: 시나리오와 게임 설정(개입·역량·플레이 방식·항공·정보)을 골라 새로 시작`,
+    '자기 진영 부대가 있는 헥스 클릭: 부대 선택, 갈 수 있는 범위 표시',
+    '범위 안 헥스에 마우스: 경로·비용 미리보기',
+    '목적지 클릭: 경로 고정 → 한 번 더 클릭: 이동',
+    '같은 헥스 다시 클릭: 겹친 다른 부대 선택 (겹친 부대는 말 오른쪽 위로 테두리가 보임)',
+    '옆의 적 부대 클릭: 공격 미리보기 → 한 번 더: 공격 명령(또는 돌파)',
+    '헥스 패널의 편성: 같은 헥스 두 부대 사이에서 유닛 옮기기·이름 바꾸기',
+    `상단 ${air}: 항공대 임무(1차 명령 단계) → 전투 단계에서 지도의 적 헥스를 클릭해 공습`,
+    `상단 ▶ ${endPhase}: 다음 진영·단계로 (1차 명령 → 전투 → 2차 명령 → 정리)`,
+    '오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기 · C: 선택한 부대로 지도 이동',
+    '드래그 또는 방향키: 지도 이동 (Shift+방향키: 빠르게) · 휠: 확대·축소',
+    '상단 저장: 슬롯·자동 저장·파일 · 보고서: 전략 보고·항구와 비행장·날씨·전략 개관 · ♪ 설정: 음악·효과음·진행 속도·이동 따라가기',
+  ],
+  computer: (side: string, ai: string) => `컴퓨터가 ${side}을 맡습니다 (원작 AI ${ai}).`,
+  twoPlayer: '두 사람이 번갈아 하는 방식입니다.',
+  codeRow: '원본 코드',
+};
+
 export const SOUND_UI_KO = {
   button: '소리',
-  buttonTitle: '배경 음악과 효과음',
+  buttonTitle: '배경 음악·효과음·진행 속도·이동 따라가기',
   title: '소리',
   musicOn: '음악 켜짐',
   musicOff: '음악 꺼짐',
@@ -759,6 +796,12 @@ export const SOUND_UI_KO = {
   medleyHint: '모든 곡을 차례로',
   bySide: '진영별',
   bySideHint: '공산군 단계는 인터내셔널가, 유엔군 단계는 유엔 쪽 곡',
+  playTitle: '진행',
+  speed: '진행 속도',
+  speedValues: { 1: '빠름', 2: '보통', 3: '느림' } as Record<number, string>,
+  followOn: '이동 따라가기 켜짐',
+  followOff: '이동 따라가기 꺼짐',
+  playNote: '부대가 움직이는 속도입니다(원작 Speed). 따라가기를 켜면 지도가 움직이는 부대를 계속 가운데에 둡니다(원작 Mvmnt Centering). 꺼 두면 부대가 화면 밖으로 나갈 때만 옮깁니다. C 키: 선택한 부대로 지도 이동.',
   note: '1990년대 초 FM 사운드카드 느낌으로 직접 편곡한 연주곡(가사 없음)입니다. 저작권이 끝난 곡만 저장소에 들어 있고, 6.25의 노래는 개인 데이터(data/private)에 있을 때만 나옵니다.',
 } as const;
 

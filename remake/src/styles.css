@@ -91,6 +91,7 @@ select {
 .units summary:hover { background: #faf9f6; }
 .unit-title { display: flex; flex-direction: column; font-size: 13px; }
 .unit-title .en { font-size: 11px; }
+dd .en { font-size: 11px; opacity: 0.8; }
 .unit-meta { display: flex; gap: 6px; align-items: center; }
 .strength { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px; }
 .bar { height: 4px; border-radius: 2px; background: #ece9e1; overflow: hidden; }
@@ -321,6 +322,10 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .snd-choice small { font-size: 11px; color: var(--muted); }
 .snd-choice[aria-pressed="true"] { border-color: #14325c; box-shadow: 0 0 0 2px #14325c inset; background: #eef3fa; }
 .snd-note { font-size: 11px; color: var(--muted); margin: 8px 0 0; line-height: 1.4; }
+.snd-head { font-size: 12px; margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.snd-row.snd-speed { grid-template-columns: 112px repeat(3, 1fr); font-size: 12px; }
+.snd-speed .btn.small { justify-content: center; }
+.snd-speed .btn[aria-pressed="true"] { border-color: #14325c; box-shadow: 0 0 0 2px #14325c inset; background: #eef3fa; }
 
 /* ---------- report screens (docs/rules/reports.md) ---------- */
 #reports-btn[aria-pressed="true"] { background: #14325c; border-color: #14325c; color: #fff; }

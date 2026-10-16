@@ -3,9 +3,10 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-17, 노트북(C:\Users\hwang\AIprojects\korea). **유엔군 컴퓨터 WALTON 완료** (같은 날 앞서 부대 편성 화면 FULL_HEX 완료)
-  (규칙 `docs/rules/ai.md` 8장; 엔진 `src/engine/ai/walton.ts`, 등록부 `ai/index.ts`; 테스트 102개 통과;
-  standalone 검증: 공산군으로 크로마이트 시작 → 단계 종료 → "컴퓨터(유엔군) 1차 명령 단계: 부대 7개 이동, 공격 13건", 인천 상륙). 다음은 7장 개선판 AI
+- 마지막 갱신: 2026-10-17 (오후), 노트북(C:\Users\hwang\AIprojects\korea). **작은 남은 과제 일괄 완료**: 중공군 첫 참전 뉴스, 표시 전투력 통일,
+  진행 속도·이동 따라가기(+이동 애니메이션), 밀집 지역 마커 겹침, 한글화 마무리, 원작 .SAV 변환기. 테스트 109개 통과.
+  **사용자 결정: 개선판 AI는 맨 마지막 과제.** 남은 것은 7장(원본 게임 비교, 새 그래픽, 그다음 개선판 AI)
+  (같은 날 앞서 유엔군 컴퓨터 WALTON, 부대 편성 화면 FULL_HEX 완료)
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -168,9 +169,27 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     유닛마다 "부대 2로 →"/"← 부대 1로"/"새 부대로"(안 되면 꺼지고 짧은 이유, 되면 효과 줄), 이름 바꾸기(입력란 Enter/Esc), ◀ 이전/다음 헥스 ▶, Esc 닫기.
     닫으면 그 헥스가 선택된 상태(이동 명령은 다시 고름)
 
+- **2026-10-17 오후에 더한 것**
+  - 중공군 첫 참전 뉴스(`combat.md` 5, `combat.ts`의 `ccfFirstCombat`): GRCMBT `0031`(문자열은 모듈 맨 앞 `0000`). 공격·방어 부대 선두가
+    중공군(SYMBOL div 10 = 6)인 첫 지상전, 1950년대만, UTILITY_SPACE[16]으로 한 번. 모든 파일이 [16] = 0이라 차가운 강철도 뛸(원작대로)
+  - 표시 전투력 통일: 원작 화면(REPORTS `0b55`·`1751`)이 GET_STRENGTH 모드 0 합계 div 10임을 확인 → `combat.ts`의 `shownStrength`를 패널·지도·편성 창이 공유.
+    매뉴얼 식 `strength.ts`는 지움(±1 차이 해소, 미해결 질문 하나 닫힘)
+  - 진행 속도·이동 따라가기(`options.md` 5, `ui/playSettings.ts`): KOREA.SET_SPEED(DELAYVALUE 1/2/3, GAMEDELAY = ms × 값 div 2),
+    TOGGLE_CENTERING(CENTER, MOVEUNIT `1c87`: 켜면 걸음마다 중앙, 끄면 화면 밖으로 나갈 때만, C 키). 리메이크에는 대기 화면이 없어 속도는
+    **이동 애니메이션**(리메이크 추가, `mapView.animateMove`)에 씀. "♪ 설정" 메뉴의 "진행" 칸, 브라우저 저장소 `conflict-korea-remake/play`
+  - 밀집 지역 마커: 겹친 헥스는 첫(또는 선택한) 부대를 가운데 온전히, 나머지는 오른쪽 위로 `STACK_STEP` 비켜 색 테두리만(숫자·배지 없음).
+    말의 화면 사각형(`counterRects`)을 지명·산 이름이 피함(큰 도시 이름만 말 위 허용, 산 이름은 자리가 없으면 생략)
+  - 한글화 마무리: 모든 시나리오의 부대·편성·항공대 이름과 6판 시뮬레이션 뉴스를 번역 함수에 넣어 누락 0건 확인.
+    1995 기종 별칭(`AIRCRAFT_KO`), 원본 지형 코드 설명 `terrainCodeKo`, 조작 도움말을 `HELP_KO`로 옮김(컴퓨터 진영·KIM/WALTON 표시).
+    남은 영어는 한글 옆 작은 원문 병기(일부러 둔 것)
+  - 원작 .SAV 가져오기(`save.md` 4): `tools/extract/sav2json.ts` + `lib/sav.ts`. 세이브 = .DAT와 같은 덩어리, 재개 지점은
+    UTILITY_SPACE[11]·GOTO_SECONDPHASE·SAVEORDER·GOTO_PLAYERPHASE(PLAYER·PHASE는 파일 밖). 시작 메뉴 값, NOTES → `GameState.notes`(새 필드,
+    "최근 소식"이 이걸 씀). **KOREA1S·3S·4S.DAT는 실제 원작 세이브**(두 사람 대전, 공산군 1차 명령 단계)라 이 파일로 검증.
+    저장 창에 .SAV를 올리면 변환 방법 안내
+
 아직 없음
-- 전체 한글화, 새 그래픽
-- 개선판 AI (등록부와 선택 자리만 있음), 원작 .SAV 가져오기, 중공군 첫 참전 뉴스
+- 새 그래픽·전투/공습 연출(화풍 결정 필요), 원본 게임과의 직접 비교(DOSBox 필요)
+- 개선판 AI (등록부와 선택 자리만 있음) ← 마지막 과제
 
 ## 3. 폴더 구조
 
@@ -194,8 +213,8 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/air.md                    항공 (약화, 기지, 임무, 공산 요격 수준, 1995 제공권, 차단, 공습)
     docs/rules/naval.md                  해상·공수 이동 (자격, 수송 수요, 상륙, 상륙 공격, 일본 철수, 공수 낙하)
     docs/rules/intel.md                  정보(안개) (정찰 단계, 누가 무엇을 보는가, 정찰 갱신, 되돌리기 제한, 거짓 전력 보고)
-    docs/rules/options.md                새 게임 옵션 (시작 메뉴 항목·기본값, 무작위 역량, 시나리오 파일 고르기)
-    docs/rules/save.md                   저장/불러오기 (원작 저장 시점·재개, 리메이크 JSON 형식)
+    docs/rules/options.md                새 게임 옵션 (시작 메뉴 항목·기본값, 무작위 역량, 시나리오 파일 고르기) + 5장 진행 속도·이동 따라가기
+    docs/rules/save.md                   저장/불러오기 (원작 저장 시점·재개, 리메이크 JSON 형식, 4장 원작 .SAV 변환)
     docs/rules/ai.md                     컴퓨터 플레이어 (원작 KIM·AISUBS·침공 경로, 리메이크 구조, 확장 계획)
     docs/rules/ai-walton.md              WALTON을 옮기기 전의 구조 조사(영문 메모, 맨 위에 옮기며 바로잡은 점) + ai-walton-script.txt. 기준은 ai.md 8장
     docs/rules/reports.md                보고서 (전략 보고, 비행장·항구, 날씨, 시나리오 정보, 보급망 표시, 전략 개관, FULL_HEX 요약)
@@ -222,15 +241,15 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
-        hex.ts, strength.ts              헥스 수학, 전투력(부록 F)
+        hex.ts                           헥스 수학 (전투력은 combat.ts의 GET_STRENGTH·shownStrength 하나로)
       i18n/ko.ts                         한글 용어집·번역 규칙
       ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts),
-                                         보고서(reports.ts), 소리 메뉴(soundPanel.ts), 부대 편성(organize.ts)
+                                         보고서(reports.ts), 소리·진행 메뉴(soundPanel.ts, 설정값 playSettings.ts), 부대 편성(organize.ts)
       audio/                             소리: abc.ts(악보 읽기), arrange.ts(편곡), synth.ts(FM 악기), sfx.ts(효과음), songs.ts(곡), index.ts(재생기)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
     tools/
-      extract/                           원본 → data/extracted (JSON, PNG)
+      extract/                           원본 → data/extracted (JSON, PNG), sav2json.ts(원작 .SAV → 리메이크 저장 JSON, lib/sav.ts)
       disasm/                            dis.cjs (디스어셈블), strings.cjs (문자열)
       vendor/iced-x86/                   x86 디코더 (MIT, npm 패키지 그대로)
       dev-server.mjs, build.mjs          무설치 개발 서버, 정적 빌드
@@ -251,6 +270,7 @@ node tools/disasm/dis.cjs --all    # 모듈별 어셈블리 → data/extracted/a
 node tools/dev-server.mjs          # http://localhost:5173
 node tools/build.mjs               # dist/ + dist/standalone.html
 node --test --test-isolation=none "tests/**/*.test.ts"   # 단위 테스트 (npm test와 같음)
+node tools/extract/sav2json.ts GAME.SAV [out.json]     # 원작 세이브 → 저장 창 "파일 불러오기…"로 올릴 .json
 ```
 
 추출이 정상이면 다음 줄이 보여야 합니다.
@@ -284,6 +304,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   엔진만 볼 때는 Node: `startNewGame(g, { computerSide: 2 })` → `endPlayerPhase` 반복(인천 상륙은 크로마이트 11턴 첫 유엔 단계).
   부대 편성: `__app.openOrganize(x, y)`(명령 단계의 자기 헥스만), `closeOrganize()`, `organizeAt`, `transfer(유닛 번호)`, `renameForce(칸 0|1, 이름)`, `organizeNav(1|-1)`.
   편성 창이 열려 있으면 모달이라 지도 클릭·단계 종료가 막힘.
+  진행 설정: `__app.play`(speed 1|2|3, follow), `__app.setPlay({ speed, follow })`, `__app.animating`(이동 애니메이션 중), `__app.centerSelected()`(C 키).
+  **자동화 탭은 requestAnimationFrame이 거의 멈춰 있어(1초에 0~3프레임)** 애니메이션은 스크린샷을 찍을 때만 진행됨.
+  중간 프레임을 보려면 이동 직후 `page.screenshot()`을 몇 번. 게임 상태는 명령 즉시 끝나 있음(클릭·키는 애니메이션을 끝내고 처리)
   소리: `__app.audio`(settings, songs, `sfx(이름)`, `renderOffline(곡 id, 초)`·`renderSfx(이름)`은 OfflineAudioContext로 렌더링만). 자동화 탭은 렌더링이 느려 한 곡씩 비동기로 document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
   ("브라우저 저장소를 쓸 수 없어요" 표시) 슬롯 저장은 검증 불가, saveText/loadText로 확인
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
@@ -331,11 +354,31 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 | 턴 진행 | KOREA.PHASE_PULSE, PLAYER_PHASE / ENDTURN.NEXT_TURN, GROUND_REINFORCEMENTS, DO_INTEL, DO_PATROLS, MINE_WARFARE, CHECK_CHINA, GAME_OVER |
 | AI | WARRIORS.KIM (공산, 본문 `29df`~`2c30`, 중첩 `0000`~`29de`), WALTON (유엔, 본문 `5cf5`, 중첩 `2c85`~`5cf4`) / AISUBS.* / 유닛 초기화 `5e4a`(ROUTE). 심볼 길이는 믿지 말 것(ai.md 0) |
 | 보고서 | REPORTS.STRATEGIC_REPORT `2f75`, PORTS_AIRFIELDS_REPORT `0356`, W_REPORT `3699`, SCENARIO_REPORT `0010` / EURSUBS1.DO_OVERVIEW `4421` / SUPPLY.DETERMINE_SUPPLY(TRUE) |
+| 게임 중 설정 | KOREA.SET_SPEED `08f7`(DELAYVALUE), TOGGLE_CENTERING `087b`(CENTER) / TACSUBS.GAMEDELAY / MOVEUNIT `1c87`(중앙 이동, 호출 `3340`·`3460`·`3733`) |
+| 원작 세이브 재개 | KOREA 주 루프 `1ffb`~, PHASE_PULSE `1e49`(GOTO_PLAYERPHASE·SAVEORDER), INIT_GAME `0600` / GLOBALS: GOTO_SECONDPHASE 8BFD, SAVEORDER 8BFE, GOTO_PLAYERPHASE 8C02 |
+| 중공군 참전 뉴스 | GRCMBT 중첩 `0031`(문자열 `0000`), 호출 `1001`·`1c0d`. `--at GRCMBT 31 6c` |
 | 부대 편성 | REPORTS.FULL_HEX `2c3c` + 중첩(입력 `2971`, 화면 `196c`, 옮기기 `232c`·`218d`·`2103`, 이름 `203d`·`1eab`, ±Hex `1cca`·`1d8f`, 스미스 `22cf`), SORT_FORCE `0727` / HEXSTUFF.UNIT_INFORMATION `0e43`(메뉴 조건) |
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 개선판 AI
+## 7. 다음 작업
+
+순서(사용자 결정 2026-10-17): **7.1 원본 게임 비교 → 7.2 새 그래픽 → 7.3 개선판 AI(마지막)**. 7.1·7.2는 시작 전에 사용자에게 방식을 물을 것.
+
+### 7.1 원본 게임과 직접 비교
+
+코드만으로 결론을 못 낸 항목(README "원본 게임과 직접 비교해 확인할 것", 8장)을 원작을 실제로 돌려 확인.
+- 방법 후보: (가) 사용자가 DOSBox-X를 설치해 직접 플레이(이 PC에는 DOSBox·winget 없음, 2026-10-17 확인),
+  (나) 브라우저에서 js-dos(DOSBox WASM)로 confkorea를 띄워 AI가 키 입력·스크린샷으로 확인(인터넷에서 js-dos 스크립트를 받아야 함)
+- 비교 기준 세이브: KOREA1S·3S·4S.DAT를 .SAV로 복사해 원작에서 "A saved game"으로 열면 리메이크(sav2json)와 같은 지점에서 시작할 수 있음
+- 원작에서 저장한 .SAV를 sav2json으로 바꿔 두 게임을 같은 상태에서 비교하는 것이 가장 확실(난수는 다르므로 경향만)
+
+### 7.2 새 그래픽·연출
+
+지금은 Canvas 도형(지형 색, NATO 기호)과 이동 애니메이션만 있음. 화풍(원작 LBM 느낌의 픽셀, 종이 지도·지도책 느낌, 현대 플랫 등)을 먼저 정할 것.
+후보: 지형 텍스처·산악 음영, 부대 말 디자인, 전투·공습 결과 연출(원작 GAMEDELAY 자리에 진행 속도 적용), 제목 화면. 원작 그래픽은 공개 불가
+
+### 7.3 개선판 AI (마지막)
 
 목표: 새 게임 대화 상자의 "컴퓨터 AI: 개선판(준비 중)"을 켜기. 원작 AI(KIM·WALTON)는 그대로 두고 `AiLevel` 'improved' 플레이어를 양 진영에 추가.
 원작의 성격(침공 경로, 부산 교두보, 상륙)은 살리되, 원작 AI가 규칙을 어기거나(실제 적 위치를 읽음, 순간이동) 버그로 못 하는 것을 고친다.
@@ -350,13 +393,16 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 3. 검증 도구: 컴퓨터끼리 대전(지금 `computerSide`는 한쪽만이라 테스트 전용 옵션 또는 `tools/selfplay.mjs`)으로
    원작 대 개선판 승리 수준 비교, 같은 시드 재현, 저장·불러오기 뒤 동일 진행
 4. 화면: 개선판 버튼 활성화, 단계 알림 창에 개선판 표시
-5. 다른 후보(작은 일): 중공군 첫 참전 뉴스(GRCMBT), 전체 한글화, 밀집 지역 부대 마커 겹침, 원작 .SAV 가져오기
+5. (예전 "다른 후보" 4가지는 2026-10-17에 모두 끝남)
 
 ## 8. 미해결 질문
 
 - (결정) 편성: 둘 다 공격 계획이고 MASK(유닛) ≥ MASK(선두)면 남은 이동력과 상관없이 합류 허용(`232c` `254d`)과
   스미스 흡수·(0,2) 배치는 사용자 결정(2026-10-17)으로 원작 그대로 둠. (0,2)의 유닛을 REST_UP이 매 턴 처리하는 것도 원작 그대로
-- 표시: 헥스 패널의 유닛 살상-생존은 매뉴얼 식(`strength.ts`), 편성 창은 GET_STRENGTH 모드 0이라 ±1 다를 수 있음. 패널도 GET_STRENGTH로 바꿀지 (UI 과제)
+- (해결) 표시 전투력: 원작 화면이 GET_STRENGTH 모드 0 합계 div 10이라 패널·지도·편성 창 모두 그걸로(`shownStrength`, combat.md 4)
+- 세이브: KOREA2S.DAT는 SAVEORDER·GOTO_PLAYERPHASE가 세이브처럼 차 있는데 UTILITY_SPACE[11]만 0(다른 S판은 1). 제작자가 손으로 끈 것인지 불명.
+  sav2json은 [11] = 0이면 새 게임 데이터로 보고 거부함. 세이브 덩어리에 든 DELAYVALUE·BEEPS·CENTER를 원작 LOAD_OLD_GAME이 설정으로 쓰는지는 미확인(리메이크는 브라우저 설정)
+- 뉴스: 중공군 첫 참전 뉴스는 모든 파일이 UTILITY_SPACE[16] = 0이라 차가운 강철(이미 개입) 첫 전투에도 뜨는데 원작 그대로 둠(원본 게임에서 확인 가능)
 
 - (해결) STATUS 0x10 = 이번 턴 전력 보고 거짓, 0x20 = 전력 보고 정해짐(intel.md 2.4). 이제 모든 비트 확정
 - 정보: 원작은 헥스 정보를 볼 때 GET_STRENGTH 모드 3이 RND(1,3)을 소비해 난수 순서가 화면 조작에 따라 달라짐. 리메이크는 시드 해시로 대신했으므로
@@ -384,7 +430,7 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 - 이동 중 버그아웃(`3070`)이 비교하는 두 헥스가 정확히 "출발·도착"인지 (MOVE_UNIT 프레임 `[di-12h]`/`[di-14h]`, 지금은 매뉴얼대로 두 헥스)
 - (해결) 38선 표시: 데이터 표 없이 DO_OVERVIEW가 1950년대에만 36·37행 사이 직선으로 그림(reports.md 4). 미그 앨리는 x < 15, y < 27
 - 기본 DAT와 S DAT: 둘 다 새 게임으로 읽힌다(LOAD_NEW_GAME이 UTILITY_SPACE[11]을 0으로). S는 사단 단위 편성에 시작 시점의 이동·공격 명령이 미리 들어 있음(korea1s 북한군 공격 계획 등)
-- 밀집 지역 부대 마커 겹침 (UI 개선 과제)
+- (해결) 밀집 지역 부대 마커 겹침: 겹친 부대는 테두리만, 지명은 말을 피함(2장). 더 많이 비켜야 하면 `mapView.ts`의 `STACK_STEP`
 
 ## 9. 참고 자료
 

@@ -20,6 +20,8 @@ import type { GameOptions } from './engine/options.ts';
 import { renderNewGame, applyChoice } from './ui/newGame.ts';
 import { renderSaveDialog } from './ui/saveDialog.ts';
 import { renderSoundPanel } from './ui/soundPanel.ts';
+import { loadPlaySettings, savePlaySettings, moveStepMs } from './ui/playSettings.ts';
+import type { PlaySettings, Speed } from './ui/playSettings.ts';
 import { renderReports, overviewHexAt } from './ui/reports.ts';
 import { renderOrganize, forceTitleKo } from './ui/organize.ts';
 import { organizeBlock, nextOrganizeHex, transferUnit, renameForce, hexSlots } from './engine/forces.ts';
@@ -161,6 +163,9 @@ async function main() {
   const audio = new AudioManager();
   const soundEl = $('#sound-panel');
   let soundOpen = false;
+  /** Speed and movement centering of the original options menu (docs/rules/options.md 5). */
+  let play: PlaySettings = loadPlaySettings();
+  const setPlay = (p: Partial<PlaySettings>) => { play = { ...play, ...p }; savePlaySettings(play); renderSound(); };
   const renderSound = () => {
     ($('#sound') as HTMLButtonElement).setAttribute('aria-pressed', String(soundOpen));
     $('#sound').classList.toggle('muted-btn', !audio.settings.music && !audio.settings.sfx);
@@ -168,7 +173,7 @@ async function main() {
     // keep a volume slider that is being dragged
     const active = document.activeElement as HTMLElement | null;
     if (active && active.tagName === 'INPUT' && soundEl.contains(active)) return;
-    renderSoundPanel(soundEl, audio);
+    renderSoundPanel(soundEl, audio, play);
     soundEl.hidden = false;
   };
   audio.onChange = renderSound;
@@ -187,6 +192,8 @@ async function main() {
     else if (what === 'sfx') { audio.set({ sfx: !audio.settings.sfx }); audio.sfx('click'); }
     else if (what === 'skip') audio.skip();
     else if (what === 'choice') audio.set({ choice: b.dataset.value!, music: true });
+    else if (what === 'speed') { setPlay({ speed: Number(b.dataset.value) as Speed }); audio.sfx('click'); }
+    else if (what === 'follow') { setPlay({ follow: !play.follow }); audio.sfx('click'); }
   });
   soundEl.addEventListener('input', (e) => {
     const r = e.target as HTMLInputElement;
@@ -644,11 +651,13 @@ async function main() {
     const path = pathTo(orders.reach, orders.pinned);
     if (!path) return;
     const { leader, mode } = orders;
+    const from = forceHex(game, leader);
     const res = mode === 'rail' ? railMove(game, leader, path)
       : mode === 'sea' ? seaMove(game, leader, path)
       : mode === 'air' ? airDrop(game, leader, orders.pinned)
       : moveForce(game, leader, path);
     if (res.ok) {
+      animateMove(leader, from, mode === 'air' ? [orders.pinned] : res.steps.map((s) => s.hex));
       audio.sfx(res.destroyed ? 'explosion' : mode === 'rail' ? 'rail' : mode === 'sea' ? 'ship' : mode === 'air' ? 'drop' : 'march');
       const parts = [MOVE_UI_KO.done, mode === 'rail' ? `${path.length}칸 철도 수송` : `${res.usedAfter - res.usedBefore}${MOVE_UI_KO.points} 사용`];
       if (res.readinessLoss) parts.push(`${MOVE_UI_KO.readiness} −${res.readinessLoss}`);
@@ -670,6 +679,22 @@ async function main() {
       message = { kind: found ? 'warn' : 'error', text: found ? BLOCK_KO.enemyFound : `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
       startOrders(leader, mode);
     }
+  }
+
+  /** Movement animation from `from` through the hexes entered (the engine has already moved the force). */
+  function animateMove(leader: number, from: number, hexes: number[]) {
+    if (!game || from < 0) return;
+    const w = game.width;
+    const pts: [number, number][] = [from, ...hexes].map((i) => [i % w, Math.floor(i / w)]);
+    view.animateMove(leader, pts, moveStepMs(pts.length - 1, play.speed), play.follow);
+  }
+
+  /** Original key C while moving (MOVEUNIT `3726`): put the selected force (or hex) in the middle of the map. */
+  function centerSelected() {
+    if (!game) return;
+    const at = orders ? forceHex(game, orders.leader) : -1;
+    if (at >= 0) view.centerOn(at % game.width, Math.floor(at / game.width));
+    else if (sel) view.centerOn(sel[0], sel[1]);
   }
 
   function executeAssault() {
@@ -697,6 +722,7 @@ async function main() {
 
   function undo() {
     if (!game) return;
+    view.finishAnimation();
     const leader = undoMove(game);
     if (leader === null) return;
     audio.sfx('undo');
@@ -760,6 +786,7 @@ async function main() {
   // ---------- map events ----------
 
   view.onClick = (x, y) => {
+    view.finishAnimation();
     if (!game || modal()) return;
     const i = idx(game, x, y);
     if (inStrikes()) { if (pendingAirstrike(game)) strikeAt(x, y); return; }
@@ -890,7 +917,9 @@ async function main() {
       if (e.key === 'Enter' && banner.buttons.length === 1) onBanner(banner.buttons[0].action);
       return;
     }
+    view.finishAnimation();
     if (e.key === 'Escape') cancel();
+    else if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey) centerSelected();
     else if (e.key === 'Enter' && orders && orders.assault !== null) { executeAssault(); render(); }
     else if (e.key === 'Enter' && orders?.pinned !== null && orders) { execute(); render(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
@@ -1007,13 +1036,15 @@ async function main() {
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
-  fileInput.accept = '.json,application/json';
+  fileInput.accept = '.json,application/json,.sav,.SAV';
   fileInput.hidden = true;
   document.body.appendChild(fileInput);
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
     if (!file) return;
+    // original saves are binary: the web client does not read them, the converter does (docs/rules/save.md 4)
+    if (/\.sav$/i.test(file.name)) { saveMsg = { kind: 'error', text: SAVE_UI_KO.errors.originalSav }; render(); return; }
     const err = await loadFromText(await file.text());
     if (err) { saveMsg = { kind: 'error', text: err }; render(); }
   });
@@ -1163,6 +1194,11 @@ async function main() {
     transfer: (id: number) => organizeTransfer(id),
     renameForce: (slot: 0 | 1, name: string) => organizeRename(slot, name),
     organizeNav: (dir: 1 | -1) => organizeNav(dir),
+    /** Speed (1 fast, 2 medium, 3 slow) and movement centering; `animating` while a moved force is still sliding. */
+    get play() { return play; },
+    setPlay,
+    get animating() { return view.animating; },
+    centerSelected,
     /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
     setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },
   };

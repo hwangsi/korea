@@ -2,7 +2,6 @@
 // Buttons carry data-action attributes; main.ts handles them with one delegated listener.
 
 import type { EquipmentType, Force, Hex, MapData, Scenario } from '../data/types.ts';
-import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import type { GameState, Side, UnitState } from '../engine/state.ts';
 import { forceUnits, sideOf, unit, activeSide, POSSESSION_CODE } from '../engine/state.ts';
 import { fogActive, forceIntel, hexIntel, strengthReport, dropRisk } from '../engine/intel.ts';
@@ -10,7 +9,7 @@ import { ccfStatus, airShownAsProgram, RANDOM_COMPETENCE } from '../engine/optio
 import type { GameOptions } from '../engine/options.ts';
 import { allowance, canEntrain, canBugOut, inPort, isDeepOcean } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
-import { assaultTarget, atSea } from '../engine/combat.ts';
+import { assaultTarget, atSea, shownStrength } from '../engine/combat.ts';
 import type { AssaultPreview, CombatReport } from '../engine/combat.ts';
 import { seaMoveBlock, airMoveBlock, seaStartCost, airdropLossParts, MAX_SEALIFT } from '../engine/naval.ts';
 import type { SeaAssaultPreview } from '../engine/naval.ts';
@@ -29,7 +28,7 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
-  OPTIONS_UI_KO, FORCES_UI_KO,
+  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
@@ -113,7 +112,7 @@ function dateOfTurn(g: GameState, turn: number): string {
 function newsItems(ctx: PanelContext): { date: string; text: string }[] {
   const g = ctx.game;
   const own = g.news.map((n) => ({ date: dateOfTurn(g, n.turn), text: newsKo(n.text).text }));
-  return [...own.reverse(), ...ctx.scenario.news.map(newsKo).reverse()];
+  return [...own.reverse(), ...(g.notes ?? ctx.scenario.news).map(newsKo).reverse()];
 }
 
 export interface OrdersView {
@@ -192,21 +191,11 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
     </section>
     ${news.length ? `<section class="card"><h3>최근 소식</h3><ul class="news">${news.map((n) => `<li><span class="muted">${esc(n.date)}</span>${esc(n.text)}</li>`).join('')}</ul></section>` : ''}
     <section class="card help">
-      <h3>조작</h3>
-      <ul>
-        <li>상단 ${esc(OPTIONS_UI_KO.button)}: 시나리오와 게임 설정(개입·역량·플레이 방식·항공·정보)을 골라 새로 시작</li>
-        <li>자기 진영 부대가 있는 헥스 클릭: 부대 선택, 갈 수 있는 범위 표시</li>
-        <li>범위 안 헥스에 마우스: 경로·비용 미리보기</li>
-        <li>목적지 클릭: 경로 고정 → 한 번 더 클릭: 이동</li>
-        <li>같은 헥스 다시 클릭: 겹친 다른 부대 선택</li>
-        <li>옆의 적 부대 클릭: 공격 미리보기 → 한 번 더: 공격 명령(또는 돌파)</li>
-        <li>상단 ${esc(AIR_UI_KO.button)}: 항공대 임무(1차 명령 단계) → 전투 단계에서 지도의 적 헥스를 클릭해 공습</li>
-        <li>상단 ▶ ${esc(TURN_UI_KO.endPhase)}: 다음 진영·단계로 (1차 명령 → 전투 → 2차 명령 → 정리)</li>
-        <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
-        <li>드래그 또는 방향키: 지도 이동 (Shift+방향키: 빠르게) · 휠: 확대·축소</li>
-        <li>상단 저장: 슬롯·자동 저장·파일 · 보고서: 전략 보고·항구와 비행장·날씨·전략 개관 · ♪: 음악·효과음</li>
-      </ul>
-      <p class="muted small">${g.computerSide ? '컴퓨터가 한 진영을 맡습니다 (공산군은 원작 AI).' : '두 사람이 번갈아 하는 방식입니다.'} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
+      <h3>${esc(HELP_KO.title)}</h3>
+      <ul>${HELP_KO.lines(OPTIONS_UI_KO.button, AIR_UI_KO.button, TURN_UI_KO.endPhase).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+      <p class="muted small">${esc(g.computerSide
+        ? HELP_KO.computer(g.computerSide === 1 ? SIDE_KO.communist : SIDE_KO.un, g.computerSide === 1 ? 'KIM' : 'WALTON')
+        : HELP_KO.twoPlayer)} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
     </section>`;
 }
 
@@ -768,7 +757,7 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         ${airfield ? `<dt>비행장</dt><dd>${esc(airfield.ko)}${airfield.code ? ` (${airfield.code})` : ''} · 등급 ${afState?.current ?? 0}/${afState?.best ?? airfield.best}</dd>` : ''}
         ${supply ? '<dt>보급 거점</dt><dd>공산군 보급 거점</dd>' : ''}
         ${owner && hex.code < 0xa5 ? `<dt>보급망</dt><dd>${net ? `<span class="${net === 1 ? 'un' : 'red'}">${esc(TURN_UI_KO.inNet(net === 1 ? '유엔군' : '공산군'))}</span>` : `<span class="tag warn">${esc(TURN_UI_KO.outOfNet)}</span>`}</dd>` : ''}
-        <dt>원본 코드</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(hex.label)}</dd>
+        <dt>${esc(HELP_KO.codeRow)}</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(terrainCodeKo(hex.label))} <span class="en">${esc(hex.label)}</span></dd>
       </dl>
     </section>
     ${forces.length ? `<section class="card"><div class="forces-head"><h3>부대 <span class="muted">${forces.length}개 편성${anyFog ? '' : ` · ${unitCount}개 유닛`}</span></h3>
@@ -808,12 +797,13 @@ function forceCard(g: GameState, f: Force, active: boolean): string {
         <div><b>${esc(forceTitle(g, f.leader))}</b><span class="muted">${esc(NATION_KO[lead.nation])} · ${esc(SIDE_KO[SIDE_OF[lead.nation]])} · 이동력 ${a.remaining}/${a.rate}</span></div>
         ${action}
       </header>
-      <ul class="units">${members.map((u) => unitRow(u, g.equipmentTypes)).join('')}</ul>
+      <ul class="units">${members.map((u) => unitRow(g, u)).join('')}</ul>
     </article>`;
 }
 
-function unitRow(u: UnitState, types: Map<number, EquipmentType>): string {
-  const st = displayStrength(effectiveStrength(u, types));
+function unitRow(g: GameState, u: UnitState): string {
+  const types = g.equipmentTypes;
+  const st = shownStrength(g, [u]);
   const ready = Math.max(0, Math.min(100, u.readiness));
   return `
     <li><details>
@@ -822,7 +812,7 @@ function unitRow(u: UnitState, types: Map<number, EquipmentType>): string {
         <div class="unit-meta">
           <span class="tag">${esc(KIND_KO[u.kind] ?? u.kind)}</span>
           <span class="tag">${esc(EXPERIENCE_KO[u.experience] ?? '?')}</span>
-          <span class="strength" title="살상력-생존력 (원작 표기, 1/10)">${st.lethality}-${st.survivability}</span>
+          <span class="strength" title="살상력-생존력 (원작 표기, 1/10)">${st.L}-${st.S}</span>
         </div>
         <div class="bar" title="준비도 ${ready}%"><i style="width:${ready}%"></i></div>
       </summary>

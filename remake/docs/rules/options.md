@@ -73,3 +73,26 @@
 | 문서 확인(복사 방지) | 없음 | |
 | 게임 중 설정 확인 | 요약 패널의 시나리오 카드에 현재 설정(원작 Scenario Info) | |
 | 컴퓨터 진영이 있을 때 교대 안내 | 교대 문구("자리를 바꾸세요")를 띄우지 않음 | 한 사람 게임 |
+
+## 5. 게임 중 설정: 속도와 이동 따라가기 (KOREA.SET_SPEED, TOGGLE_CENTERING)
+
+원작 게임 메뉴에는 소리(TOGGLE_BEEPS), 속도, 이동 따라가기가 함께 있습니다. 셋 다 NEW_GAME(`09a2`~`09c9`)이 INIT_GAME 앞뒤로 저장·복원해서
+**새 게임을 시작해도 유지**되고, 저장 파일과는 관계가 없습니다.
+
+| 설정 | 원작 | 값 |
+|---|---|---|
+| 속도 | SET_SPEED `08f7`: "Set game delay speed. Current speed: fast/medium/slow", DO_ALERT 세 버튼 → DELAYVALUE | 1 빠름, **2 보통**(시작값, KOREA `01f4`), 3 느림 |
+| 이동 따라가기 | TOGGLE_CENTERING `087b`: "Mvmnt Centering?" On/Off → CENTER | 0 끔(초기화 코드 없음 = 전역 0), 1 켬 |
+
+- **속도가 쓰이는 곳**: TACSUBS.GAMEDELAY(ms) = CRT.DELAY(ms × DELAYVALUE div 2), 즉 ×0.5/×1/×1.5. 부르는 곳은 전투 결과 화면(GRCMBT.CHECK_ELIM 7곳,
+  ELIMINATE_UNIT, DO_GROUND_COMBAT), 공중전 화면(AIRCMBT 2곳), DO_INTEL, SUPPLY 표시. **이동(MOVEUNIT)에는 대기 없음**
+- **따라가기가 쓰이는 곳**: MOVEUNIT 중첩 `1c87`(force, redraw)만 CENTER를 읽음. MAP_X := 유닛 X − 7, MAP_Y := 유닛 Y − 3(LIMIT 0~20, 1~58)으로 화면을 옮기고
+  위치가 바뀌었거나 redraw면 SHOW_MAP. 부르는 곳: 걸음마다 `3340`(force 0: CENTER가 켜졌을 때만), `3460`(force 1: `call 0`이 참일 때, 유닛이 화면을 벗어남),
+  `3733`(force 1: 이동 중 **C 키**), `304a`(force 1, redraw 1: 모드 시작)
+
+리메이크
+- 상단 "♪ 설정" 메뉴 아래쪽 "진행"에 속도 세 버튼과 따라가기 켜기/끄기. 브라우저 저장소 `conflict-korea-remake/play`(`ui/playSettings.ts`), 새 게임에도 유지
+- 리메이크에는 원작 같은 결과 대기 화면이 없어(전투·공중전 결과는 패널 목록) 속도는 **이동 애니메이션**(리메이크 추가)에 씀: 명령이 끝난 뒤 지나간 헥스를 따라
+  말이 미끄러짐. 한 칸 GAMEDELAY(120 ms), 이동 전체는 GAMEDELAY(1200 ms) 이내(철도·해상의 긴 경로). 공수는 출발→낙하 지점 직선
+- 따라가기 켬 = 움직이는 말을 계속 지도 가운데에(`3340`), 끔 = 말이 화면 가장자리(한 헥스 여유)를 벗어날 때만 가운데로(`3460`). C 키 = 선택한 부대로 지도 이동(`3733`)
+- 애니메이션은 화면 표시일 뿐 게임 상태는 이미 끝난 이동. 지도 클릭·키 입력·되돌리기는 애니메이션을 바로 끝내고 처리. 애니메이션 동안 이동 범위 표시는 숨김

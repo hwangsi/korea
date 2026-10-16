@@ -59,3 +59,32 @@ JSON 한 덩어리입니다.
 - **원작 .SAV 가져오기**: 지원하지 않음. 웹 코드는 원본 바이너리를 직접 읽지 않는 규칙(HANDOFF 5장)이라, 필요하면
   `tools/extract`에 .SAV → 저장 JSON 변환 명령을 추가하는 방식으로 할 것(세이브 형식은 시나리오 DAT와 같아 추출기를 재사용 가능).
 - 원작의 "Save Game?" 확인과 파일 이름 입력 대신, 저장 대화 상자에서 슬롯을 누르면 바로 저장(덮어쓸 때만 확인).
+
+## 4. 원작 .SAV 가져오기 (`tools/extract/sav2json.ts`)
+
+```
+cd korea/remake
+node tools/extract/sav2json.ts <게임.SAV> [나갈.json] [--seed N] [--exe KOREA.EXE]
+```
+
+그다음 리메이크의 저장 → "파일 불러오기…"로 .json을 올립니다. KOREA.EXE(자료 배치를 디버그 정보에서 읽음)와 `data/extracted`가 필요합니다.
+
+원작 세이브는 시나리오 .DAT와 같은 GLOBALS 덩어리(UNITS ~ VICTORY, 33792바이트)라 추출기의 시나리오 파서(`lib/scenario.ts`)가 그대로 읽고,
+`lib/sav.ts`가 다음을 더 읽습니다.
+
+| 원작 | 위치 | 리메이크 |
+|---|---|---|
+| UTILITY_SPACE[11] = 1 | 게임 시작됨(INIT_GAME 뒤). .DAT는 0 | 0이면 "새 게임 데이터"로 거부(`notStarted`) |
+| GOTO_SECONDPHASE | 2차 명령 단계에 저장(주 루프 `2005`가 1·2단계 건너뜀) | `phase` 3, 아니면 1 |
+| SAVEORDER[0..1] | 그 단계의 순서(PHASE_PULSE `1e5c`, 선공 재판정 없음) | `order` |
+| GOTO_PLAYERPHASE 1·2 | 순서 중 몇 번째 플레이어였나(`1f17`) | `orderStep` = 값 − 1, `player` = SAVEORDER[값 − 1] |
+| SCENARIO[0]·[2]·[3]·[6], REALITY[2]·[4] | 시작 메뉴 값(options.md 1). 무작위 역량은 굴린 값(1~5)이 들어 있음(`4a25`) | `GameOptions`, 컴퓨터 진영 = 플레이 방식 |
+| NOTES | 마지막 뉴스 8줄 | `GameState.notes`(요약의 "최근 소식"). "Victory conditions are no longer valid" 줄이 있으면 `victoryVoid` |
+
+- PLAYER(0x8C0A)·PHASE(0x8C0C)는 VICTORY 뒤라 파일에 없음 → 위 값으로 복원. 난수 상태도 없음 → `--seed`(기본 현재 시각)
+- 컴퓨터 진영의 단계에 저장된 것(원작에서는 메뉴가 없어 불가능), SAVEORDER가 1·2의 순열이 아닌 것은 거부(`notResumable`)
+- 바탕 시나리오 id는 `scenarioFileId(옵션)`: UN Solitaire면 korea*N*s, 아니면 korea*N*. 지도·장비표만 거기서 다시 만들고 나머지는 세이브 값
+- DELAYVALUE·BEEPS·CENTER도 이 덩어리 안에 있지만 리메이크에서는 브라우저 설정(options.md 5)이라 가져오지 않음
+- **검증**: 프로젝트에 원작 .SAV는 없지만 **KOREA1S·3S·4S.DAT가 실제 세이브**임을 확인(UTILITY_SPACE[11] = 1, SAVEORDER 2,1, GOTO_PLAYERPHASE 2:
+  두 사람 대전의 공산군 1차 명령 단계에 저장. SCENARIO[3] = 0). 편성 배치판에 공산군 시작 명령이 들어 있던 이유. KOREA2S는 같은 값이지만 [11] = 0.
+  `tests/sav.test.ts`가 이 세 파일을 변환·불러오기·재개·다음 단계 진행까지 확인하고, .DAT로 만든 2차 단계·UN Solitaire 세이브와 거부 경우를 확인

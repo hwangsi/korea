@@ -92,7 +92,7 @@ export function forcePresence(g: GameState, leader: number, x: number, y: number
   const members = forceUnits(g, leader);
   let L = 0, S = 0, ready = 0;
   for (const u of members) {
-    const s = unitStrength(g, u, x, y, 0);
+    const s = unitStrength(g, u, x, y, 0); // same as shownStrength: mode 0 ignores the hex
     L += s.L; S += s.S; ready += u.readiness;
   }
   const lead = unit(g, leader);
