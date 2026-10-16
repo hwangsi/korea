@@ -207,3 +207,32 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .banner .actions { display: flex; gap: 8px; margin-top: 16px; }
 .events li.warn { color: #8a5a00; }
 .card.result h2 { font-size: 24px; }
+
+/* ---------- air operations (docs/rules/air.md) ---------- */
+#air-ops[aria-pressed="true"] { background: #2a1f4a; border-color: #2a1f4a; color: #fff; }
+#air-ops:disabled, #end-phase:disabled { opacity: 0.45; cursor: not-allowed; }
+.air-ops .orders-head { justify-content: space-between; }
+.air-units { list-style: none; margin: 10px 0 0; padding: 0; }
+.air-unit { border: 1px solid #ece9e1; border-left: 4px solid #9aa0a6; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.air-unit.m0 { border-left-color: #7a3db8; }
+.air-unit.m1 { border-left-color: #d0312d; }
+.air-unit.m2 { border-left-color: #e09a00; }
+.air-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 13px; }
+.air-str { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.air-unit .tags { margin: 6px 0; }
+.air-unit .seg { margin-bottom: 0; }
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
+.seg.three button[data-mission="0"][aria-pressed="true"] { background: #5b2a8c; }
+.seg.three button[data-mission="1"][aria-pressed="true"] { background: #b3261e; }
+.seg.three button[data-mission="2"][aria-pressed="true"] { background: #a86f00; }
+.strike-card { border-color: #d0312d; box-shadow: 0 0 0 2px rgba(208, 49, 45, 0.22); }
+.strike-card .mp-num b { color: #b3261e; }
+.report.strike header { font-size: 12px; }
+.events li.warn { color: #7a5300; }
+.card .news + h3 { margin-top: 14px; }
+@media (max-width: 1560px) {
+  .topbar { gap: 6px; padding: 10px 12px; }
+  .info { gap: 8px; }
+  .group button { padding: 6px 8px; }
+  #air-ops, #end-phase { padding: 7px 10px; }
+}

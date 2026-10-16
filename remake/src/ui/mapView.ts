@@ -11,7 +11,7 @@ import type { GameState, UnitState } from '../engine/state.ts';
 import { allowance, frozen } from '../engine/movement.ts';
 import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
-import { echelonOf, MOVE_MODE_KO, pathLabelKo } from '../i18n/ko.ts';
+import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO } from '../i18n/ko.ts';
 import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
@@ -59,6 +59,9 @@ export interface MoveOverlay {
   assault?: { hex: number; pinned: boolean; allowed: boolean } | null;
 }
 
+/** Airstrike of this turn's combat phase: struck hex, explosions (0 = nothing found), striking side. */
+export interface StrikeMarker { hex: number; explosions: number; found: boolean; player: number; }
+
 export class MapView {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -73,6 +76,12 @@ export class MapView {
   /** Force chosen for orders (highlighted counter). */
   selectedLeader: number | null = null;
   movement: MoveOverlay | null = null;
+  /** Airstrikes flown this turn (burst markers). */
+  airstrikes: StrikeMarker[] = [];
+  /** Draw the MiG Alley boundary (1950s, x <= 14 and y <= 26: docs/rules/air.md). */
+  showMigAlley = false;
+  /** Airstrike targeting: the hex under the mouse and whether it is a legal target. */
+  strikeAim: { hex: number; valid: boolean } | null = null;
   onClick: (x: number, y: number) => void = () => {};
   onContext: () => void = () => {};
   onHover: (x: number, y: number) => void = () => {};
@@ -379,6 +388,7 @@ export class MapView {
     }
 
     if (this.movement) this.drawReach(vis, this.movement);
+    if (this.showMigAlley) this.drawMigAlley(vis);
     this.drawPlaces();
     if (this.layers.units && sc) this.drawUnits(vis);
 
@@ -394,6 +404,7 @@ export class MapView {
     outline(this.selected, '#ffd400', 3.5);
 
     if (this.layers.units && sc) this.drawAssaultPlots();
+    if (this.airstrikes.length || this.strikeAim) this.drawAirstrikes();
     if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
     if (this.movement) this.drawMoveLabels(vis, this.movement);
 
@@ -885,6 +896,103 @@ export class MapView {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.fill();
+  }
+
+  // ---------- air operations ----------
+
+  /** MiG Alley: the hexes x <= 14, y <= 26 outlined with a purple dashed line (the original marks them with a jet). */
+  private drawMigAlley(vis: Hex[]) {
+    const ctx = this.ctx;
+    const map = this.map!;
+    const inside = (x: number, y: number) => x < 15 && y < 27;
+    ctx.beginPath();
+    for (const h of vis) {
+      if (!inside(h.x, h.y)) continue;
+      const pts = hexCorners(hexCenter(h.x, h.y, HEX), HEX);
+      for (let d = 0; d < 6; d++) {
+        const [nx, ny] = neighbor(h.x, h.y, d);
+        if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height || inside(nx, ny)) continue;
+        const a = pts[(4 + d) % 6], b = pts[(5 + d) % 6];
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+    }
+    const z = this.cam.zoom;
+    ctx.save();
+    ctx.setLineDash([HEX * 0.35, HEX * 0.22]);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = Math.max(HEX * 0.16, 4 / z);
+    ctx.stroke();
+    ctx.strokeStyle = '#7a3db8';
+    ctx.lineWidth = Math.max(HEX * 0.08, 2 / z);
+    ctx.stroke();
+    ctx.restore();
+    const s = this.toScreen(hexCenter(10, 24, HEX));
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.font = `600 ${Math.max(11, Math.min(16, 15 * z))}px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillStyle = '#5b2a8c';
+    ctx.strokeText(AIR_UI_KO.migAlley, s.x, s.y + HEX * 0.95 * z);
+    ctx.fillText(AIR_UI_KO.migAlley, s.x, s.y + HEX * 0.95 * z);
+    ctx.restore();
+  }
+
+  /** Burst markers on struck hexes (one burst per explosion, a ring if nothing was found) and the aiming reticle. */
+  private drawAirstrikes() {
+    const ctx = this.ctx;
+    const g = this.game;
+    if (!g) return;
+    const z = this.cam.zoom;
+    const r = Math.max(5, HEX * 0.24 * z);
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const burst = (x: number, y: number, size: number, color: string) => {
+      ctx.beginPath();
+      for (let k = 0; k < 16; k++) {
+        const ang = (Math.PI / 8) * k - Math.PI / 2;
+        const rr = k % 2 === 0 ? size : size * 0.48;
+        const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+    };
+    for (const m of this.airstrikes) {
+      const c = this.toScreen(hexCenter(m.hex % g.width, Math.floor(m.hex / g.width), HEX));
+      const cx = c.x + HEX * 0.42 * z, cy = c.y - HEX * 0.42 * z;
+      if (!m.found) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(60,60,60,0.85)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        continue;
+      }
+      for (let k = m.explosions - 1; k >= 0; k--) burst(cx - k * r * 0.75, cy + k * r * 0.35, r, m.player === 2 ? '#ff8a00' : '#d0312d');
+    }
+    if (this.strikeAim) {
+      const a = this.strikeAim;
+      const c = this.toScreen(hexCenter(a.hex % g.width, Math.floor(a.hex / g.width), HEX));
+      const rr = HEX * 0.62 * z;
+      ctx.strokeStyle = a.valid ? '#d0312d' : 'rgba(80,80,80,0.7)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, rr, 0, Math.PI * 2);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.moveTo(c.x + dx * rr * 0.45, c.y + dy * rr * 0.45);
+        ctx.lineTo(c.x + dx * rr * 1.25, c.y + dy * rr * 1.25);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** Every plotted assault on the map, as a red arrow into the target hex (the original draws the same). */

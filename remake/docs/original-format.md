@@ -51,7 +51,7 @@
 | 0x7A4E | WEATHER | 3×4 int16, 값 = 기온×10 + 하늘 (기온 1 추위/2 온화/3 더위, 하늘 1 맑음/2 흐림/3 폭풍). 0행 실제(이번 턴~+3), 1·2행 공산·유엔 예보 |
 | 0x7A66 | NOTES | array[8] of string[255] (뉴스) |
 | 0x8266 | SCENARIO | 8 bytes [시나리오, ?, 공산군 역량(1~5, 재보급률 +7), 컴퓨터 진영(0 두 사람, 1 공산, 2 유엔), ?, 99 = 게임 종료, 중공군 개입(0 역사적, 1 고정), ?]. 새 게임은 시작 메뉴 값으로 덮어씁 |
-| 0x826E | REALITY | array[1..4] of boolean. [4] 정보 제한(거짓이면 모든 헥스 정찰 2), [2] 항공 작전 관련(메뉴), [1]·[3] 미확정 |
+| 0x826E | REALITY | array[1..4] of boolean. [4] 정보 제한(거짓이면 모든 헥스 정찰 2), [2] Air Campaign Player Control(거짓이면 프로그램이 임무·공습 목표, rules/air.md 7), [1]·[3] 미확정 |
 | 0x8272 | ROADS | 114 bytes: 타일 코드 0x0B~0x7C의 도로 방향 마스크 |
 | 0x82E4 | RAILS | 129 bytes: 타일 코드 0x1E~0x9E의 철도 방향 마스크 |
 | 0x8366 | PORTS | array[18] of (MINED, X, Y) — 한국 12 + 일본 6 |
@@ -59,6 +59,12 @@
 | 0x83C0~ | INTERCEPTION, INTERDICTION, RAIL_DEMAND, RED_AIR, SEALIFT/AIRLIFT_DEMAND, UN_HEXES, CCF_INTERVENTION, FREEZE_LINE, TURN, ... VICTORY | UN_HEXES = 100×유엔 도시 + 유엔 기타 헥스(지난 턴), CCF_INTERVENTION 99 미정 / 88 허세 / 그 외 개입 턴. VICTORY는 코드에서 쓰지 않음 |
 | 0x83DE | UTILITY_SPACE | 20 bytes, 사건 플래그·카운터 (rules/turn.md 7) |
 | 0x83F2 | FIRSTUNUNIT, LASTUNUNIT | 유엔 쪽 유닛 번호 범위: 1950년대 156~250, 1995 124~202 |
+
+### AIR_UNIT_TYPE (36바이트)
+
+NAME string[24], ENTRY_TURN, EXIT_TURN, TYPE1, TYPE2(AIR_NAMES 번호), AIR_TO_AIR, AIR_TO_GROUND, MISSION(0 제공권, 1 지상 공격, 2 차단),
+BASE(0 일본, 1 한국, 2 항공모함), ALL_WEATHER, LONG_RANGE, POOR_RUNWAYS(참 = 열악한 활주로 가능). 항공 규칙 전체는 `docs/rules/air.md`.
+1950년대 파일은 29개(유엔), 1995는 34개(1~13 북한, 14~34 유엔). 격추되면 EXIT_TURN = 0.
 
 ### UNIT_TYPE (71바이트, 필드 이름은 원본 소스 그대로)
 
@@ -141,6 +147,5 @@ S 파일은 유닛이 사단·군 단위로 편성돼 있고 날씨 예보가 �
 ## 5. 아직 모르는 것
 
 - STATUS 0x10의 정확한 의미 (지상전이 해제하고 0x20을 설정, 정찰 표시로 추정)
-- 38선과 미그 앨리 표시 데이터 위치 (그리기 코드 안에 있을 것으로 추정)
-- AIR_UNIT_TYPE.BASE 값의 의미 (0 = 일본으로 추정, EFFECTIVE_STRENGTH가 장거리가 아니면 ×2 약화). MISSION은 0 제공권, 1 지상 공격, 2 차단
+- 38선 표시 데이터 위치 (그리기 코드 안에 있을 것으로 추정). 미그 앨리는 규칙 코드에서 x < 15, y < 27로 확인(GROUND_ATTACK_STRENGTH)
 - SCENARIO[1], [4], [7], REALITY[1], [3]

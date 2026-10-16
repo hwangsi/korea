@@ -6,8 +6,8 @@
 
 import type { MapData, Scenario } from './data/types.ts';
 import { MapView, forcesInHex } from './ui/mapView.ts';
-import type { Layers } from './ui/mapView.ts';
-import { renderPanel, renderSummary, renderTurnView } from './ui/panel.ts';
+import type { Layers, StrikeMarker } from './ui/mapView.ts';
+import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstrikes } from './ui/panel.ts';
 import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
@@ -15,12 +15,16 @@ import { reach, pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from '
 import { assault, assaultPreview, cancelAssault } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
 import { startNewGame, endPlayerPhase, finishGame, continuePastEnd } from './engine/turn.ts';
+import {
+  canPlanAir, chooseBases, setMission, pendingAirstrike, flyAirstrike, delegateAirstrikes, strikeLethality, strikeTargetError,
+} from './engine/air.ts';
+import type { AirReport, AirStrikeResult } from './engine/air.ts';
 import type { TurnEvent } from './engine/turn.ts';
 import { territoryBalance } from './engine/endturn.ts';
 import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
-  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo,
+  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
@@ -91,6 +95,12 @@ async function main() {
   let turnView: TurnView | null = null;
   let banner: Banner | null = null;
   let first = true;
+  /** Air Operations panel open (first orders phase). */
+  let airOpen = false;
+  /** Hex under the mouse while aiming an airstrike. */
+  let strikeHover: [number, number] | null = null;
+  /** Airstrikes of this turn, drawn on the map until the next turn begins. */
+  let strikeMarks: StrikeMarker[] = [];
 
   const select = $('#scenario') as unknown as HTMLSelectElement;
   select.innerHTML = SCENARIOS.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
@@ -98,6 +108,11 @@ async function main() {
   /** Orders can be given in an orders phase, to forces of the side whose phase it is. */
   const canCommand = (leader: number) =>
     !!game && !game.gameOver && (game.phase === 1 || game.phase === 3) && sideOf(unit(game, leader)) === activeSide(game);
+  /** Combat phase with DO_AIR_COMBAT waiting for the human player's airstrikes. */
+  const inStrikes = () => !!game && game.phase === 2 && !!game.air;
+
+  const marker = (r: AirStrikeResult): StrikeMarker => ({ hex: idx(game!, r.target[0], r.target[1]), explosions: r.explosions, found: r.found, player: r.player });
+  const reportMarks = (rep: AirReport) => rep.sides.flatMap((s) => s.strikes.map(marker));
 
   // ---------- rendering ----------
 
@@ -132,6 +147,9 @@ async function main() {
     view.movement = orders && !orders.reach.cannot
       ? { reach: orders.reach, path: p.path, pinned: p.pinned, assault: av && { hex: av.hex, pinned: av.pinned, allowed: av.preview.allowed } }
       : null;
+    view.airstrikes = strikeMarks;
+    view.showMigAlley = !!game && game.scenarioNo < 4 && (airOpen || inStrikes());
+    if (!inStrikes() || !pendingAirstrike(game!)) view.strikeAim = null;
     view.invalidate();
   }
 
@@ -149,7 +167,11 @@ async function main() {
     pill.innerHTML = game.gameOver
       ? esc(TURN_UI_KO.gameOver)
       : `<span class="dot"></span>${esc(PLAYER_KO[game.player])} · ${esc(PHASE_KO[game.phase] ?? '')}`;
-    ($('#end-phase') as HTMLButtonElement).disabled = !ordersPhase || !!game.gameOver || !!banner;
+    ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || !!banner;
+    const airBtn = $('#air-ops') as HTMLButtonElement;
+    const airOk = canPlanAir(game);
+    airBtn.disabled = !airOk || !!banner;
+    airBtn.setAttribute('aria-pressed', String(airOpen && airOk));
   }
 
   function renderBanner() {
@@ -165,6 +187,8 @@ async function main() {
 
   function renderSide() {
     if (!ctx) return;
+    if (inStrikes()) { renderAirstrikes(panel, ctx, strikeHover, message); return; }
+    if (airOpen && game && canPlanAir(game)) { renderAirOps(panel, ctx, message); return; }
     if (!sel && turnView) { renderTurnView(panel, ctx, turnView, message); return; }
     if (!sel) { renderSummary(panel, ctx, message); return; }
     const p = previewPath();
@@ -186,11 +210,17 @@ async function main() {
     const g = game;
     const lines: string[] = [];
     let combat: TurnView['combat'] = null;
+    let air: TurnView['air'] = null;
     let resolution: TurnView['resolution'] = null;
+    airOpen = false;
+    strikeHover = null;
     for (const e of events) {
+      if (e.kind === 'ordersPhase' && e.phase === 1) strikeMarks = []; // a new turn
       if (e.kind === 'noFirstPhase') lines.push(TURN_UI_KO.noFirstPhase);
       else if (e.kind === 'computerPhase') lines.push(`${PLAYER_KO[e.player]}: ${TURN_UI_KO.computerPhase}`);
       else if (e.kind === 'combat') combat = e.reports;
+      else if (e.kind === 'air') { air = e.report; strikeMarks = reportMarks(e.report); }
+      else if (e.kind === 'airstrikes' && g.air) strikeMarks = reportMarks(g.air.report);
       else if (e.kind === 'resolution') {
         resolution = e.report;
         if (e.report.refugees) lines.push(TURN_UI_KO.refugees);
@@ -198,7 +228,7 @@ async function main() {
       } else if (e.kind === 'ordersPhase' && e.reinforcements) lines.push(TURN_UI_KO.reinforcements);
     }
     const over = events.find((e) => e.kind === 'gameOver');
-    turnView = combat || resolution ? { combat, resolution, result: null } : null;
+    turnView = combat || resolution || air ? { combat, air, resolution, result: null } : null;
     sel = null;
     orders = null;
     message = null;
@@ -207,6 +237,17 @@ async function main() {
         side: 0, eyebrow: `${gameDateKo(g)} · ${g.turn}턴`, title: TURN_UI_KO.peaceTalks,
         lines: [END_REASON_KO[over.reason] ?? over.reason, TURN_UI_KO.overrideNote],
         buttons: [{ label: TURN_UI_KO.endGame, action: 'end-game' }, { label: TURN_UI_KO.override, action: 'override', kind: 'ghost' }],
+      };
+      return;
+    }
+    const strikes = events.find((e) => e.kind === 'airstrikes');
+    if (strikes && strikes.kind === 'airstrikes') {
+      banner = {
+        side: strikes.player,
+        eyebrow: `${gameDateKo(g)} · ${g.turn}턴 · ${PHASE_KO[2]}`,
+        title: AIR_UI_KO.strikeTitle(PLAYER_KO[strikes.player]),
+        lines: [...lines, AIR_UI_KO.strikeLines(strikes.count), TURN_UI_KO.handover],
+        buttons: [{ label: TURN_UI_KO.begin, action: 'close' }],
       };
       return;
     }
@@ -226,6 +267,16 @@ async function main() {
 
   function endPhase(confirmFirst = true) {
     if (!game || banner) return;
+    if (inStrikes()) {
+      // the program picks the targets of the airstrikes not flown yet (docs/rules/air.md 9)
+      const left = game.air!.queue.length;
+      if (confirmFirst && left && !window.confirm(AIR_UI_KO.endPhaseStrikes(left))) return;
+      turnView = null;
+      message = null;
+      handleEvents(endPlayerPhase(game));
+      render();
+      return;
+    }
     if (!(game.phase === 1 || game.phase === 3) || game.gameOver) return;
     if (confirmFirst && !window.confirm(TURN_UI_KO.endPhaseConfirm(PLAYER_KO[game.player], PHASE_KO[game.phase]))) return;
     turnView = null;
@@ -238,7 +289,7 @@ async function main() {
     if (action === 'end-game') {
       const result = finishGame(game);
       banner = null;
-      turnView = { combat: null, resolution: turnView?.resolution ?? null, result };
+      turnView = { combat: null, air: null, resolution: turnView?.resolution ?? null, result };
     } else if (action === 'override') {
       banner = null;
       handleEvents(continuePastEnd(game));
@@ -327,11 +378,52 @@ async function main() {
     render();
   }
 
+  // ---------- air operations ----------
+
+  function toggleAir() {
+    if (!game || banner || !canPlanAir(game)) return;
+    airOpen = !airOpen;
+    // the original bases the air units whenever the Air Operations screen opens (OPSSUBS 1058 -> CHOOSE_BASES)
+    if (airOpen) { chooseBases(game, game.player); sel = null; orders = null; turnView = null; message = null; }
+    render();
+  }
+
+  function strikeText(r: AirStrikeResult): string {
+    const place = `(${r.target[0]}, ${r.target[1]})`;
+    if (!r.found) return AIR_UI_KO.strikeDone(place, AIR_UI_KO.noTarget);
+    const worst = Math.max(...r.forces.map((f) => f.severity));
+    const lost = r.forces.reduce((s, f) => s + f.equipmentLost, 0);
+    return AIR_UI_KO.strikeDone(place, `${STRIKE_SEVERITY_KO[worst]} · ${AIR_UI_KO.equipmentLost(lost)}${r.aaHit ? ` · ${AIR_UI_KO.aaHit}` : ''}`);
+  }
+
+  function strikeAt(x: number, y: number) {
+    if (!game) return;
+    const res = flyAirstrike(game, x, y);
+    if (!res.ok) {
+      message = { kind: 'error', text: res.error === 'manchuria' ? AIR_UI_KO.manchuria : AIR_UI_KO.friendly };
+    } else {
+      strikeMarks = [...strikeMarks, marker(res.result)];
+      message = { kind: res.result.found ? 'ok' : 'warn', text: strikeText(res.result) };
+    }
+    render();
+  }
+
+  function delegate(all: boolean) {
+    if (!game) return;
+    const done = delegateAirstrikes(game, all);
+    strikeMarks = [...strikeMarks, ...done.map(marker)];
+    const last = done[done.length - 1];
+    message = last ? { kind: 'ok', text: `${AIR_UI_KO.autoTag}: ${strikeText(last)}` } : null;
+    render();
+  }
+
   // ---------- map events ----------
 
   view.onClick = (x, y) => {
     if (!game || banner) return;
     const i = idx(game, x, y);
+    if (inStrikes()) { if (pendingAirstrike(game)) strikeAt(x, y); return; }
+    airOpen = false;
     turnView = null;
     if (orders) {
       if (isEnemyNeighbor(i)) {
@@ -366,7 +458,17 @@ async function main() {
     const feature = featureAt(x, y);
     let text = `(${x}, ${y}) ${place ? place.label + ' · ' : ''}${feature ? feature.label + (feature.elevation ? ` ${feature.elevation}m` : '') + ' · ' : ''}${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
     if (view.layers.supply && owner && h.code < 0xa5) text += ` · ${view.supplyNet()[i] === owner ? TURN_UI_KO.inNet(PLAYER_KO[owner === 1 ? 2 : 1]) : TURN_UI_KO.outOfNet}`;
-    if (orders) {
+    const next = inStrikes() ? pendingAirstrike(game) : null;
+    if (next) {
+      const err = strikeTargetError(game, next.player, x, y);
+      text += ` · ${err === 'manchuria' ? AIR_UI_KO.manchuria : err ? AIR_UI_KO.friendly : AIR_UI_KO.aimAt(Math.max(1, Math.min(100, strikeLethality(game, next.unit, x, y))))}`;
+      view.strikeAim = { hex: i, valid: !err };
+      if (!strikeHover || strikeHover[0] !== x || strikeHover[1] !== y) {
+        strikeHover = [x, y];
+        renderSide();
+      }
+      view.invalidate();
+    } else if (orders) {
       const n = orders.reach.nodes.get(i);
       const blocked = orders.reach.blocked.get(i);
       if (n && i !== orders.reach.origin) {
@@ -400,6 +502,13 @@ async function main() {
     else if (action === 'undo') { undo(); return; }
     else if (action === 'mode' && orders) startOrders(orders.leader, btn.dataset.mode as MoveMode);
     else if (action === 'select-force') { message = null; startOrders(Number(btn.dataset.leader)); }
+    else if (action === 'mission') {
+      if (setMission(game, Number(btn.dataset.unit), Number(btn.dataset.mission))) message = null;
+    }
+    else if (action === 'air-close') airOpen = false;
+    else if (action === 'strike-auto') { delegate(false); return; }
+    else if (action === 'strike-auto-all') { delegate(true); return; }
+    else if (action === 'strike-continue') { endPhase(false); return; }
     else if (action === 'bugout' && orders) {
       if (!window.confirm(MOVE_UI_KO.bugOutConfirm)) return;
       if (bugOut(game, orders.leader)) message = { kind: 'warn', text: MOVE_UI_KO.bugOutDone };
@@ -435,6 +544,7 @@ async function main() {
     message = null;
     turnView = null;
     banner = null;
+    strikeMarks = [];
     handleEvents(events);
     turnView = null;
     if (first) { view.fitAll(); first = false; }
@@ -457,6 +567,7 @@ async function main() {
   $('#zoom-out').addEventListener('click', () => view.zoomAt(1 / 1.3));
   $('#zoom-fit').addEventListener('click', () => view.fitAll());
   $('#end-phase').addEventListener('click', () => endPhase(true));
+  $('#air-ops').addEventListener('click', toggleAir);
 
   await load(SCENARIOS[0].id);
   // debugging hooks for the browser console / automated checks
@@ -468,6 +579,8 @@ async function main() {
     click: (x: number, y: number) => view.onClick(x, y),
     hover: (x: number, y: number) => view.onHover(x, y),
     endPhase: () => endPhase(false),
+    toggleAir,
+    get airOpen() { return airOpen; },
     closeBanner: () => { if (banner) onBanner(banner.buttons[0].action); },
     bannerAction: (a: string) => onBanner(a),
     cancel, undo,

@@ -3,8 +3,8 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16 저녁, 노트북(C:\Users\hwang\AIprojects\korea). 턴 진행과 보급(정리 단계 전체), 지도 조작(휠·방향키),
-  산·호수 이름 완료 (테스트 38개 통과, standalone 브라우저 검증, 사용자 확인). 다음은 7장 항공 작전
+- 마지막 갱신: 2026-10-16 19:40, 노트북(C:\Users\hwang\AIprojects\korea). **항공 작전 완료** (규칙 `docs/rules/air.md`, 엔진 `air.ts`,
+  항공 작전 패널·전투 단계 공습 UI, 테스트 51개 통과, standalone 브라우저 검증: 크로마이트·차가운 강철·내일의 전쟁). 다음은 7장 해상·공수 이동
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -58,7 +58,19 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     배수, 공중 보급 0x80, 보급 두절 장비 손실), 턴 시작 이동력 연결(STATUS 0x40)
   - 검증: 기본 시나리오의 부대 MOVE 값이 이 보급망으로 계산한 값과 일치(파일당 예외 최대 1개, 수동 편집 부대 제외)
   - 지도 "보급망" 레이어(끊긴 아군 헥스 빗금), 헥스 패널에 보급망 상태
-- 추출기 수정: STOCKPILE은 [0] 공산, [1] 유엔 (예전 JSON의 un/communist가 뒤바뀜 있었음), FIRSTUNUNIT/LASTUNUNIT, UTILITY_SPACE 추가. **재추출 필요**
+- 추출기 수정: STOCKPILE은 [0] 공산, [1] 유엔 (예전 JSON의 un/communist가 뒤바뀜 있었음), FIRSTUNUNIT/LASTUNUNIT, UTILITY_SPACE 추가 (재추출 완료)
+- **항공 작전** (`docs/rules/air.md`, `src/engine/air.ts`, `tests/air.test.ts` 13개)
+  - 규칙: OPSSUBS 전부(STARTFINISH, UNIT_AVAILABLE, EFFECTIVE_STRENGTH, GROUND_ATTACK_STRENGTH, DETERMINE_INTERDICTION/RED_AIR/INTERCEPTION,
+    CHOOSE_BASES, AIR_OPERATIONS의 화면·예상치)와 AIRCMBT의 중첩 프로시저 전부(자동 임무 `0294`, 차단 효과 `0051`, 1995 제공권 손실 `1c7a`,
+    공습 진행 `1a84`, 목표 선택·해결 `0b8e`, 해병 인접 `0916`), NEXT_TURN `1023` 1995 공군 무력화. BASE 0 일본/1 한국/2 항모,
+    REALITY[2] = Air Campaign Player Control, 미그 앨리 x < 15·y < 27, UTILITY_SPACE[12]·[13] 확정. 매뉴얼과 다른 점 8가지 기록
+  - 엔진: 전투 단계 = FORCE_SPOTTING → DO_AIR_COMBAT(`beginAirCombat`/`continueAirCombat`) → 지상전. 사람이 고를 공습이 있으면
+    `airstrikes` 이벤트로 멈추고(GameState.air), `flyAirstrike`/`delegateAirstrikes` 뒤 `endPlayerPhase`로 이어짐. INTERDICTION은 매 턴 전투 단계에서
+    다시 계산되어 철도 차단에 쓰이고, REST_UP의 UNIL은 임무·기지가 바뀐 항공대로 계산. GameState에 interception, airPlayerControl, air 추가
+  - UI: 상단 "✈ 항공"(1차 명령 단계) → 항공대 목록(한글 부대명·기종·기지·장거리·전천후·활주로, 약화 반영 전력), 임무 버튼 3개,
+    예상치(공습 가능·차단 수준·공산 요격 수준 이번/다음 턴 또는 1995 제공 전력), 증원·철수 예정. 전투 단계: 공습 알림 창 → 지도에서 적 헥스 클릭
+    (마우스 오버 시 살상률, 조준선), "컴퓨터가 목표 선택"·"남은 공습 모두 맡기기", 결과 목록, 지도 폭발 표시, "지상전으로 ▶".
+    1950년대는 미그 앨리 경계(보라색 점선). 전투 결과 패널 위에 항공 결과, 요약에 유엔 차단 수준·공산 요격(또는 차단) 수준, 항공 뉴스 한글화
 
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
@@ -71,7 +83,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- 항공 작전(AIR_OPERATIONS, DO_AIR_COMBAT, 공습·차단·요격; 지금은 파일의 항공대 임무로 UNIL만 계산), 해상·공수 이동(상륙 공격 포함),
+- 해상·공수 이동(상륙 공격, 공수 낙하의 RED_AIR·비행장 사용 포함),
   정보(안개) 화면 표시(엔진의 정찰 단계 계산은 있음, UI는 완전 정보), 옵션 화면(역량·개입·정보·플레이 모드), AI, 저장/불러오기,
   보고서 화면(전략 보고, 비행장·항구), 전체 한글화, 새 그래픽/사운드
 - 컴퓨터 진영을 고르면 AI가 없어 그 진영 단계가 그냥 지나감 (기본은 두 사람 대전)
@@ -94,6 +106,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/combat.md                 지상전 규칙 (전투력, 돌파, 공격 명령, 전투 해결)
     docs/rules/turn.md                   턴 진행 (단계, 선공, 정리 단계, 날씨, 종료·승리, UTILITY_SPACE)
     docs/rules/supply.md                 보급 (보급망, 재보급, 비축, 보충·재편성)
+    docs/rules/air.md                    항공 (약화, 기지, 임무, 공산 요격 수준, 1995 제공권, 차단, 공습)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -103,6 +116,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         movement.ts                      이동 규칙·도달 범위·명령 실행
         combat.ts                        전투력·돌파·공격 명령·전투 해결
         supply.ts                        보급망·재보급·턴 시작 이동력
+        air.ts                           항공 작전 (기지·임무·예상치·DO_AIR_COMBAT·공습)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
@@ -149,7 +163,8 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   `openTab('about:blank')` 후 `document.open(); document.write(html); document.close()`로 띄워 검증
 - 디버그 훅: 페이지에서 `window.__app.view` (지도 뷰), `window.__app.load(id)` (시나리오 로드),
   `__app.game`, `__app.orders`, `__app.click(x, y)`, `__app.hover(x, y)`, `__app.cancel()`, `__app.undo()` (마우스 조작 흉내),
-  `__app.endPhase()` (확인 없이 단계 종료), `__app.banner`, `__app.closeBanner()`, `__app.bannerAction('end-game' | 'override')`.
+  `__app.endPhase()` (확인 없이 단계 종료, 전투 단계에서는 남은 공습을 프로그램에 맡기고 지상전), `__app.banner`, `__app.closeBanner()`,
+  `__app.bannerAction('end-game' | 'override')`, `__app.toggleAir()` (항공 작전 패널), `__app.airOpen`. 전투 단계 공습 중에는 `__app.click(x, y)`가 공습.
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
   (어기면 standalone.html 전체가 구문 오류로 아무것도 안 뜨고 오류도 안 보임)
@@ -194,34 +209,33 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 항공 작전
+## 7. 다음 작업: 해상·공수 이동
 
-목표: 항공대에 임무(제공권 0, 지상 공격 1, 차단 2)를 주고, 기지 배치·날씨 약화를 거쳐 전투 단계(PHASE 2)에서
-제공권·차단 수준·공습을 원작 공식대로 해결. 지금 `turn.ts`의 PHASE 2는 FORCE_SPOTTING 다음 바로 지상전이고,
-UNIL은 파일에 저장된 항공대 임무로만 계산한다 (`supply.ts`의 `interdictionLevel`).
+목표: 해상 수송(항구 ↔ 항구, 바다 헥스 이동), 상륙 공격(AMPHIBIOUS), 공수 낙하를 원작대로. 지금 이동은 육상·철도만 있고,
+바다 헥스 부대 수는 정리 단계가 SEALIFT_DEMAND로 이미 청구한다(supply.md 3).
 
-1. 규칙 확정 → `docs/rules/air.md`
-   - OPSSUBS.AIR_OPERATIONS(임무 화면, Projections), EFFECTIVE_STRENGTH(해독 완료: 하늘 코드, 전천후 −1, 기지 0이고 단거리면 ×2),
-     DETERMINE_INTERDICTION, DETERMINE_INTERCEPTION, CHOOSE_BASES(비행장 등급 1 프로펠러 1개, 2 아무거나 1개, 3 두 개, 지원 구역)
-   - AIRCMBT.DO_AIR_COMBAT: 제공권(1950년대 RED_AIR·미그 앨리, 1995 부록 F 식), INTERCEPTION/INTERDICTION DUAL 값, 공습 목표 선택과 손실
-     ("players are given the opportunity to manage airstrikes ordered earlier", 매뉴얼 4.1~4.13), `CCF + 6 > TURN` 조건
-   - 항공대 등장·철수(ENTRY/EXIT_TURN, 부록 H), NEXT_TURN 중첩 `1002`~`1197`("air force has been neutralized" 뉴스)와
-     NEXT_TURN `11c0`의 1995 항공대 표시 호출 `1023`
-   - REALITY[2](항공 작전 플레이어/프로그램 제어로 추정) 확정
-2. 엔진: `src/engine/air.ts` (임무·기지·약화·제공권·차단·공습), `turn.ts` PHASE 2에 연결, 철도 차단(`railMove`)·UNIL이 새 값을 쓰도록
-3. UI: 항공 작전 패널(항공대 목록, 임무 전환, 예상치), 전투 단계 공습 목표 지정, 결과 보고
-4. 이어서: 해상·공수 이동(규칙은 movement.md 3.5, SEALIFT_DEMAND는 이미 정리 단계가 청구) → 정보(안개) 화면:
-   정찰 단계로 적 부대 감추기, 되돌리기 제한, MOVE_UNIT `3a26`(공산군 12점 초과 이동 정찰), LOSS_INFLATOR → 옵션 화면 → 저장 → AI
+1. 규칙 확정 → `docs/rules/movement.md` 3.5 보강 또는 `docs/rules/naval.md`
+   - MOVEUNIT.AMPHIBIOUS, MOVE_UNIT의 해상·공수 모드(SYMBOL을 잠시 81/82/83으로 바꾼다: state.ts 주석), CAN_ENTRAIN 옆의 승선 조건
+   - 공수 낙하 MOVEUNIT `26cb`~(산악 25, 날씨 나쁘면 +5, 미그 앨리면 +RED_AIR, 비행장 헥스 검사 `2705`~): 손실·조건
+   - 상륙 공격과 함포 지원(GRCMBT.NAVAL_GUNS는 이미 구현)의 연결, 1995 해병 해상 이동(UTILITY_SPACE[9], MOVEUNIT `23e8`)
+   - 매뉴얼 5.3~5.4(해상·공수), 2차 명령 단계 제한(turn.md 2)
+2. 엔진: `movement.ts`에 모드 추가(또는 `naval.ts`), SEALIFT/AIRLIFT_DEMAND 기록, 테스트
+3. UI: 이동 모드 버튼에 해상·공수 추가, 도달 범위·비용 미리보기
+4. 이어서: 정보(안개) 화면: 정찰 단계로 적 부대 감추기, 되돌리기 제한, MOVE_UNIT `3a26`(공산군 12점 초과 이동 정찰),
+   LOSS_INFLATOR(공습·전투 피해 보고 과장) → 옵션 화면(역량·개입·플레이 모드·Air Campaign·정보: REALITY[1..4]) → 저장 → AI
+   (항공은 이미 컴퓨터 진영이면 자동 임무·자동 목표로 동작)
 
 ## 8. 미해결 질문
 
 - STATUS 0x10의 정확한 의미 (지상전이 해제하고 0x20을 설정). 나머지는 확정: 0x01 재보급, 0x02 후퇴, 0x04 이동, 0x08 제거, 0x40 준비도 75+, 0x80 공중 보급
 - SCENARIO[1], [4], [7], REALITY[1]·[3], 점령값 3 (쓰는 코드 없음), UTILITY_SPACE[9](MOVEUNIT `23e8`)
-- AIR_UNIT_TYPE.BASE 값 (0 = 일본으로 추정) → 항공 작업 때 확정
+- 항공: 공습 목표 유무 검사(`1e1b`)가 진영과 상관없이 "유엔 점령 육지가 있는가"를 봄 (원작 그대로). 프로그램 목표 선택의 무작위 탐색 플래그 `[bp−26h]`는 초기화되지 않은 지역 변수(0으로 봄)
+- 항공: CHOOSE_BASES는 연속 호출이 같은 결과를 내지 않을 수 있음(24번 MAG-12). 원작처럼 항공 작전 패널을 열 때와 전투 단계에서만 부름
+- 시나리오 파일의 항공대 기지·INTERDICTION 값은 제작자가 손으로 넣은 것으로 보임(korea2·3의 제트기가 비행장이 있는데도 일본). korea2의 INTERDICTION 10은 직전 턴이 흐림·CIL 0이었다고 보면 계산값과 같음(미검증)
 - TERRITORY_BALANCE의 중국 미개입 제한이 24턴(`384a`)에서만 걸리는데 END_TEST의 미개입 종료는 26턴: 원작 버그인지 의도인지 (지금은 원작대로)
 - korea3 부대 205(미 2사단 9연대, 9,24)의 파일 MOVE가 보급망 계산과 다름: REST_UP 뒤 순찰·게릴라로 바뀐 점령인지 수동 편집인지 미확인
 - 이동 중 버그아웃(`3070`)이 비교하는 두 헥스가 정확히 "출발·도착"인지 (MOVE_UNIT 프레임 `[di-12h]`/`[di-14h]`, 지금은 매뉴얼대로 두 헥스)
-- 38선과 미그 앨리 표시 데이터의 위치
+- 38선 표시 데이터의 위치 (미그 앨리는 규칙 코드로 확정: x < 15, y < 27)
 - 기본 DAT와 S DAT: 둘 다 새 게임으로 읽힌다(LOAD_NEW_GAME이 UTILITY_SPACE[11]을 0으로). S는 사단 단위 편성에 시작 시점의 이동·공격 명령이 미리 들어 있음(korea1s 북한군 공격 계획 등)
 - 밀집 지역 부대 마커 겹침 (UI 개선 과제)
 

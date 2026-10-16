@@ -1,13 +1,14 @@
 // Supply, reproduced from the original code (docs/rules/supply.md). Pure logic (no DOM).
 //
 //   supplyNet          SUPPLY.DETERMINE_SUPPLY (sources + nested sweeps 0DA4 / 0CA5)
-//   interdictionLevel  REST_UP nested 0000 (UN interdiction level from air units, OPSSUBS.EFFECTIVE_STRENGTH)
+//   interdictionLevel  REST_UP nested 0000 (UN interdiction level from the air units' missions, docs/rules/air.md)
 //   restUp             SUPPLY.REST_UP body 01AE (unit resupply, stockpile draw, air supply, attrition)
 //                      + 0532 (start-of-turn movement allowance, STATUS 0x40)
 
 import type { GameState, Side } from './state.ts';
 import { idx, onMap, corpsOf, rnd, forceUnits, STATUS_SUPPLIED, STATUS_READY } from './state.ts';
 import { turnStartMove, unitAttrition } from './movement.ts';
+import { airDivisor } from './air.ts';
 
 /** STATUS 0x80: not resupplied, but kept supplied by air (no readiness loss, no replacements). */
 export const STATUS_AIR_SUPPLIED = 0x80;
@@ -63,17 +64,10 @@ export function supplyNet(g: GameState): Uint8Array {
   return net;
 }
 
-/** OPSSUBS.EFFECTIVE_STRENGTH: weather / basing divisor of an air unit's strength. */
-export function airDivisor(g: GameState, a: GameState['airUnits'][number]): number {
-  let d = g.sky;
-  if (a.allWeather && d > 1) d--;
-  if (a.base === 0 && !a.longRange) d *= 2;
-  return Math.max(1, d);
-}
-
 /**
  * REST_UP nested 0000: United Nations interdiction level (UNIL) = sum of air-to-ground strength of
- * active interdiction units (mission 2), each divided by its weather/basing divisor, then div 10.
+ * active interdiction units (mission 2), each divided by its weather/basing divisor (air.ts airDivisor =
+ * OPSSUBS.EFFECTIVE_STRENGTH), then div 10. Unlike DETERMINE_INTERDICTION, no Communist interception level.
  */
 export function interdictionLevel(g: GameState): number {
   const [from, to] = g.scenarioNo < 4 ? [1, 29] : [14, 34];

@@ -4,7 +4,7 @@
 //                    + the first PHASE_PULSE(1)
 //   initiative       KOREA.PHASE_PULSE 1E76 (who moves first, recomputed for each orders phase)
 //   endPlayerPhase   KOREA.NEXT_PLAYER + the PHASE_PULSE player loop + the main loop:
-//                    PHASE 1 orders -> PHASE 2 (FORCE_SPOTTING, air combat, DO_GROUND_COMBAT) -> PHASE 3 orders
+//                    PHASE 1 orders -> PHASE 2 (FORCE_SPOTTING, DO_AIR_COMBAT, DO_GROUND_COMBAT) -> PHASE 3 orders
 //                    -> PHASE 4 (UNSPOT_EVERYTHING, REST_UP, GROUND_REINFORCEMENTS, RED_AIR, CHECK_CHINA,
 //                    MINE_WARFARE, DO_PATROLS, DO_INTEL, CHECK_BIGHEXES, END_TEST) -> NEXT_TURN
 
@@ -16,6 +16,8 @@ import type { CombatReport } from './combat.ts';
 import { restUp } from './supply.ts';
 import type { ResupplyReport } from './supply.ts';
 import { doWeather, initWeather } from './weather.ts';
+import { beginAirCombat, continueAirCombat, delegateAirstrikes, checkAirForces } from './air.ts';
+import type { AirReport } from './air.ts';
 import {
   unspotEverything, groundReinforcements, checkChina, mineWarfare, doPatrols, doIntel, checkBigHexes, terrainHeld,
   gameOverResult,
@@ -36,12 +38,16 @@ export interface StartOptions {
   limitedIntel?: boolean;
   /** SCENARIO[6]: Fixed CCF intervention (default Historical). */
   ccfFixed?: boolean;
+  /** REALITY[2] Air Campaign: Player Control (default) or Program Control. */
+  airPlayerControl?: boolean;
 }
 
 export type TurnEvent =
   | { kind: 'ordersPhase'; phase: number; player: Player; reinforcements: boolean }
   | { kind: 'noFirstPhase'; player: Player }
   | { kind: 'computerPhase'; phase: number; player: Player }
+  | { kind: 'airstrikes'; player: Player; count: number }
+  | { kind: 'air'; report: AirReport }
   | { kind: 'combat'; reports: CombatReport[] }
   | { kind: 'resolution'; report: ResolutionReport }
   | { kind: 'gameOver'; reason: string };
@@ -133,6 +139,8 @@ export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[]
   g.computerSide = opts.computerSide ?? 0;
   g.limitedIntel = opts.limitedIntel ?? false;
   g.ccfFixed = opts.ccfFixed ?? false;
+  g.airPlayerControl = opts.airPlayerControl ?? true;
+  g.air = null;
   g.utility[11] = 0; // LOAD_NEW_GAME 4C17: not started yet
   initWeather(g);
   if (!g.limitedIntel) g.spotted.fill(2);
@@ -159,24 +167,54 @@ export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[]
 }
 
 /**
+ * PHASE 2 after FORCE_SPOTTING: DO_AIR_COMBAT, then DO_GROUND_COMBAT. Returns true when it stopped because
+ * a human player has to pick airstrike targets (flyAirstrike / delegateAirstrikes, then endPlayerPhase again).
+ */
+function runCombatPhase(g: GameState, events: TurnEvent[]): boolean {
+  const air = g.air ?? (g.air = beginAirCombat(g));
+  if (continueAirCombat(g, air)) {
+    const p = air.players[air.index];
+    g.player = p;
+    g.version++;
+    events.push({ kind: 'airstrikes', player: p, count: air.queue.length });
+    return true;
+  }
+  g.air = null;
+  events.push({ kind: 'air', report: air.report });
+  events.push({ kind: 'combat', reports: resolveGroundCombat(g) });
+  return false;
+}
+
+/** Airstrikes are waiting for the human player's targets (combat phase). */
+export function airstrikesPending(g: GameState): boolean {
+  return g.phase === PHASE_COMBAT && !!g.air && g.air.queue.length > 0;
+}
+
+/**
  * The current player ends his orders phase (NEXT_PLAYER). Runs everything up to the next human
  * orders phase: the other player's phase, combat, second orders, general resolution and the next turn.
+ * In the combat phase it continues after the human player's airstrikes; strikes he has not flown yet
+ * get targets chosen by the program.
  */
 export function endPlayerPhase(g: GameState): TurnEvent[] {
   const events: TurnEvent[] = [];
   if (g.gameOver) return events;
   for (let guard = 0; guard < 8; guard++) {
+    if (g.phase === PHASE_COMBAT) {
+      if (g.air && g.air.queue.length) delegateAirstrikes(g, true);
+      if (runCombatPhase(g, events)) return events;
+      beginOrdersPhase(g, PHASE_SECOND_ORDERS, events);
+      if (g.orderStep < 2) return events;
+      continue;
+    }
     if (g.phase === PHASE_FIRST_ORDERS || g.phase === PHASE_SECOND_ORDERS) {
       if (advancePlayer(g, events)) return events;
       if (g.phase === PHASE_FIRST_ORDERS) {
         // PHASE 2: combat resolution
         g.phase = PHASE_COMBAT;
         g.undo = null;
+        g.air = null;
         forceSpotting(g);
-        // AIRCMBT.DO_AIR_COMBAT: air operations are not implemented yet
-        events.push({ kind: 'combat', reports: resolveGroundCombat(g) });
-        beginOrdersPhase(g, PHASE_SECOND_ORDERS, events);
-        if (g.orderStep < 2) return events;
         continue;
       }
       // PHASE 4: general resolution, then the next turn
@@ -262,6 +300,8 @@ export function continuePastEnd(g: GameState): TurnEvent[] {
 /** ENDTURN.NEXT_TURN: news and refugee checks, TURN + 1, weather, airfield repairs. */
 export function nextTurn(g: GameState) {
   const held = terrainHeld(g);
+  checkAirForces(g); // 1995: "... air force has been neutralized."
+
   const unPoints = 100 * held.cities.un + held.hexes.un;
   if (unPoints - g.unHexes > 10 && g.utility[10] === 0) {
     g.utility[10] = 1;

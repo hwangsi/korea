@@ -9,7 +9,7 @@
 | 보급망 | SUPPLY.DETERMINE_SUPPLY `0252:0e96`, 중첩 시드 `0e4f`, 열 단위 확산 `0da4`, 한 칸 확산 `0ca5` |
 | 재보급 | SUPPLY.REST_UP `10fa` → 본체 `01ae`(중첩), 유엔 차단 수준 `0000`, 공산군 통과 판정 `010b` |
 | 턴 시작 이동력 | REST_UP 본체 `0532`~`0733` (movement.md 1장) |
-| 항공 차단 약화 | OPSSUBS.EFFECTIVE_STRENGTH `0f13:0708` |
+| 항공 차단 약화 | OPSSUBS.EFFECTIVE_STRENGTH `0f13:0708` (air.md 2장, 엔진 `air.ts`의 `airDivisor`) |
 | 비축 수송·수요 | ENDTURN.GROUND_REINFORCEMENTS `0364:06ba`~`0846` |
 | 보충·재편성 | GROUND_REINFORCEMENTS `0ac0`~`1001`, 중첩 `02ff`(재편성 가능), `03ed`(재편성) |
 | 도로 헥스 | HEXSTUFF.ROAD_HEX `0787:125f` |
@@ -106,6 +106,6 @@ STOCKPILE은 DUAL 배열 **[0] 공산, [1] 유엔** (예전 문서의 [유엔, �
 
 | 항목 | 결정 |
 |---|---|
-| 항공대 임무 | 항공 작전이 아직 없어 시나리오 파일의 임무·기지 값으로 UNIL을 계산 |
+| 항공대 임무 | UNIL은 그 턴 항공대의 임무·기지(항공 작전 화면과 전투 단계 CHOOSE_BASES가 정한 값)로 계산. 전투 단계의 차단 효과·철도 차단은 air.md 5.4 |
 | 보급망 표시 | 상단 "보급망" 레이어: 보급망 안은 진영 색, 자기 점령지인데 끊긴 헥스는 빗금 (원작 Supply Net Map, 매뉴얼 3.13) |
 | 헥스 정보 | 헥스 패널에 그 헥스의 보급망 상태 표시 |

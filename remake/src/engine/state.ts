@@ -2,6 +2,7 @@
 // tests and AI self-play. Mirrors the original globals: UNITS[], TERRAIN[x][y][1..4], AIRFIELDS[], ...
 
 import type { AirUnit, Equipment, EquipmentType, Hex, MapData, Nation, Scenario, Unit, UnitKind } from '../data/types.ts';
+import type { AirPhaseState } from './air.ts';
 
 export type Side = 'un' | 'communist';
 
@@ -98,7 +99,14 @@ export interface GameState {
   lastUnUnit: number;
   ports: PortState[];
   airUnits: AirUnitState[];
+  /** RED_AIR: 1950s Communist interception level (CIL), 0..200 (docs/rules/air.md). */
   redAir: number;
+  /** INTERCEPTION DUAL array [Communist, UN]: 1995 air superiority strengths (1950s: [0] = RED_AIR for reports). */
+  interception: [number, number];
+  /** REALITY[2] Air Campaign: true = Player Control (missions and airstrike targets), false = Program Control. */
+  airPlayerControl: boolean;
+  /** DO_AIR_COMBAT in progress during the combat phase (a human player is picking airstrike targets). */
+  air: AirPhaseState | null;
   /** UN_HEXES: 100 * UN cities + other UN hexes at the end of the previous turn (refugee check). */
   unHexes: number;
   ccfIntervention: number;
@@ -115,6 +123,7 @@ export interface GameState {
   news: NewsItem[];
   /** End of game reason once END_TEST fired. */
   gameOver: string | null;
+  /** INTERDICTION DUAL array [Communist, UN] (DETERMINE_INTERDICTION; enemy rail movement uses it). */
   interdiction: [number, number];
   railDemand: [number, number];
   /** mulberry32 state */
@@ -193,6 +202,9 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     ports: (scenario.ports ?? []).map((p) => ({ id: p.id, x: p.x, y: p.y, mined: p.mined })),
     airUnits: (scenario.airUnits ?? []).map((a) => ({ ...a })),
     redAir: scenario.redAir ?? 0,
+    interception: [scenario.interception?.[0] ?? 0, scenario.interception?.[1] ?? 0],
+    airPlayerControl: true,
+    air: null,
     unHexes: scenario.unHexes ?? 0,
     ccfIntervention: scenario.ccfIntervention ?? 99,
     sealiftDemand: scenario.sealiftDemand ?? 0,

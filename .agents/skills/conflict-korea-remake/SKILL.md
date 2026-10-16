@@ -55,6 +55,8 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - `cd`가 막히면 스크립트는 절대경로로 실행하고, 테스트 glob은 작업 폴더 기준 상대경로(`"korea/remake/tests/**/*.test.ts"`)를 쓴다.
 - standalone 번들러는 `export { a }`, `export default`, `export *`를 모른다. 쓰면 standalone.html이 조용히 아무것도 띄우지 않는다.
 - 화면 검증은 `window.confirm = () => true`를 먼저 넣고, 단계 알림 창은 `__app.closeBanner()`, 단계 종료는 `__app.endPhase()`.
+- 항공: `__app.toggleAir()`로 항공 작전 패널(1차 명령 단계). 전투 단계 공습 중에는 `__app.click(x, y)`가 공습이고 `__app.endPhase()`는 남은 공습을 프로그램에 맡긴 뒤 지상전으로 넘어감.
+- 브라우저 창이 1440px이면 상단 막대가 꽉 차니 버튼을 더 넣을 때는 줄바꿈(높이 > 60px)을 확인한다.
 
 ## 마무리
 

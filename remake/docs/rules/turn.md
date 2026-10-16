@@ -17,7 +17,7 @@
 
 ```
 PHASE_PULSE(1)                 1차 명령: 두 플레이어가 차례로
-PHASE 2                        FORCE_SPOTTING → DO_AIR_COMBAT → DO_GROUND_COMBAT
+PHASE 2                        FORCE_SPOTTING → DO_AIR_COMBAT(air.md 5장) → DO_GROUND_COMBAT
 PHASE_PULSE(3)                 2차 명령: 두 플레이어가 차례로 (선공 다시 판정)
 PHASE 4                        UNSPOT_EVERYTHING → REST_UP → GROUND_REINFORCEMENTS → RED_AIR 증가
                                → CHECK_CHINA → MINE_WARFARE → DO_PATROLS → DO_INTEL → CHECK_BIGHEXES → END_TEST
@@ -151,6 +151,7 @@ GAME_OVER 뉴스: Marginal(1~2)/Significant(3~4)/Decisive(5+) 승리, 유엔 3 �
 | 9 | 이동 코드가 쓰는 카운터 (MOVEUNIT `23e8`, 1995 해병 해상 이동으로 추정) |
 | 10 | 포로 학살 뉴스 표시함 |
 | 11 | 게임 시작됨 (0턴 사건 처리 완료) |
+| 12, 13 | 1995 북한/유엔 공군 무력화 (NEXT_TURN `1023`, air.md 6장). 그 진영은 항공 작전 메뉴(UTILITY_SPACE[PLAYER + 11])와 제공권 손실 단계가 없어짐 |
 | 14 | 남쪽 도시 탈환 → 매장지 뉴스 대기 |
 | 15 | 1995 추가 미군 도착 턴 |
 | 18, 19 | 이번 정리 단계에 유엔/공산 증원 도착 |
@@ -169,11 +170,11 @@ GAME_OVER 뉴스: Marginal(1~2)/Significant(3~4)/Decisive(5+) 승리, 유엔 3 �
 
 | 항목 | 결정 |
 |---|---|
-| 진행 | 상단 "단계 종료 ▶" = NEXT_PLAYER. 상대 단계·전투·정리 단계를 엔진이 이어서 실행하고, 다음 사람 단계 시작을 알림 창으로 띄움(두 사람 교대) |
+| 진행 | 상단 "단계 종료 ▶" = NEXT_PLAYER. 상대 단계·전투·정리 단계를 엔진이 이어서 실행하고, 다음 사람 단계 시작(또는 전투 단계 공습)을 알림 창으로 띄움(두 사람 교대) |
 | 진영 제한 | 명령 단계에서는 그 진영 부대만 선택·명령 가능. 상대 부대는 정보만 |
 | 컴퓨터 진영 | AI가 없어 컴퓨터 진영 단계는 아무것도 하지 않고 지나감. 기본은 두 사람 대전(SCENARIO[3] = 0) |
 | 시작 옵션 | 옵션 화면 전까지 역량 3(×1.0), 정보 완전, 중공군 개입 역사적 |
-| 항공 | DO_AIR_COMBAT 없음. 유엔 차단 수준만 시나리오 파일의 항공대 임무로 계산 |
+| 항공 | DO_AIR_COMBAT 구현(air.md). 사람 플레이어의 공습 목표를 기다리는 동안 전투 단계가 멈추고(`airstrikes` 이벤트, GameState.air), "단계 종료"나 마지막 공습 뒤 이어서 지상전. 1995 공군 무력화는 NEXT_TURN 맨 앞 |
 | 종료 | END_TEST가 걸리면 알림 창에서 "게임 끝내기"(GAME_OVER 결과) 또는 "계속 싸우기". 계속하면 이후 END_TEST는 묻지 않음(원작은 매번 물음) |
 | 뉴스 | 원작은 최근 8줄만 보관, 리메이크는 전부 보관하고 한글로 표시 |
 | 시드 | 브라우저는 시각 기반 시드, 테스트는 고정 시드 |

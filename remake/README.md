@@ -57,7 +57,7 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement.md, combat.md, supply.md, turn.md)
+  docs/rules/               규칙 명세 (movement.md, combat.md, supply.md, turn.md, air.md)
   tests/                    단위 테스트 (node:test)
 ```
 
@@ -74,7 +74,9 @@ remake/
 - [x] 아이콘 헥스 전체에 현재 지명 → [`docs/places.md`](docs/places.md)
 - [x] 턴 진행 (1차 명령 → 전투 → 2차 명령 → 정리, 선공, 두 사람 교대) + 보급망·재보급·턴 시작 이동력, 비축, 보충·재편성,
       증원 도착, 날씨·결빙선·예보, 순찰·게릴라, 기뢰, 중공군 개입, 피란민, 종료·승리 수준 → [`docs/rules/turn.md`](docs/rules/turn.md), [`docs/rules/supply.md`](docs/rules/supply.md)
-- [ ] 항공 → 해상·공수 이동 → 정보(안개) → 옵션 화면
+- [x] 항공 작전 (임무·기지·날씨 약화, 1950년대 공산 요격 수준·미그 앨리, 1995 제공권 손실, 차단, 공습 목표 지정·해결)
+      + 항공 작전 패널·전투 단계 공습 UI → [`docs/rules/air.md`](docs/rules/air.md)
+- [ ] 해상·공수 이동 → 정보(안개) → 옵션 화면
 - [ ] AI (원본 Kim/Walton 분석 후 재설계)
 - [ ] 전체 한글화 (UI 문자열, 이벤트 뉴스), 새 그래픽과 사운드
 
@@ -82,9 +84,9 @@ remake/
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **항공 작전**: AIR_OPERATIONS, 차단·요격, DO_AIR_COMBAT, 공습 (전투 단계에 연결)
-2. **해상·공수 이동**, 상륙 공격
-3. **정보(안개)**, 옵션 화면, AI
+1. **해상·공수 이동**, 상륙 공격
+2. **정보(안개)**, 옵션 화면(역량·개입·항공 제어·정보), 저장
+3. **AI**
 
 ## 저작권 주의
 

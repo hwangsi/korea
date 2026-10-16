@@ -40,6 +40,8 @@ export const AIRCRAFT_KO: Record<string, string> = {
   Firefly: '파이어플라이', Seafire: '시파이어', Corsair: 'F4U 코세어', Tigercat: 'F7F 타이거캣',
   'Twin Mustang': 'F-82 트윈 머스탱', Mustang: 'F-51 머스탱', 'Sea Fury': '시퓨리', Skyraider: 'AD 스카이레이더',
   Thunderjet: 'F-84 선더제트', Panther: 'F9F 팬서', Sabre: 'F-86 세이버',
+  // 1995
+  'H-5': 'H-5 (Il-28) 폭격기', 'J-5': 'J-5 (MiG-17)', 'J-6': 'J-6 (MiG-19)', 'MiG-21/J-7': 'MiG-21 / J-7', 'F-18': 'F/A-18',
 };
 
 export const PLACE_KO: Record<string, string> = {
@@ -167,7 +169,9 @@ const NEWS_RULES: Rule[] = [
   [/^Civilian refugees clog Korean roads\.$/, () => '피란민 행렬로 도로 마비'],
   [/^Communist forces occupy (.+)\.$/, (m) => `공산군, ${PLACE_KO[m[1]] ?? m[1]} 점령`],
   [/^U\.N\. forces occupy (.+)\.$/, (m) => `유엔군, ${PLACE_KO[m[1]] ?? m[1]} 점령`],
-  [/^U\.N\. aircraft lightly interdict communist supply lines\.$/, () => '유엔 공군, 공산군 보급선 일부 차단'],
+  [/^(U\.N\.|Communist) aircraft (lightly|moderately|strongly) interdict (U\.N\.|Communist|communist) supply lines\.$/,
+    (m) => `${m[1] === 'U.N.' ? '유엔' : '공산'} 공군, ${m[3] === 'U.N.' ? '유엔군' : '공산군'} 보급선 ${INTERDICT_ADV_KO[m[2]]} 차단`],
+  [/^(North Korean|United Nations) air force has been neutralized\.$/, (m) => `${m[1] === 'North Korean' ? '북한' : '유엔'} 공군 무력화`],
   [/^United Nations units enter North Korea\.$/, () => '유엔군, 38선 넘어 북한 진입'],
   [/^China pledges to halt imperialist aggression in Korea\.$/, () => "중국, '조선에서의 제국주의 침략 저지' 천명"],
   [/^North Korean commandos attack South Korean supply dumps\.$/, () => '북한 특수부대, 한국군 보급 기지 습격'],
@@ -189,6 +193,7 @@ const NEWS_RULES: Rule[] = [
 ];
 
 const VICTORY_ADJ_KO: Record<string, string> = { Marginal: '근소한', Significant: '뚜렷한', Decisive: '결정적' };
+const INTERDICT_ADV_KO: Record<string, string> = { lightly: '일부', moderately: '상당 부분', strongly: '대부분' };
 
 export function newsKo(line: string): { date: string; text: string } {
   const m = line.match(/^(\d+)-([A-Za-z]+)-(\d{4}):(.*)$/);
@@ -415,6 +420,116 @@ export function costItemKo(item: { kind: string; points: number; terrain?: strin
     default: return item.kind;
   }
 }
+
+// ---------- air operations (docs/rules/air.md) ----------
+
+export const MISSION_KO = ['제공권', '지상 공격', '차단'];
+export const MISSION_HINT_KO = [
+  '적 공군과 싸움 (1950년대: 공산 요격 수준을 낮춤)',
+  '전투 단계에서 지도의 적 헥스 하나를 공습',
+  '적 보급선 공격: 적 비축 감소, 적 철도 이동·재보급 방해',
+];
+export const BASE_KO: Record<number, string> = { 0: '일본', 1: '한국', 2: '항공모함' };
+/** EFFECTIVE_STRENGTH sky code as the Air Operations title ('good / poor / lousy weather'). */
+export const AIR_WEATHER_KO: Record<number, string> = { 1: '좋은 날씨', 2: '나쁜 날씨', 3: '최악의 날씨' };
+export const STRIKE_SEVERITY_KO = ['', '가벼운 피해', '중간 피해', '큰 피해'];
+
+const ORD = '(?:st|nd|rd|th)';
+const SHIP_KO: Record<string, string> = { Triumph: '트라이엄프', Theseus: '테세우스', Glory: '글로리', Nimitz: '니미츠', Vinson: '칼빈슨' };
+const AIR_UNIT_RULES: Rule[] = [
+  [new RegExp(`^(\\d+)${ORD} Ftr Bmbr Group$`), (m) => `제${m[1]}전투폭격비행전대`],
+  [new RegExp(`^(\\d+)${ORD} Ftr Intrcptr Group$`), (m) => `제${m[1]}전투요격비행전대`],
+  [new RegExp(`^(\\d+)${ORD} Ftr Escort Group$`), (m) => `제${m[1]}전투호위비행전대`],
+  [new RegExp(`^(\\d+)${ORD} Bomb Group$`), (m) => `제${m[1]}폭격비행전대`],
+  [new RegExp(`^(\\d+)${ORD} Bomb Wing \\(Light\\)$`), (m) => `제${m[1]}경폭격비행단`],
+  [/^Carrier Air Group (\d+)$/, (m) => `미 해군 제${m[1]}항모비행전대`],
+  [/^Carrier Air Grp (\w+)$/, (m) => `영국 해군 ${SHIP_KO[m[1]] ?? m[1]} 항모비행전대`],
+  [/^Marine Air Group (\d+)$/, (m) => `미 해병 제${m[1]}비행전대`],
+  [new RegExp(`^(\\d+)${ORD} Bomber Division$`), (m) => `북한 공군 제${m[1]}폭격비행사단`],
+  [new RegExp(`^(\\d+)${ORD} Fighter Division$`), (m) => `북한 공군 제${m[1]}전투비행사단`],
+  [new RegExp(`^(\\d+)${ORD} Fighter Regiment$`), (m) => `북한 공군 제${m[1]}전투비행연대`],
+  [new RegExp(`^ROK (\\d+)${ORD} TFW$`), (m) => `한국 공군 제${m[1]}전투비행단`],
+  [new RegExp(`^USAF (\\d+)${ORD} Air Division$`), (m) => `미 공군 제${m[1]}항공사단`],
+  [new RegExp(`^USAF (\\d+)${ORD} TFW$`), (m) => `미 공군 제${m[1]}전술전투비행단`],
+  [/^USAF (\d+) Prov Bomb Wing$/, (m) => `미 공군 제${m[1]}임시폭격비행단`],
+  [new RegExp(`^US (\\d+)${ORD} Marine Air Wing$`), (m) => `미 해병 제${m[1]}항공단`],
+  [/^USN CAW (\w+)$/, (m) => `미 해군 ${SHIP_KO[m[1]] ?? m[1]} 항모비행단`],
+];
+
+export function airUnitNameKo(name: string): string {
+  const s = name.trim();
+  return applyRules(AIR_UNIT_RULES, s) ?? s;
+}
+
+export const AIR_UI_KO = {
+  button: '✈ 항공',
+  buttonTitle: '항공대 임무 정하기 (1차 명령 단계)',
+  title: '항공 작전',
+  close: '닫기',
+  hint: '항공대마다 임무 버튼을 누르세요. 바꾸면 아래 예상치가 바로 다시 계산됩니다. 기지는 비행장 상태에 따라 자동으로 배치됩니다.',
+  a2a: '공대공',
+  a2g: '공대지',
+  longRange: '장거리',
+  allWeather: '전천후',
+  runwayAny: '활주로 무관',
+  runwayImproved: '개량 활주로 필요',
+  zero: '약화로 0',
+  projections: '임무 효과 예상',
+  strikesAvailable: '공습 가능',
+  interdictionLevel: '차단 수준',
+  cilNow: '이번 턴 공습 때 공산 요격 수준',
+  cilNext: '다음 턴 시작 공산 요격 수준',
+  superiority: '아군 제공 전력',
+  withdrawals: '철수 예정',
+  reinforcements: '증원 예정',
+  noChanges: '증원이나 철수 예정인 항공대가 없습니다.',
+  migAlley: '미그 앨리',
+  migAlleyNote: '미그 앨리(14열·26행 이하, 지도 보라색 점선) 안의 공습과 모든 차단 임무는 공산 요격 수준에서 항공대 공대공을 뺀 만큼 공대지가 줄어듭니다.',
+  migAlley1995: '1995년: 양쪽 제공권 전력을 비교해 전투 단계에서 손실률이 정해집니다 (적/아군 × 10%, 최대 90%, 손실은 영구).',
+  communist1950s: '1950년대 공산군 항공력은 공산 요격 수준 하나로 나타냅니다. 공산 플레이어가 정할 항공 임무는 없습니다.',
+  onlyFirstPhase: '임무는 1차 명령 단계에서만 바꿀 수 있습니다.',
+  programControl: '항공 작전이 프로그램 제어로 설정되어 있습니다.',
+  neutralized: '이 진영의 공군은 무력화되었습니다.',
+  aircraft: '기종',
+  // combat phase: airstrikes (manual 4.13)
+  strikeTitle: (side: string) => `${side} 공습`,
+  strikeLines: (n: number) => `공습 ${n}회. 지도에서 적 점령 헥스를 클릭해 항공대마다 목표를 고르세요.`,
+  strikeN: (k: number, n: number) => `공습 ${k} / ${n}`,
+  strikeHint: '적 점령 헥스를 클릭하면 이 항공대가 공습합니다. 빈 것처럼 보이는 헥스도 고를 수 있고, 적이 있으면 발견해 공격합니다.',
+  strikeLethality: '공습 살상률',
+  strikeLethalityNote: '험지·산악·도시 ×0.75, 진지(준비도 75+ 미이동) ×0.75. 장비마다 살상률 × (15 − 생존력)/15 확률로 파괴, 준비도는 살상률의 절반만큼 떨어집니다(최소 50).',
+  aimAt: (pct: number) => `공습 목표 · 살상률 ${pct}%`,
+  auto: '컴퓨터가 목표 선택',
+  autoAll: '남은 공습 모두 맡기기',
+  continue: '지상전으로 ▶',
+  allFlown: '이 진영의 공습을 모두 마쳤습니다.',
+  friendly: '아군 헥스입니다! 적 점령 헥스를 고르세요.',
+  manchuria: '제3차 세계대전을 시작할 권한이 없습니다! (만주)',
+  noTarget: '목표를 찾지 못함',
+  enemyUnit: '적 부대',
+  aaHit: '대공 사격에 맞음 (공대공·공대지 −1)',
+  aaDestroyed: '항공대 소멸',
+  equipmentLost: (n: number) => `장비 ${n}개 파괴`,
+  readinessLost: (n: number) => `준비도 합계 −${n}`,
+  autoTag: '자동',
+  strikesSoFar: '이번 공습 결과',
+  strikeDone: (place: string, result: string) => `${place}: ${result}`,
+  endPhaseStrikes: (n: number) => `남은 공습 ${n}회는 컴퓨터가 목표를 고릅니다. 지상전으로 넘어갈까요?`,
+  // results
+  results: '항공 작전 결과',
+  cil: (a: number, b: number) => `공산 요격 수준 ${a} → ${b} (유엔 제공권 임무)`,
+  superiorityLoss: (side: string, loss: number, own: number, enemy: number) => `${side} 항공대 손실 ${loss}% (제공 전력 ${own} vs ${enemy})`,
+  interdictionResult: (il: number, hit: number, enemy: string) => `차단 수준 ${il}${hit ? ` · ${enemy} 비축 −${hit}` : ''}`,
+  noTargets: '공습 취소: 목표 없음',
+  programMissions: '프로그램이 임무를 정함',
+  missionsLine: (m: [number, number, number]) => `제공권 ${m[0]} · 지상 공격 ${m[1]} · 차단 ${m[2]}`,
+  noStrikes: '공습 없음',
+  // summary
+  unil: '유엔 차단 수준',
+  cilShort: '공산 요격 수준',
+  communistIl: '공산 차단 수준',
+  airLine: '항공',
+} as const;
 
 /** NATO-style echelon marker from a unit or force name. */
 export function echelonOf(name: string): string {
