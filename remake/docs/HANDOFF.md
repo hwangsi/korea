@@ -3,7 +3,8 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-17 (오후), 노트북(C:\Users\hwang\AIprojects\korea). **작은 남은 과제 일괄 완료**: 중공군 첫 참전 뉴스, 표시 전투력 통일,
+- 마지막 갱신: 2026-10-17 (밤), 노트북. **전투 재생 + 새 그래픽(지도 D 보드게임 + UI C 다크, 차트, 기록사진)** 완료, 테스트 112개.
+  같은 날 오후에는 **작은 남은 과제 일괄 완료**: 중공군 첫 참전 뉴스, 표시 전투력 통일,
   진행 속도·이동 따라가기(+이동 애니메이션), 밀집 지역 마커 겹침, 한글화 마무리, 원작 .SAV 변환기. 테스트 109개 통과.
   **사용자 결정: 개선판 AI는 맨 마지막 과제.** 남은 것은 7장(원본 게임 비교, 새 그래픽, 그다음 개선판 AI)
   (같은 날 앞서 유엔군 컴퓨터 WALTON, 부대 편성 화면 FULL_HEX 완료)
@@ -193,8 +194,13 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
   - 그래픽 시안 PNG 4장(사용자에게 제시, 세션 산출물): A 원작 계승 픽셀 아트, B 1950년대 작전 지도, C 현대 전술 화면(다크), D 보드게임 디오라마.
     사용자가 고르면 7.2 진행
 
+- **새 그래픽**(`docs/graphics.md`): 지도는 시안 D(보드게임: 칠한 지형 타일 `ui/boardArt.ts`, 해안 모래띠·파도, 두꺼운 말과 그림자,
+    빛나는 전선), 화면은 시안 C(다크 유리 카드, `styles.css` 끝 블록). 요약에 세력 막대·전선 추이 차트(`ui/charts.ts`,
+    엔진 `GameState.history`·`recordFront`), 시나리오 카드에 퍼블릭 도메인 기록사진(`data/photos.ts`, 출처는 graphics.md 4)
+  - 다시 연 페이지 뒤의 기본 게임은 전투 재생을 하지 않고, 새 게임·불러오기는 남은 재생을 정리(`cancelReplay`)
+
 아직 없음
-- 새 그래픽(시안 중 선택 대기), 공습 단계별 연출, 원본 게임과의 직접 비교(미해결 질문들)
+- 공습 단계별 연출, 제목 화면, 원본 게임과의 직접 비교(미해결 질문들)
 - 개선판 AI (등록부와 선택 자리만 있음) ← 마지막 과제
 
 ## 3. 폴더 구조
@@ -226,6 +232,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/reports.md                보고서 (전략 보고, 비행장·항구, 날씨, 시나리오 정보, 보급망 표시, 전략 개관, FULL_HEX 요약)
     docs/rules/forces.md                 부대 편성 FULL_HEX (유닛 옮기기 허용 조건·이동력 맞추기·스미스 흡수, 부대 이름, +Hex/−Hex)
     docs/audio.md                        배경 음악·효과음 (리메이크 추가, 곡 목록과 저작권)
+    docs/graphics.md                     그래픽 (지도 D 보드게임 + UI C 다크, 차트, 사진 출처)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -248,10 +255,12 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
         hex.ts                           헥스 수학 (전투력은 combat.ts의 GET_STRENGTH·shownStrength 하나로)
+      data/photos.ts                     시나리오 카드 사진(퍼블릭 도메인, data URL)
       i18n/ko.ts                         한글 용어집·번역 규칙
       ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts),
                                          보고서(reports.ts), 소리·진행 메뉴(soundPanel.ts, 설정값 playSettings.ts), 부대 편성(organize.ts),
-                                         전투 재생(combatReplay.ts: 단계·지도 표시 계산과 하단 상자)
+                                         전투 재생(combatReplay.ts: 단계·지도 표시 계산과 하단 상자),
+                                         보드게임 지형 타일(boardArt.ts), 요약 차트(charts.ts)
       audio/                             소리: abc.ts(악보 읽기), arrange.ts(편곡), synth.ts(FM 악기), sfx.ts(효과음), songs.ts(곡), index.ts(재생기)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
@@ -385,7 +394,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 - 비교 기준 세이브: KOREA1S·3S·4S.DAT를 .SAV로 복사해 원작에서 "A saved game"으로 열면 리메이크(sav2json)와 같은 지점에서 시작할 수 있음
 - 원작에서 저장한 .SAV를 sav2json으로 바꿔 두 게임을 같은 상태에서 비교하는 것이 가장 확실(난수는 다르므로 경향만)
 
-### 7.2 새 그래픽·연출
+### 7.2 새 그래픽·연출 (1차 완료 2026-10-17, `docs/graphics.md`)
+
+남은 것: 공습 연출, 제목 화면, 부대 종류별 말 그림. 아래는 결정 기록.
 
 시안 4가지(A 픽셀 아트 / B 1950년대 작전 지도 / C 현대 다크 전술 화면 / D 보드게임 디오라마)를 2026-10-17에 제시.
 **사용자 결정(2026-10-17): 전장(지도) 그래픽은 D, 오른쪽 정보 화면과 UI는 C.** 혼합 시안 "그래픽시안-D지도+C인터페이스.png"(세션 산출물)을 기준으로 구현할 것:

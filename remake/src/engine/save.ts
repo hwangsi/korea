@@ -14,7 +14,7 @@ import type { MapData, Scenario } from '../data/types.ts';
 import type { GameState, Player } from './state.ts';
 import { createGameState } from './state.ts';
 import type { GameOptions } from './options.ts';
-import { forceSpotting } from './turn.ts';
+import { forceSpotting, recordFront } from './turn.ts';
 import type { TurnEvent } from './turn.ts';
 import { gameDate } from './weather.ts';
 
@@ -149,6 +149,8 @@ export function loadGame(file: SaveFile, map: MapData, scenario: Scenario): Game
  */
 export function resumeGame(g: GameState): TurnEvent[] {
   if (g.gameOver || (g.phase !== 1 && g.phase !== 3)) return [];
+  // saves made before the front-line chart (or converted original saves) start their history now
+  if (!g.history?.length) { g.history = []; recordFront(g); }
   forceSpotting(g);
   g.version++;
   return [{ kind: 'ordersPhase', phase: g.phase, player: g.player, reinforcements: false }];

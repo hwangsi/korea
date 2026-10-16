@@ -138,6 +138,15 @@ function advancePlayer(g: GameState, events: TurnEvent[]): boolean {
   return false;
 }
 
+/** Remake addition (no random numbers, no rule effect): hexes held by each side at the start of the turn (GameState.history). */
+export function recordFront(g: GameState) {
+  const h = terrainHeld(g);
+  const row = { turn: g.turn, un: h.cities.un + h.hexes.un, communist: h.cities.communist + h.hexes.communist };
+  const last = g.history[g.history.length - 1];
+  if (last && last.turn === g.turn) g.history[g.history.length - 1] = row;
+  else g.history.push(row);
+}
+
 /** Start a freshly loaded scenario: weather, intelligence option, turn-0 events, then the first orders phase. */
 export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[] {
   // LOAD_NEW_GAME 4A0B: "Random?" is rolled before the scenario file is read (docs/rules/options.md 2)
@@ -168,6 +177,8 @@ export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[]
     g.utility[11] = 1;
   }
   g.gameOver = null;
+  g.history = [];
+  recordFront(g);
   const events: TurnEvent[] = [];
   beginOrdersPhase(g, PHASE_FIRST_ORDERS, events);
   // no human player in this phase (the computer moved, the UN has no first phase): play on to the next human phase
@@ -351,5 +362,6 @@ export function nextTurn(g: GameState) {
       if (af.current < af.best && rnd(g, 1, 100) <= (4 - af.current) * 25) af.current++;
     } else af.current = 0;
   }
+  recordFront(g);
   g.version++;
 }

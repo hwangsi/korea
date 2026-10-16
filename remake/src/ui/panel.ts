@@ -28,9 +28,11 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
-  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO,
+  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
+import { barChart, lineChart, CHART_COLORS } from './charts.ts';
+import { SCENARIO_PHOTOS } from '../data/photos.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
 import { directionsOf, DIRECTIONS } from '../engine/hex.ts';
 import { organizeBlock } from '../engine/forces.ts';
@@ -166,7 +168,8 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
   const lvl = territoryBalance(g);
   el.innerHTML = `
     ${messageCard(message)}
-    <section class="card">
+    <section class="card ${SCENARIO_PHOTOS[s.scenario] ? 'hero' : ''}">
+      ${photoBanner(s.scenario)}
       <p class="eyebrow">시나리오 ${s.scenario}${s.variant === 'S' ? ' · 편성 배치' : ''}</p>
       <h2>${esc(s.title.ko)}</h2>
       <p class="muted">${esc(s.title.en)} · ${dateOfTurn(g, g.turn)} · ${g.turn}턴</p>
@@ -191,6 +194,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
       </div>
       ${g.refugees ? `<p class="note warn">${esc(TURN_UI_KO.refugees)}</p>` : ''}
     </section>
+    ${chartCards(ctx, side, waiting)}
     ${news.length ? `<section class="card"><h3>최근 소식</h3><ul class="news">${news.map((n) => `<li><span class="muted">${esc(n.date)}</span>${esc(n.text)}</li>`).join('')}</ul></section>` : ''}
     <section class="card help">
       <h3>${esc(HELP_KO.title)}</h3>
@@ -199,6 +203,38 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         ? HELP_KO.computer(g.computerSide === 1 ? SIDE_KO.communist : SIDE_KO.un, g.computerSide === 1 ? 'KIM' : 'WALTON')
         : HELP_KO.twoPlayer)} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
     </section>`;
+}
+
+/** Archive photo at the top of the scenario card (src/data/photos.ts, public domain). */
+function photoBanner(scenario: number): string {
+  const p = SCENARIO_PHOTOS[scenario];
+  if (!p) return '';
+  return `<div class="hero-photo" role="img" aria-label="${esc(p.caption)}" title="${esc(`${p.caption} · ${p.credit}`)}" style="background-image:url('${p.src}')"></div>`;
+}
+
+/** Forces at a glance and the front-line trend (graphics plan C; GameState.history). */
+function chartCards(ctx: PanelContext, side: (k: 'un' | 'communist') => number | string, waiting: number): string {
+  const g = ctx.game;
+  const num = (v: number | string) => (typeof v === 'number' ? v : null);
+  const bars = barChart([
+    { label: CHART_KO.un, value: num(side('un')), color: CHART_COLORS.un },
+    { label: CHART_KO.communist, value: num(side('communist')), color: CHART_COLORS.communist },
+    { label: CHART_KO.waiting, value: waiting, color: CHART_COLORS.other },
+  ]);
+  const hist = g.history ?? [];
+  const md = (t: number) => { const d = gameDate(g, t); return `${d.month}/${d.day}`; };
+  const line = hist.length
+    ? lineChart([
+      { label: CHART_KO.unHeld, color: CHART_COLORS.un, values: hist.map((r) => r.un) },
+      { label: CHART_KO.redHeld, color: CHART_COLORS.communist, values: hist.map((r) => r.communist) },
+    ], hist.map((r) => md(r.turn)))
+    : '';
+  return `
+    <div class="chart-row">
+      <section class="card chart-card"><h3>${esc(CHART_KO.forces)}</h3>${bars}</section>
+      <section class="card chart-card" title="${esc(CHART_KO.frontHint)}"><h3>${esc(CHART_KO.front)}</h3>
+        <p class="legend"><span class="dot un"></span>${esc(CHART_KO.unHeld)} <span class="dot red"></span>${esc(CHART_KO.redHeld)}</p>${line}</section>
+    </div>`;
 }
 
 /** Weather forecast of the active player (WEATHER rows 1 and 2), as the original Weather Report. */

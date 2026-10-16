@@ -515,10 +515,10 @@ async function main() {
   // ---------- combat replay (docs/rules/combat.md 6) ----------
 
   /** Turn engine events into the phase banner and the panel report; ground battles are replayed first. */
-  function handleEvents(events: TurnEvent[]) {
+  function handleEvents(events: TurnEvent[], replayBattles = true) {
     const combat = events.find((e) => e.kind === 'combat');
     const reports = combat && combat.kind === 'combat' ? combat.reports : null;
-    const replaying = !!game && play.replay && replayable(reports);
+    const replaying = !!game && replayBattles && play.replay && replayable(reports);
     // while the battles are replayed, the call of the next phase sounds only when its banner appears
     handlePhaseEvents(events, replaying ? events.filter((e) => e.kind !== 'combat' && e.kind !== 'ordersPhase') : events);
     if (replaying) startReplay(reports!, events.filter((e) => e.kind === 'ordersPhase'));
@@ -533,6 +533,15 @@ async function main() {
     banner = null;
     if (turnView) turnView = { ...turnView, current: replay.b };
     showReplayStep(true);
+  }
+
+  /** Drop a replay without showing what waited behind it (a new or loaded game replaces everything). */
+  function cancelReplay() {
+    stopReplayTimer();
+    replay = null;
+    view.replay = null;
+    replayEl.hidden = true;
+    replayEl.innerHTML = '';
   }
 
   function stopReplayTimer() {
@@ -1059,15 +1068,17 @@ async function main() {
     draft = null;
     saveOpen = false;
     const events = startNewGame(game, toStartOptions(o));
-    useGame(events);
+    // the game shown behind the start menu when the page opens does not replay its opening battles
+    useGame(events, save);
     // the game shown behind the start menu when the page opens must not replace the last autosave
     if (save) autoSave();
     render();
   }
 
   /** Show `game` (new or loaded) and the events that led to its current phase. */
-  function useGame(events: TurnEvent[]) {
+  function useGame(events: TurnEvent[], replayBattles = true) {
     if (!game || !scenario) return;
+    cancelReplay();
     view.setData(map, scenario, game);
     const g = game;
     const chosen = options;
@@ -1084,7 +1095,7 @@ async function main() {
     organizeAt = null;
     renaming = null;
     // a computer that moves first may already have fought the first combat phase: its report stays in the panel
-    handleEvents(events);
+    handleEvents(events, replayBattles);
     if (first) { view.fitAll(); first = false; }
   }
 

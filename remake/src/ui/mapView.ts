@@ -7,6 +7,7 @@ import type { Pt } from '../engine/hex.ts';
 import { forceUnits, sideOf } from '../engine/state.ts';
 import { plottedAssaults, shownStrength } from '../engine/combat.ts';
 import type { ReplayOverlay } from './combatReplay.ts';
+import { paintTile, shade, BOARD } from './boardArt.ts';
 import type { GameState, Side, UnitState } from '../engine/state.ts';
 import { fogActive, forceIntel, knownEnemyAt, strengthReport } from '../engine/intel.ts';
 import type { IntelLevel } from '../engine/intel.ts';
@@ -24,14 +25,14 @@ export interface Layers { possession: boolean; units: boolean; names: boolean; n
 
 const FONT = '"Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
-const FILL: Record<string, string> = {
-  open: '#cbd5a2', rough: '#b3b583', mountain: '#a2916c', urban: '#c8c1b3', offmap: '#d8d3c6',
-  ocean: '#4f7fae', estuary: '#7aa5cc', reservoir: '#79aed8', undefined: '#cbd5a2', japan: '#d3dcb2',
-};
 
 export const NATION_COLOR: Record<Nation, string> = {
-  US: '#2f6aa8', USMC: '#28507d', CW: '#4c7ea6', UN: '#3b8a8f', ROK: '#1f84c6', NKPA: '#b53a35', CPLA: '#b8661c',
+  US: '#2f62b8', USMC: '#24477f', CW: '#3f7db0', UN: '#2c8a92', ROK: '#2a78d6', NKPA: '#c8302c', CPLA: '#c9671c',
 };
+
+/** Hex tiles drawn per zoom step: `scale` = device pixels per world unit (half-octave steps). */
+interface TileCache { scale: number; tiles: Map<string, HTMLCanvasElement>; }
+const TILE_VARIANTS = 4;
 
 const isWater = (t: string) => t === 'ocean' || t === 'estuary' || t === 'reservoir';
 
@@ -102,6 +103,7 @@ export class MapView {
   hideForces = false;
   /** Combat replay: the battle being shown step by step (ui/combatReplay.ts), or null. */
   replay: ReplayOverlay | null = null;
+  private tileCache: TileCache | null = null;
   /** Screen rectangles of the counters drawn this frame: place and mountain labels keep clear of them. */
   private counterRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
   /** A force sliding along the hexes it just moved through (movement animation, ui/playSettings.ts). */
@@ -435,26 +437,23 @@ export class MapView {
     const z = this.cam.zoom;
     const map = this.map;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = FILL.ocean;
+    ctx.fillStyle = BOARD.sea;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     if (!map) return;
     ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z, -this.cam.x * z * this.dpr, -this.cam.y * z * this.dpr);
     const px = 1 / z; // one screen pixel in world units
     const vis = this.visibleHexes();
 
-    // terrain
+    // terrain: painted board-game tiles (ui/boardArt.ts), then beaches and surf along the coasts
+    const scale = this.tileScale();
     for (const h of vis) {
       const c = hexCenter(h.x, h.y, HEX);
-      this.hexPath(c);
-      ctx.fillStyle = FILL[h.terrain] ?? FILL.open;
-      ctx.fill();
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.lineWidth = px * 1.2;
-      ctx.stroke();
+      const t = this.tile(h.terrain, (((h.x * 73856093) ^ (h.y * 19349663)) >>> 0) % TILE_VARIANTS, scale);
+      ctx.drawImage(t, c.x - t.width / scale / 2, c.y - t.height / scale / 2, t.width / scale, t.height / scale);
     }
-    if (z > 0.32) for (const h of vis) this.decorate(h, hexCenter(h.x, h.y, HEX));
+    if (z > 0.18) this.drawCoasts(vis);
 
-    // possession tint + front line
+    // possession tint (light: the board stays readable) + front line
     const sc = this.game;
     if (this.layers.possession && sc) {
       for (const h of vis) {
@@ -462,22 +461,27 @@ export class MapView {
         const owner = sc.possession[h.y * map.width + h.x];
         if (!owner) continue;
         this.hexPath(hexCenter(h.x, h.y, HEX));
-        ctx.fillStyle = owner === 1 ? 'rgba(40, 110, 210, 0.11)' : 'rgba(210, 45, 40, 0.11)';
+        ctx.fillStyle = owner === 1 ? 'rgba(40, 110, 230, 0.075)' : 'rgba(220, 40, 30, 0.075)';
         ctx.fill();
       }
     }
 
-    if (this.layers.grid && z > 0.35) {
-      ctx.beginPath();
-      for (const h of vis) this.hexPath(hexCenter(h.x, h.y, HEX), false);
-      ctx.strokeStyle = 'rgba(30, 40, 30, 0.22)';
-      ctx.lineWidth = px;
-      ctx.stroke();
+    // the hex grid printed on the board (stronger with the grid layer)
+    if (z > 0.3) {
+      for (const wet of [false, true]) {
+        ctx.beginPath();
+        for (const h of vis) if (h.terrain !== 'offmap' && isWater(h.terrain) === wet) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+        ctx.strokeStyle = wet
+          ? (this.layers.grid ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.07)')
+          : (this.layers.grid ? 'rgba(40, 30, 15, 0.38)' : BOARD.grid);
+        ctx.lineWidth = px * (this.layers.grid ? 1.2 : 1);
+        ctx.stroke();
+      }
     }
 
     // linear features
-    this.strokeNetwork(vis, 'river', [{ color: '#2f6fb3', width: HEX * 0.14 }]);
-    this.strokeNetwork(vis, 'road', [{ color: '#6f603f', width: HEX * 0.17 }, { color: '#f1e3b5', width: HEX * 0.09 }]);
+    this.strokeNetwork(vis, 'river', [{ color: '#17487f', width: HEX * 0.2 }, { color: '#3b8ee3', width: HEX * 0.12 }, { color: 'rgba(190, 228, 255, 0.55)', width: HEX * 0.035 }]);
+    this.strokeNetwork(vis, 'road', [{ color: '#6a4c26', width: HEX * 0.17 }, { color: '#ecd59c', width: HEX * 0.1 }]);
     this.strokeNetwork(vis, 'rail', [{ color: '#2b2b2b', width: HEX * 0.1 }, { color: '#f4f4f4', width: HEX * 0.05, dash: [HEX * 0.2, HEX * 0.2] }]);
 
     if (this.layers.supply && sc) this.drawSupply(vis);
@@ -571,61 +575,73 @@ export class MapView {
     ctx.closePath();
   }
 
-  private decorate(h: Hex, c: Pt) {
+  // ---------- board-game terrain (graphics plan D) ----------
+
+  /** Device pixels per world unit, in half-octave steps so the tile cache is reused while zooming. */
+  private tileScale(): number {
+    const s = this.cam.zoom * this.dpr;
+    return Math.min(8, Math.max(0.25, Math.pow(2, Math.round(Math.log2(s) * 2) / 2)));
+  }
+
+  private tile(terrain: string, variant: number, scale: number): HTMLCanvasElement {
+    if (!this.tileCache || this.tileCache.scale !== scale) this.tileCache = { scale, tiles: new Map() };
+    const key = `${terrain}:${variant}`;
+    let t = this.tileCache.tiles.get(key);
+    if (!t) {
+      t = document.createElement('canvas');
+      t.width = Math.ceil((2 * HEX + 4) * scale);
+      t.height = Math.ceil((SQRT3 * HEX + 4) * scale);
+      const c = t.getContext('2d')!;
+      c.setTransform(scale, 0, 0, scale, t.width / 2, t.height / 2);
+      paintTile(c, terrain, variant, HEX);
+      this.tileCache.tiles.set(key, t);
+    }
+    return t;
+  }
+
+  /** Beaches on the land side and a band of shallow water with surf on the sea side of every coast. */
+  private drawCoasts(vis: Hex[]) {
     const ctx = this.ctx;
-    const s = HEX;
-    // deterministic jitter per hex so textures do not look tiled
-    const j = (n: number) => (((h.x * 73856093) ^ (h.y * 19349663) ^ (n * 83492791)) >>> 0) % 1000 / 1000 - 0.5;
-    if (h.terrain === 'rough') {
-      ctx.fillStyle = 'rgba(85, 90, 40, 0.45)';
-      for (let i = 0; i < 6; i++) {
-        ctx.beginPath();
-        ctx.arc(c.x + j(i) * s * 1.2, c.y + j(i + 9) * s * 1.1, s * 0.07, 0, Math.PI * 2);
-        ctx.fill();
+    const map = this.map!;
+    const edge = (c: Pt, d: number) => { const p = hexCorners(c, HEX); return [p[(4 + d) % 6], p[(5 + d) % 6]] as const; };
+    for (const h of vis) {
+      const water = h.terrain === 'ocean' || h.terrain === 'estuary';
+      const land = isLand(h.terrain) && h.terrain !== 'japan';
+      if (!water && !land && h.terrain !== 'japan') continue;
+      const sides: number[] = [];
+      for (let d = 0; d < 6; d++) {
+        const [nx, ny] = neighbor(h.x, h.y, d);
+        if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) continue;
+        const n = this.hexes[ny * map.width + nx];
+        const nWater = n.terrain === 'ocean' || n.terrain === 'estuary';
+        if (water ? isLand(n.terrain) : nWater) sides.push(d);
       }
-    } else if (h.terrain === 'mountain') {
-      for (const [ox, oy, k] of [[-0.3, 0.12, 1], [0.22, 0.05, 0.8], [-0.02, -0.25, 0.7]]) {
-        const bx = c.x + ox * s, by = c.y + oy * s + s * 0.18 * k;
-        ctx.beginPath();
-        ctx.moveTo(bx - s * 0.3 * k, by);
-        ctx.lineTo(bx, by - s * 0.42 * k);
-        ctx.lineTo(bx + s * 0.3 * k, by);
-        ctx.closePath();
-        ctx.fillStyle = '#7d6a4a';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(bx - s * 0.1 * k, by - s * 0.28 * k);
-        ctx.lineTo(bx, by - s * 0.42 * k);
-        ctx.lineTo(bx + s * 0.1 * k, by - s * 0.28 * k);
-        ctx.closePath();
-        ctx.fillStyle = '#f2efe6';
-        ctx.fill();
-      }
-    } else if (h.terrain === 'urban') {
-      ctx.fillStyle = '#7d756a';
-      for (const [ox, oy, w, hh] of [[-0.35, -0.2, 0.28, 0.24], [0.02, -0.32, 0.3, 0.3], [-0.18, 0.12, 0.34, 0.26], [0.2, 0.05, 0.22, 0.3]]) {
-        ctx.fillRect(c.x + ox * s, c.y + oy * s, w * s, hh * s);
-      }
-    } else if (h.terrain === 'offmap') {
+      if (!sides.length) continue;
+      const c = hexCenter(h.x, h.y, HEX);
       ctx.save();
       this.hexPath(c);
       ctx.clip();
-      ctx.strokeStyle = 'rgba(120, 110, 95, 0.35)';
-      ctx.lineWidth = s * 0.05;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      for (let k = -2; k <= 2; k++) { ctx.moveTo(c.x - s + k * s * 0.5, c.y + s); ctx.lineTo(c.x + s + k * s * 0.5, c.y - s); }
-      ctx.stroke();
-      ctx.restore();
-    } else if (h.terrain === 'estuary' || h.terrain === 'reservoir') {
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineWidth = s * 0.05;
-      ctx.beginPath();
-      for (const oy of [-0.2, 0.15]) {
-        ctx.moveTo(c.x - s * 0.4, c.y + oy * s);
-        ctx.quadraticCurveTo(c.x - s * 0.2, c.y + (oy - 0.1) * s, c.x, c.y + oy * s);
-        ctx.quadraticCurveTo(c.x + s * 0.2, c.y + (oy + 0.1) * s, c.x + s * 0.4, c.y + oy * s);
+      for (const d of sides) { const [a, b] = edge(c, d); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); }
+      if (water) {
+        ctx.strokeStyle = 'rgba(95, 170, 215, 0.55)';
+        ctx.lineWidth = HEX * 0.62;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(140, 205, 235, 0.55)';
+        ctx.lineWidth = HEX * 0.3;
+        ctx.stroke();
+        ctx.setLineDash([HEX * 0.22, HEX * 0.12]);
+        ctx.strokeStyle = BOARD.foam;
+        ctx.lineWidth = HEX * 0.1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        ctx.strokeStyle = 'rgba(232, 214, 160, 0.9)';
+        ctx.lineWidth = HEX * 0.24;
+        ctx.stroke();
       }
-      ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -678,12 +694,21 @@ export class MapView {
         ctx.lineTo(b.x, b.y);
       }
     }
+    // a glowing red line (graphics plan C/D)
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.lineWidth = HEX * 0.2;
+    ctx.lineJoin = 'round';
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 40, 30, 0.85)';
+    ctx.shadowBlur = 10 * this.dpr;
+    ctx.strokeStyle = 'rgba(255, 70, 55, 0.55)';
+    ctx.lineWidth = HEX * 0.22;
     ctx.stroke();
-    ctx.strokeStyle = '#c0262d';
-    ctx.lineWidth = HEX * 0.1;
+    ctx.restore();
+    ctx.strokeStyle = '#e8241c';
+    ctx.lineWidth = HEX * 0.11;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 215, 205, 0.9)';
+    ctx.lineWidth = HEX * 0.035;
     ctx.stroke();
   }
 
@@ -1048,12 +1073,31 @@ export class MapView {
       ctx.lineWidth = HEX * 0.05;
       ctx.stroke();
     }
+    // a thick die-cut counter: soft shadow on the board, a darker side, a lit face (graphics plan D)
+    const rad = HEX * 0.1, thick = HEX * 0.08;
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, HEX * 0.1);
-    ctx.fillStyle = color;
+    ctx.roundRect(x + HEX * 0.07, y + thick + HEX * 0.07, w, h, rad);
+    ctx.fillStyle = 'rgba(25, 18, 8, 0.32)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = HEX * 0.04;
+    ctx.beginPath();
+    ctx.roundRect(x, y + thick, w, h, rad);
+    ctx.fillStyle = shade(color, -0.42);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, rad);
+    const face = ctx.createLinearGradient(x, y, x, y + h);
+    face.addColorStop(0, shade(color, 0.22));
+    face.addColorStop(0.55, color);
+    face.addColorStop(1, shade(color, -0.12));
+    ctx.fillStyle = face;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = HEX * 0.035;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(x + HEX * 0.04, y + HEX * 0.04, w - HEX * 0.08, h - HEX * 0.08, rad * 0.7);
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = HEX * 0.025;
     ctx.stroke();
     if (stub) { ctx.restore(); return; }
     this.shipBadge(lead, x, y);

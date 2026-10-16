@@ -801,6 +801,18 @@ export const SAVE_UI_KO = {
 
 // ---------- sound (docs/audio.md) ----------
 
+/** Chart cards of the summary panel (ui/charts.ts). */
+export const CHART_KO = {
+  forces: '세력 현황',
+  front: '전선 추이',
+  un: '유엔군',
+  communist: '공산군',
+  waiting: '증원 대기',
+  unHeld: '유엔 점령지',
+  redHeld: '공산 점령지',
+  frontHint: '턴마다 양쪽이 쥐고 있는 헥스 수 (도시 포함)',
+};
+
 /** The "조작" card of the summary panel. */
 export const HELP_KO = {
   title: '조작',

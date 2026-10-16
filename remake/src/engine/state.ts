@@ -126,6 +126,9 @@ export interface GameState {
   /** NOTES of the data file: the original's news lines ("25-June-1950: text") from before this game began.
    *  A scenario's opening news, or the last eight lines of an imported original save (tools/extract/sav2json.ts). */
   notes: string[];
+  /** Remake addition: hexes held by each side at the start of every turn (terrainHeld, cities included), for the
+   *  front-line chart of the summary panel. Possession is public in the original (Strategic Report). */
+  history: { turn: number; un: number; communist: number }[];
   news: NewsItem[];
   /** End of game reason once END_TEST fired. */
   gameOver: string | null;
@@ -223,6 +226,7 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     ccfFixed: false,
     victoryVoid: false,
   notes: (scenario.news ?? []).slice(),
+  history: [],
     news: [],
     gameOver: null,
     interdiction: [scenario.interdiction?.[0] ?? 0, scenario.interdiction?.[1] ?? 0],
