@@ -467,6 +467,51 @@ export const COMBAT_UI_KO = {
 
 export const ARMY_NAME_KO = ['북한군', '중공군', '국군', '유엔군'];
 
+/** Step-by-step ground combat replay (ui/combatReplay.ts, docs/rules/combat.md 6). */
+export const REPLAY_KO = {
+  title: '지상전',
+  battleOf: (i: number, n: number) => `전투 ${i} / ${n}`,
+  attacks: (army: string, place: string) => `${army}, ${place} 공격`,
+  moveIn: (army: string, place: string) => `${army}, 비어 있는 ${place}로 진입`,
+  attackers: '공격 부대',
+  defenders: '방어 부대',
+  fromDir: (d: string) => `${d}에서`,
+  dirs: ['북쪽', '북동쪽', '남동쪽', '남쪽', '남서쪽', '북서쪽'],
+  results: '전투 결과',
+  attackerLoss: '공격 측 손실률',
+  defenderLoss: '방어 측 손실률',
+  retreatChance: (p: number) => `후퇴 확률 ${p}%`,
+  retreated: '방어 부대 후퇴',
+  held: '방어 부대 버틴',
+  wipedOut: '방어 부대 괴멸',
+  equipLost: (a: number, d: number) => `잃은 장비: 공격 측 ${a} · 방어 측 ${d}`,
+  destroyed: '괴멸',
+  none: '-',
+  hidden: '?',
+  forceEliminated: (name: string) => `${name} 괴멸: 부대가 소멸됐습니다`,
+  unitEliminated: (name: string, force: string) => `${name} 제거됨${force && force !== name ? ` (${force})` : ''}`,
+  retreat: (name: string, place: string) => `${name} 후퇴 → ${place}`,
+  blocked: (name: string) => `${name}: 후퇴로가 막혀 추가 손실`,
+  bugout: (name: string) => `${name} 버그아웃: 장비를 버리고 흩어짐`,
+  advance: (name: string, place: string) => `${name} 전진 → ${place}`,
+  moveInLine: (name: string, place: string) => `${name} 진입 → ${place}`,
+  evacuated: (name: string) => `${name}: 상륙 실패, 장비를 잃고 일본으로 철수`,
+  lostAtSea: (name: string) => `${name}: 상륙 실패, 일본에 자리가 없어 괴멸`,
+  noChange: '양쪽 모두 제자리 (제거·후퇴 없음)',
+  pause: '⏸ 일시정지',
+  resume: '▶ 계속',
+  next: '다음 ›',
+  nextBattle: '다음 전투 ⏭',
+  skip: '건너뛰기',
+  keys: 'Enter·→ 다음 · Space 일시정지 · Esc 모두 건너뛰기. 속도는 ♪ 설정의 진행 속도',
+  replayAll: '▶ 전투 다시 보기',
+  replayOne: '다시 보기',
+  mapEliminated: '괴멸',
+  mapBlocked: '후퇴 불가',
+  mapBugout: '버그아웃',
+  mapRetreat: '후퇴',
+};
+
 // ---------- new game options (docs/rules/options.md) ----------
 
 /** The four scenarios of the start menu (manual 2.111). */
@@ -801,6 +846,8 @@ export const SOUND_UI_KO = {
   speedValues: { 1: '빠름', 2: '보통', 3: '느림' } as Record<number, string>,
   followOn: '이동 따라가기 켜짐',
   followOff: '이동 따라가기 꺼짐',
+  replayOn: '전투 재생 켜짐',
+  replayOff: '전투 재생 꺼짐',
   playNote: '부대가 움직이는 속도입니다(원작 Speed). 따라가기를 켜면 지도가 움직이는 부대를 계속 가운데에 둡니다(원작 Mvmnt Centering). 꺼 두면 부대가 화면 밖으로 나갈 때만 옮깁니다. C 키: 선택한 부대로 지도 이동.',
   note: '1990년대 초 FM 사운드카드 느낌으로 직접 편곡한 연주곡(가사 없음)입니다. 저작권이 끝난 곡만 저장소에 들어 있고, 6.25의 노래는 개인 데이터(data/private)에 있을 때만 나옵니다.',
 } as const;

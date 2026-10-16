@@ -187,8 +187,14 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     "최근 소식"이 이걸 씀). **KOREA1S·3S·4S.DAT는 실제 원작 세이브**(두 사람 대전, 공산군 1차 명령 단계)라 이 파일로 검증.
     저장 창에 .SAV를 올리면 변환 방법 안내
 
+- **전투 재생**(`combat.md` 6, `ui/combatReplay.ts`, `tests/replay.test.ts`): 원작 지상전 화면처럼 전투마다 공격 부대(방향 화살표)·방어 부대를
+    하나씩, 손실률·후퇴 확률·판정·잃은 장비를 따로, 괴멸·후퇴·버그아웃·후퇴 불가·전진을 지도 표시와 함께 차례로. 엔진 `CombatReport`에
+    `CombatSide` 스냅샷(전투 전 위치·전력, 뒤 위치·전력). 재생이 끝난 뒤 단계 알림. 기준은 브라우저 DOSBox로 돌린 원본 게임 화면
+  - 그래픽 시안 PNG 4장(사용자에게 제시, 세션 산출물): A 원작 계승 픽셀 아트, B 1950년대 작전 지도, C 현대 전술 화면(다크), D 보드게임 디오라마.
+    사용자가 고르면 7.2 진행
+
 아직 없음
-- 새 그래픽·전투/공습 연출(화풍 결정 필요), 원본 게임과의 직접 비교(DOSBox 필요)
+- 새 그래픽(시안 중 선택 대기), 공습 단계별 연출, 원본 게임과의 직접 비교(미해결 질문들)
 - 개선판 AI (등록부와 선택 자리만 있음) ← 마지막 과제
 
 ## 3. 폴더 구조
@@ -244,7 +250,8 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         hex.ts                           헥스 수학 (전투력은 combat.ts의 GET_STRENGTH·shownStrength 하나로)
       i18n/ko.ts                         한글 용어집·번역 규칙
       ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts),
-                                         보고서(reports.ts), 소리·진행 메뉴(soundPanel.ts, 설정값 playSettings.ts), 부대 편성(organize.ts)
+                                         보고서(reports.ts), 소리·진행 메뉴(soundPanel.ts, 설정값 playSettings.ts), 부대 편성(organize.ts),
+                                         전투 재생(combatReplay.ts: 단계·지도 표시 계산과 하단 상자)
       audio/                             소리: abc.ts(악보 읽기), arrange.ts(편곡), synth.ts(FM 악기), sfx.ts(효과음), songs.ts(곡), index.ts(재생기)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
@@ -306,7 +313,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   편성 창이 열려 있으면 모달이라 지도 클릭·단계 종료가 막힘.
   진행 설정: `__app.play`(speed 1|2|3, follow), `__app.setPlay({ speed, follow })`, `__app.animating`(이동 애니메이션 중), `__app.centerSelected()`(C 키).
   **자동화 탭은 requestAnimationFrame이 거의 멈춰 있어(1초에 0~3프레임)** 애니메이션은 스크린샷을 찍을 때만 진행됨.
-  중간 프레임을 보려면 이동 직후 `page.screenshot()`을 몇 번. 게임 상태는 명령 즉시 끝나 있음(클릭·키는 애니메이션을 끝내고 처리)
+  중간 프레임을 보려면 이동 직후 `page.screenshot()`을 몇 번.
+  전투 재생: `__app.replay`(b 전투, s 단계, steps, paused), `replayPause()`, `replayNext()`, `replayNextBattle()`, `replaySkip()`. 재생 중에는 모달이라
+  지도 클릭·단계 종료가 막힘. 검증 스크립트는 `newGame` 뒤 `if (a.replay) a.replaySkip()` 또는 `setPlay({ replay: false })`. 캔버스는 스크린샷 전에 `view.draw()` 게임 상태는 명령 즉시 끝나 있음(클릭·키는 애니메이션을 끝내고 처리)
   소리: `__app.audio`(settings, songs, `sfx(이름)`, `renderOffline(곡 id, 초)`·`renderSfx(이름)`은 OfflineAudioContext로 렌더링만). 자동화 탭은 렌더링이 느려 한 곡씩 비동기로 document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
   ("브라우저 저장소를 쓸 수 없어요" 표시) 슬롯 저장은 검증 불가, saveText/loadText로 확인
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
@@ -368,14 +377,20 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 ### 7.1 원본 게임과 직접 비교
 
 코드만으로 결론을 못 낸 항목(README "원본 게임과 직접 비교해 확인할 것", 8장)을 원작을 실제로 돌려 확인.
-- 방법 후보: (가) 사용자가 DOSBox-X를 설치해 직접 플레이(이 PC에는 DOSBox·winget 없음, 2026-10-17 확인),
-  (나) 브라우저에서 js-dos(DOSBox WASM)로 confkorea를 띄워 AI가 키 입력·스크린샷으로 확인(인터넷에서 js-dos 스크립트를 받아야 함)
+- **도구 확보(2026-10-17)**: 사용자가 myabandonware의 브라우저 DOSBox("DOSBox SVN ... Program: KOREA" 탭)로 원작을 띄움.
+  AI는 `attachBrowserTab`으로 붙여 **키보드만** 쓴다(마우스 좌표는 어긋남): 캠버스 한 번 클릭 후 Esc = SCROLL/MENU 전환, 방향키로 메뉴(Info/Orders/General),
+  Enter 선택, 숫자키 1·2 = 대화 상자 버튼, 스크롤 모드에서 8·9·3·2·1·7 = 헥스 커서 이동. Orders → End Player Phase → 1(yes)로 단계 진행.
+  스크린샷은 전체 페이지(clip은 어긋남). 이 방법으로 지상전 화면을 확인해 전투 재생을 만듦
+- 남은 확인거리는 README "원본 게임과 직접 비교해 확인할 것"과 8장. 헥스 커서 이동이 키보드뿐이라 시간이 걸림
 - 비교 기준 세이브: KOREA1S·3S·4S.DAT를 .SAV로 복사해 원작에서 "A saved game"으로 열면 리메이크(sav2json)와 같은 지점에서 시작할 수 있음
 - 원작에서 저장한 .SAV를 sav2json으로 바꿔 두 게임을 같은 상태에서 비교하는 것이 가장 확실(난수는 다르므로 경향만)
 
 ### 7.2 새 그래픽·연출
 
-지금은 Canvas 도형(지형 색, NATO 기호)과 이동 애니메이션만 있음. 화풍(원작 LBM 느낌의 픽셀, 종이 지도·지도책 느낌, 현대 플랫 등)을 먼저 정할 것.
+시안 4가지(A 픽셀 아트 / B 1950년대 작전 지도 / C 현대 다크 전술 화면 / D 보드게임 디오라마)를 2026-10-17에 제시.
+**사용자 결정(2026-10-17): 전장(지도) 그래픽은 D, 오른쪽 정보 화면과 UI는 C.** 혼합 시안 "그래픽시안-D지도+C인터페이스.png"(세션 산출물)을 기준으로 구현할 것:
+지도는 밝은 보드게임 보드(음영 기복, 숲, 파도치는 바다, 그림자 있는 두꺼운 말), 상단 막대와 우측 패널은 다크 네이비 유리 카드(세력 막대·전선 추이 차트, 아이콘 뉴스).
+지금은 Canvas 도형(지형 색, NATO 기호)과 이동 애니메이션·전투 재생만 있음. 화풍(원작 LBM 느낌의 픽셀, 종이 지도·지도책 느낌, 현대 플랫 등)을 먼저 정할 것.
 후보: 지형 텍스처·산악 음영, 부대 말 디자인, 전투·공습 결과 연출(원작 GAMEDELAY 자리에 진행 속도 적용), 제목 화면. 원작 그래픽은 공개 불가
 
 ### 7.3 개선판 AI (마지막)

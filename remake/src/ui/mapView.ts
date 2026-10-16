@@ -6,13 +6,14 @@ import { hexCenter, hexCorners, sideMidpoint, neighbor, pixelToHex, directionsOf
 import type { Pt } from '../engine/hex.ts';
 import { forceUnits, sideOf } from '../engine/state.ts';
 import { plottedAssaults, shownStrength } from '../engine/combat.ts';
+import type { ReplayOverlay } from './combatReplay.ts';
 import type { GameState, Side, UnitState } from '../engine/state.ts';
 import { fogActive, forceIntel, knownEnemyAt, strengthReport } from '../engine/intel.ts';
 import type { IntelLevel } from '../engine/intel.ts';
 import { allowance, frozen } from '../engine/movement.ts';
 import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
-import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO, INTEL_UI_KO } from '../i18n/ko.ts';
+import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO, INTEL_UI_KO, REPLAY_KO } from '../i18n/ko.ts';
 import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
@@ -99,6 +100,8 @@ export class MapView {
   viewer: Side = 'un';
   /** Hand-over screen of a two-player game with limited intelligence: draw no forces at all. */
   hideForces = false;
+  /** Combat replay: the battle being shown step by step (ui/combatReplay.ts), or null. */
+  replay: ReplayOverlay | null = null;
   /** Screen rectangles of the counters drawn this frame: place and mountain labels keep clear of them. */
   private counterRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
   /** A force sliding along the hexes it just moved through (movement animation, ui/playSettings.ts). */
@@ -504,7 +507,8 @@ export class MapView {
     outline(this.hover, 'rgba(255,255,255,0.85)', 2);
     outline(this.selected, '#ffd400', 3.5);
 
-    if (this.layers.units && sc) this.drawAssaultPlots();
+    if (this.layers.units && sc && !this.replay) this.drawAssaultPlots();
+    if (this.replay) this.drawReplay(this.replay);
     if (this.airstrikes.length || this.strikeAim) this.drawAirstrikes();
     if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
     if (this.movement && !this.anim) this.drawMoveLabels(vis, this.movement);
@@ -869,9 +873,12 @@ export class MapView {
     const moving = this.anim?.leader;
     let movingForce: Force | null = null;
     this.counterRects = [];
+    const hide = this.replay?.hide;
     for (const h of vis) {
-      const all = this.forcesByHex.get(h.y * map.width + h.x);
-      if (!all || !all.length) continue;
+      const listed = this.forcesByHex.get(h.y * map.width + h.x);
+      if (!listed || !listed.length) continue;
+      // combat replay: the forces of the battle are drawn as they were (ghosts below), not as they are now
+      const all = hide ? listed.filter((f) => !f.units.some((id) => hide.has(id))) : listed;
       const forces = moving === undefined ? all : all.filter((f) => f.leader !== moving);
       if (forces.length < all.length) movingForce = all.find((f) => f.leader === moving) ?? null;
       if (!forces.length) continue;
@@ -893,6 +900,113 @@ export class MapView {
     }
     const p = this.animPos();
     if (movingForce && p) this.counter(movingForce, p, z);
+    if (this.replay) this.drawReplayGhosts(this.replay, z);
+  }
+
+  // ---------- combat replay (ui/combatReplay.ts) ----------
+
+  /** The forces of the replayed battle where they stood at this step, with the strength of that moment. */
+  private drawReplayGhosts(r: ReplayOverlay, z: number) {
+    const byHex = new Map<string, ReplayOverlay['ghosts']>();
+    for (const gh of r.ghosts) {
+      const k = `${gh.at[0]},${gh.at[1]}`;
+      if (!byHex.has(k)) byHex.set(k, []);
+      byHex.get(k)!.push(gh);
+    }
+    for (const list of byHex.values()) {
+      const c = hexCenter(list[0].at[0], list[0].at[1], HEX);
+      const alive = list.filter((gh) => !gh.gone);
+      const dead = list.filter((gh) => gh.gone);
+      // eliminated forces: a faded counter under the cross; the living ones in front
+      [...dead, ...alive].forEach((gh, k, arr) => {
+        const d = (arr.length - 1 - k) * HEX * STACK_STEP;
+        const f: Force = { leader: gh.side.leader, name: gh.side.name, x: gh.at[0], y: gh.at[1], units: gh.side.units };
+        this.counter(f, { x: c.x + d, y: c.y - d }, z, false, { strength: gh.strength, units: gh.side.units.length, faded: gh.gone });
+      });
+      this.counterRects.push(this.counterRect(c, list.length - 1));
+    }
+  }
+
+  /** Target ring, attack arrows, retreat / advance trails, eliminated crosses and the result burst. */
+  private drawReplay(r: ReplayOverlay) {
+    const ctx = this.ctx;
+    const z = this.cam.zoom;
+    const t = hexCenter(r.target[0], r.target[1], HEX);
+    const color = (s: Side) => (s === 'un' ? '#1f5fbf' : '#c0262d');
+    // target hex
+    ctx.save();
+    this.hexPath(t);
+    ctx.lineWidth = HEX * 0.16;
+    ctx.strokeStyle = 'rgba(20,20,20,0.55)';
+    ctx.stroke();
+    ctx.lineWidth = HEX * 0.09;
+    ctx.strokeStyle = '#ffd400';
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    for (const a of r.arrows) {
+      const from = hexCenter(a.from[0], a.from[1], HEX);
+      this.arrow(from, t, color(r.attackSide), Math.max(a.current ? 6 : 4, (a.current ? 9 : 6) * z));
+    }
+    for (const tr of r.trails) {
+      const a = hexCenter(tr.from[0], tr.from[1], HEX), b = hexCenter(tr.to[0], tr.to[1], HEX);
+      this.arrow(a, b, tr.kind === 'retreat' ? '#f2a516' : color(tr.side), Math.max(4, 6 * z), tr.kind === 'retreat' ? [10, 7] : []);
+    }
+    const label = (text: string, p: Pt, bg: string) => {
+      const s = this.toScreen(p);
+      ctx.font = `700 ${Math.max(11, 11 * z)}px ${FONT}`;
+      const w = ctx.measureText(text).width + 10;
+      const hgt = Math.max(16, 16 * z);
+      ctx.fillStyle = bg;
+      ctx.beginPath();
+      ctx.roundRect(s.x - w / 2, s.y - hgt / 2, w, hgt, 4);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, s.x, s.y + 0.5);
+    };
+    for (const m of r.marks) {
+      const c = hexCenter(m.at[0], m.at[1], HEX);
+      if (m.kind === 'eliminated') {
+        const s = this.toScreen(c);
+        const d = HEX * 0.5 * z;
+        ctx.lineCap = 'round';
+        for (const [w, col] of [[Math.max(7, 9 * z), 'rgba(255,255,255,0.95)'], [Math.max(4, 5.5 * z), '#d0021b']] as const) {
+          ctx.lineWidth = w;
+          ctx.strokeStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(s.x - d, s.y - d * 0.8); ctx.lineTo(s.x + d, s.y + d * 0.8);
+          ctx.moveTo(s.x + d, s.y - d * 0.8); ctx.lineTo(s.x - d, s.y + d * 0.8);
+          ctx.stroke();
+        }
+        label(REPLAY_KO.mapEliminated, { x: c.x, y: c.y + HEX * 0.72 }, '#d0021b');
+      } else if (m.kind === 'blocked') label(REPLAY_KO.mapBlocked, { x: c.x, y: c.y - HEX * 0.72 }, '#7a1712');
+      else label(REPLAY_KO.mapBugout, { x: c.x, y: c.y - HEX * 0.72 }, '#8a5a00');
+    }
+    for (const tr of r.trails) if (tr.kind === 'retreat') {
+      const b = hexCenter(tr.to[0], tr.to[1], HEX);
+      label(REPLAY_KO.mapRetreat, { x: b.x, y: b.y + HEX * 0.72 }, '#b77700');
+    }
+    if (r.burst) {
+      const s = this.toScreen({ x: t.x - HEX * 0.45, y: t.y - HEX * 0.45 });
+      const R = Math.max(14, 20 * z);
+      ctx.beginPath();
+      for (let i = 0; i < 16; i++) {
+        const rr = i % 2 === 0 ? R : R * 0.45;
+        const a = (i * Math.PI) / 8;
+        const px = s.x + rr * Math.cos(a), py = s.y + rr * Math.sin(a);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#ffb300';
+      ctx.strokeStyle = '#c62828';
+      ctx.lineWidth = 2.5;
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private unit(id: number): UnitState | undefined {
@@ -907,8 +1021,8 @@ export class MapView {
     return { x0: p0.x, y0: p0.y, x1: p1.x, y1: p1.y };
   }
 
-  /** One counter; `stub` = a stacked force under the top one (box only). */
-  private counter(f: Force, c: Pt, z: number, stub = false) {
+  /** One counter; `stub` = a stacked force under the top one (box only); `ghost` = a replayed force (given strength). */
+  private counter(f: Force, c: Pt, z: number, stub = false, ghost?: { strength: { L: number; S: number } | null; units: number; faded: boolean }) {
     const ctx = this.ctx;
     const lead = this.unit(f.leader);
     if (!lead) return;
@@ -918,11 +1032,13 @@ export class MapView {
     const selected = this.selectedLeader === f.leader;
     // enemy forces under limited intelligence: the original shows the unit symbol only (docs/rules/intel.md 2.2)
     const fogged = this.fogged(f.leader);
-    const level = this.forceLevel.get(f.leader) ?? 2;
+    // a force in battle is identified (GRCMBT sets its strength report, intel.md 2.4)
+    const level = ghost ? 2 : this.forceLevel.get(f.leader) ?? 2;
     // forces with no movement left are drawn faded (wargame convention); not the enemy's under limited intelligence
-    const spent = this.game && !fogged ? allowance(this.game, f.leader).remaining === 0 : false;
+    const spent = this.game && !fogged && !ghost ? allowance(this.game, f.leader).remaining === 0 : false;
     ctx.save();
     if (spent && !selected) ctx.globalAlpha = 0.62;
+    if (ghost?.faded) ctx.globalAlpha = 0.45;
     if (selected) {
       ctx.beginPath();
       ctx.roundRect(x - HEX * 0.12, y - HEX * 0.12, w + HEX * 0.24, h + HEX * 0.24, HEX * 0.18);
@@ -968,8 +1084,7 @@ export class MapView {
     // echelon + strength + stack size in screen space for crisp text
     if (z < 0.55) { ctx.restore(); return; }
     const members = f.units.map((id) => this.unit(id)).filter((u): u is UnitState => !!u);
-    const shown = this.game ? shownStrength(this.game, members) : { L: 0, S: 0 };
-    const total = { l: shown.L, s: shown.S };
+    const shown = ghost ? ghost.strength : this.game ? shownStrength(this.game, members) : { L: 0, S: 0 };
     const ctxS = (p: Pt) => this.toScreen(p);
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -988,7 +1103,7 @@ export class MapView {
       }
       ctx.font = `700 ${Math.max(8, 7.5 * z)}px ${FONT}`;
       const t2 = ctxS({ x: c.x, y: y + h * 0.84 });
-      ctx.fillText(level >= 2 && this.game
+      ctx.fillText(level >= 2 && this.game && !ghost
         ? (strengthReport(this.game, f.leader) === 'under' ? INTEL_UI_KO.underShort : INTEL_UI_KO.fullShort)
         : '?', t2.x, t2.y);
       ctx.restore();
@@ -1003,7 +1118,7 @@ export class MapView {
     }
     ctx.font = `700 ${Math.max(9, 9 * z)}px ${FONT}`;
     const t = ctxS({ x: c.x, y: y + h * 0.84 });
-    ctx.fillText(`${total.l}-${total.s}`, t.x, t.y);
+    ctx.fillText(shown ? `${shown.L}-${shown.S}` : '-', t.x, t.y);
     if (f.units.length > 1) {
       const b = ctxS({ x: x + w, y });
       const r = Math.max(7, 6.5 * z);

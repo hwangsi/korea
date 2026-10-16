@@ -475,11 +475,32 @@ export type CombatEvent =
   /** ... and no Japan hex had room: the units are eliminated. */
   | { kind: 'lostAtSea'; leader: number };
 
+/**
+ * One force of a battle as it was before and after (for the step-by-step combat replay, ui/combatReplay.ts; the original
+ * shows each attacking and defending force, then the loss ratios, then what happened to each unit: CHECK_ELIM `28cc`~).
+ */
+export interface CombatSide {
+  leader: number;
+  name: string;
+  /** Hex before the battle. */
+  from: [number, number];
+  /** Every unit of the force when the battle began. */
+  units: number[];
+  /** shownStrength before and after (null: every unit eliminated). */
+  before: Strength;
+  after: Strength | null;
+  /** Hex of the surviving units afterwards (null: none left). */
+  at: [number, number] | null;
+  /** Pieces of equipment (assigned) before and after. */
+  equipBefore: number;
+  equipAfter: number;
+}
+
 export interface CombatReport {
   army: number;
   target: [number, number];
-  attackers: { leader: number; name: string }[];
-  defenders: { leader: number; name: string }[];
+  attackers: CombatSide[];
+  defenders: CombatSide[];
   aL: number; aS: number; dL: number; dS: number;
   attackerLoss: number;
   defenderLoss: number;
@@ -676,6 +697,26 @@ export function ccfFirstCombat(g: GameState, leader: number) {
   newsFlash(g, 'Red Chinese army units have intervened in Korea!');
 }
 
+const equipCount = (members: UnitState[]) => members.reduce((a, u) => a + u.equipment.reduce((b, e) => b + e.assigned, 0), 0);
+
+/** A battle participant as it stands now (before the battle). */
+function sideSnapshot(g: GameState, leader: number): CombatSide {
+  const members = forceUnits(g, leader);
+  const h = forceHex(g, leader);
+  return {
+    leader, name: forceName(g, leader), from: [h % g.width, Math.floor(h / g.width)], units: members.map((u) => u.id),
+    before: shownStrength(g, members), after: null, at: null, equipBefore: equipCount(members), equipAfter: 0,
+  };
+}
+
+/** Fill in the after-battle values of a participant. */
+function finishSnapshot(g: GameState, s: CombatSide) {
+  const alive = s.units.map((id) => unit(g, id)).filter((u) => u.status !== STATUS_BURIED);
+  s.after = alive.length ? shownStrength(g, alive) : null;
+  s.at = alive.length ? [alive[0].x, alive[0].y] : null;
+  s.equipAfter = equipCount(alive);
+}
+
 /** GRCMBT.DO_GROUND_COMBAT: execute every plotted assault, army by army. */
 export function resolveGroundCombat(g: GameState): CombatReport[] {
   const reports: CombatReport[] = [];
@@ -699,11 +740,13 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         else if (g.possession[ti] === enemyCode && s.length > 0) r = 2;
       }
       if (r === 1) {
+        const snap = sideSnapshot(g, id);
         executePlot(g, id);
         enterHex(g, id, tx, ty);
         for (const v of forceUnits(g, id)) v.readiness -= 3;
+        finishSnapshot(g, snap);
         reports.push({
-          army: corps, target: [tx, ty], attackers: [{ leader: id, name: forceName(g, id) }], defenders: [], aL: 0, aS: 0, dL: 0, dS: 0,
+          army: corps, target: [tx, ty], attackers: [snap], defenders: [], aL: 0, aS: 0, dL: 0, dS: 0,
           attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, moveIn: true, events: [{ kind: 'moveIn', leader: id, to: [tx, ty] }],
         });
       } else if (r === 2) {
@@ -722,9 +765,11 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         // target vacated: advance (original bug fixed: the other entries are retired too)
         const events: CombatEvent[] = [];
         for (const e of same) e.active = false;
+        const snaps = same.map((e) => sideSnapshot(g, e.leader));
         advanceInto(g, same, x, y, events);
+        for (const s of snaps) finishSnapshot(g, s);
         reports.push({
-          army: corps, target: [x, y], attackers: same.map((e) => ({ leader: e.leader, name: forceName(g, e.leader) })), defenders: [],
+          army: corps, target: [x, y], attackers: snaps, defenders: [],
           aL: 0, aS: 0, dL: 0, dS: 0, attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, moveIn: true, events,
         });
         continue;
@@ -732,8 +777,8 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       const defenders = g.stacks[ti].slice();
       const report: CombatReport = {
         army: corps, target: [x, y],
-        attackers: same.map((e) => ({ leader: e.leader, name: forceName(g, e.leader) })),
-        defenders: defenders.map((d) => ({ leader: d, name: forceName(g, d) })),
+        attackers: same.map((e) => sideSnapshot(g, e.leader)),
+        defenders: defenders.map((d) => sideSnapshot(g, d)),
         aL: 0, aS: 0, dL: 0, dS: 0, attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, events: [],
       };
       for (const e of same) executePlot(g, e.leader);
@@ -785,6 +830,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         // 2E7F: only a seaborne assault advances into the hex the defenders left (manual 4.253)
         if (atSea(g, entry.leader) && g.stacks[ti].length === 0) advanceInto(g, same, x, y, report.events);
       }
+      for (const s of [...report.attackers, ...report.defenders]) finishSnapshot(g, s);
       reports.push(report);
     }
   }

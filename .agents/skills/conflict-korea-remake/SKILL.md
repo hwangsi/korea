@@ -78,6 +78,10 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - `edit_file`의 appendText는 첫 줄 앞부분이 잘려 들어갈 때가 있다(예: `test('... = ...` 줄). 추가한 뒤 그 줄을 확인하거나 기존 줄에 붙이는 edits를 쓴다.
 - 자동화 탭은 requestAnimationFrame이 거의 돌지 않는다(1초에 0~3프레임). 이동 애니메이션(`__app.animating`)은 스크린샷을 찍을 때만 진행하므로
   중간 프레임은 이동 직후 `page.screenshot()`을 몇 번 찍어 확인. 설정은 `__app.setPlay({ speed: 1|2|3, follow })`.
+- 전투 재생: 전투 단계가 지나면(컴퓨터가 먼저인 새 게임 포함) 재생이 자동으로 시작되고 모달이다. 검증 스크립트는 `if (a.replay) a.replaySkip()`
+  (또는 처음에 `a.setPlay({ replay: false })`)를 넣을 것. 단계 확인은 `replayPause()` 후 `replayNext()`를 부르고 `view.draw()` 뒤 스크린샷.
+- 원본 게임 비교: 사용자가 myabandonware 브라우저 DOSBox 탭을 띄우면 `listBrowserTabs`→`attachBrowserTab`. 키보드만(캔버스 클릭 후 Esc로 메뉴,
+  방향키·Enter·숫자키). 마우스 좌표는 어긋난다(HANDOFF 7.1).
 - 원작 세이브 변환: `node --preserve-symlinks --preserve-symlinks-main tools/extract/sav2json.ts <파일> <out.json>`. 화면 검증은 그 JSON을 `__app.loadText(text)`.
   KOREA1S·3S·4S.DAT가 실제 원작 세이브라 입력으로 쓸 수 있다(`tests/sav.test.ts`는 원본 KOREA.EXE가 있어야 돈다).
 - 브라우저 창이 1440px이면 상단 막대가 꽉 차니 버튼을 더 넣을 때는 줄바꿈(높이 > 60px)을 확인한다.

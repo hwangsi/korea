@@ -20,7 +20,9 @@ import type { GameOptions } from './engine/options.ts';
 import { renderNewGame, applyChoice } from './ui/newGame.ts';
 import { renderSaveDialog } from './ui/saveDialog.ts';
 import { renderSoundPanel } from './ui/soundPanel.ts';
-import { loadPlaySettings, savePlaySettings, moveStepMs } from './ui/playSettings.ts';
+import { loadPlaySettings, savePlaySettings, moveStepMs, gameDelay } from './ui/playSettings.ts';
+import { buildReplay, overlayFor, renderReplay, replayable } from './ui/combatReplay.ts';
+import type { ReplayBattle } from './ui/combatReplay.ts';
 import type { PlaySettings, Speed } from './ui/playSettings.ts';
 import { renderReports, overviewHexAt } from './ui/reports.ts';
 import { renderOrganize, forceTitleKo } from './ui/organize.ts';
@@ -157,7 +159,13 @@ async function main() {
   let organizeMsg: PanelMessage | null = null;
   let renaming: 0 | 1 | null = null;
   /** Something modal is open: the map and the phase controls wait. */
-  const modal = () => !!banner || !!draft || saveOpen || reportsOpen || !!organizeAt;
+  const modal = () => !!banner || !!draft || saveOpen || reportsOpen || !!organizeAt || !!replay;
+  /** Step-by-step ground combat replay after the combat phase (ui/combatReplay.ts); the phase banner waits for it. */
+  let replay: {
+    battles: ReplayBattle[]; b: number; s: number; paused: boolean; timer: ReturnType<typeof setTimeout> | null;
+    after: typeof banner; afterEvents: TurnEvent[];
+  } | null = null;
+  const replayEl = $('#combat-replay');
 
   // ---------- sound (docs/audio.md) ----------
   const audio = new AudioManager();
@@ -194,6 +202,7 @@ async function main() {
     else if (what === 'choice') audio.set({ choice: b.dataset.value!, music: true });
     else if (what === 'speed') { setPlay({ speed: Number(b.dataset.value) as Speed }); audio.sfx('click'); }
     else if (what === 'follow') { setPlay({ follow: !play.follow }); audio.sfx('click'); }
+    else if (what === 'replay') { setPlay({ replay: !play.replay }); audio.sfx('click'); }
   });
   soundEl.addEventListener('input', (e) => {
     const r = e.target as HTMLInputElement;
@@ -503,10 +512,117 @@ async function main() {
     }
   }
 
-  /** Turn engine events into the phase banner and the panel report. */
+  // ---------- combat replay (docs/rules/combat.md 6) ----------
+
+  /** Turn engine events into the phase banner and the panel report; ground battles are replayed first. */
   function handleEvents(events: TurnEvent[]) {
+    const combat = events.find((e) => e.kind === 'combat');
+    const reports = combat && combat.kind === 'combat' ? combat.reports : null;
+    const replaying = !!game && play.replay && replayable(reports);
+    // while the battles are replayed, the call of the next phase sounds only when its banner appears
+    handlePhaseEvents(events, replaying ? events.filter((e) => e.kind !== 'combat' && e.kind !== 'ordersPhase') : events);
+    if (replaying) startReplay(reports!, events.filter((e) => e.kind === 'ordersPhase'));
+  }
+
+  function startReplay(reports: NonNullable<TurnView['combat']>, afterEvents: TurnEvent[], from = 0) {
     if (!game) return;
-    soundForEvents(events);
+    stopReplayTimer();
+    const battles = buildReplay(reports);
+    if (!battles.length) return;
+    replay = { battles, b: Math.min(from, battles.length - 1), s: 0, paused: false, timer: null, after: replay?.after ?? banner, afterEvents: replay?.afterEvents ?? afterEvents };
+    banner = null;
+    if (turnView) turnView = { ...turnView, current: replay.b };
+    showReplayStep(true);
+  }
+
+  function stopReplayTimer() {
+    if (replay?.timer) { clearTimeout(replay.timer); replay.timer = null; }
+  }
+
+  function showReplayStep(newBattle = false) {
+    if (!replay || !game) return;
+    const battle = replay.battles[replay.b];
+    const step = battle.steps[replay.s];
+    const [tx, ty] = battle.report.target;
+    if (newBattle) {
+      // the original scrolls the map to the battle; keep it above the replay box at the bottom
+      view.centerOn(tx, ty, Math.max(view.cam.zoom, 0.95));
+      view.cam.y += 120 / view.cam.zoom;
+    }
+    view.replay = overlayFor(battle, replay.s);
+    view.invalidate();
+    if (turnView) turnView = { ...turnView, current: replay.b };
+    // sounds: the attack begins, the clash, a unit destroyed, a retreat
+    if (step.kind === 'intro' && !battle.report.moveIn) audio.sfx('bugle');
+    else if (step.kind === 'result') audio.sfx('battle', { count: 1 });
+    else if (step.kind === 'event') {
+      const e = battle.events[step.i];
+      if (e.kind === 'eliminated' || e.kind === 'lostAtSea') audio.sfx('explosion');
+      else if (e.kind === 'retreat' || e.kind === 'advance' || e.kind === 'moveIn') audio.sfx('march');
+    }
+    renderReplay(replayEl, { game, battles: replay.battles, b: replay.b, s: replay.s, paused: replay.paused, hideEnemy: fogActive(game), viewer: viewer() });
+    renderSide();
+    panel.querySelector('.report.current')?.scrollIntoView({ block: 'nearest' });
+    scheduleReplay();
+  }
+
+  function scheduleReplay() {
+    if (!replay || replay.paused) return;
+    stopReplayTimer();
+    const step = replay.battles[replay.b].steps[replay.s];
+    replay.timer = setTimeout(() => replayNext(), gameDelay(step.ms, play.speed));
+  }
+
+  function replayNext() {
+    if (!replay) return;
+    const battle = replay.battles[replay.b];
+    if (replay.s + 1 < battle.steps.length) { replay.s++; showReplayStep(); return; }
+    replayNextBattle();
+  }
+
+  function replayNextBattle() {
+    if (!replay) return;
+    if (replay.b + 1 >= replay.battles.length) { finishReplay(); return; }
+    replay.b++;
+    replay.s = 0;
+    showReplayStep(true);
+  }
+
+  function finishReplay() {
+    if (!replay) return;
+    stopReplayTimer();
+    const { after, afterEvents } = replay;
+    replay = null;
+    view.replay = null;
+    replayEl.hidden = true;
+    replayEl.innerHTML = '';
+    if (turnView) turnView = { ...turnView, current: undefined };
+    banner = after;
+    if (afterEvents.length) soundForEvents(afterEvents);
+    render();
+  }
+
+  function toggleReplayPause() {
+    if (!replay) return;
+    replay.paused = !replay.paused;
+    if (replay.paused) stopReplayTimer();
+    showReplayStep();
+  }
+
+  replayEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-replay]');
+    if (!b || !replay) return;
+    const what = b.dataset.replay;
+    if (what === 'pause') toggleReplayPause();
+    else if (what === 'next') { stopReplayTimer(); replayNext(); }
+    else if (what === 'battle') { stopReplayTimer(); replayNextBattle(); }
+    else if (what === 'skip') finishReplay();
+  });
+
+  /** Turn engine events into the phase banner and the panel report. */
+  function handlePhaseEvents(events: TurnEvent[], soundEvents: TurnEvent[]) {
+    if (!game) return;
+    soundForEvents(soundEvents);
     const g = game;
     const lines: string[] = [];
     let combat: TurnView['combat'] = null;
@@ -877,6 +993,7 @@ async function main() {
     else if (action === 'undo') { undo(); return; }
     else if (action === 'mode' && orders) startOrders(orders.leader, btn.dataset.mode as MoveMode);
     else if (action === 'select-force') { message = null; startOrders(Number(btn.dataset.leader)); }
+    else if (action === 'replay-battle' && turnView?.combat) { startReplay(turnView.combat, [], Number(btn.dataset.index ?? 0)); return; }
     else if (action === 'organize') { openOrganize(Number(btn.dataset.x), Number(btn.dataset.y)); return; }
     else if (action === 'mission') {
       if (setMission(game, Number(btn.dataset.unit), Number(btn.dataset.mission))) message = null;
@@ -895,6 +1012,12 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
+    if (replay) {
+      if (e.key === 'Escape') { e.preventDefault(); finishReplay(); }
+      else if (e.key === ' ') { e.preventDefault(); toggleReplayPause(); }
+      else if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); stopReplayTimer(); replayNext(); }
+      return;
+    }
     if (saveOpen) {
       if (e.key === 'Escape') closeSave();
       return;
@@ -1194,6 +1317,12 @@ async function main() {
     transfer: (id: number) => organizeTransfer(id),
     renameForce: (slot: 0 | 1, name: string) => organizeRename(slot, name),
     organizeNav: (dir: 1 | -1) => organizeNav(dir),
+    /** Combat replay: state (battle b, step s), and the controls. */
+    get replay() { return replay && { b: replay.b, s: replay.s, battles: replay.battles.length, steps: replay.battles[replay.b].steps.map((x) => x.kind), paused: replay.paused }; },
+    replayNext: () => { stopReplayTimer(); replayNext(); },
+    replayNextBattle: () => { stopReplayTimer(); replayNextBattle(); },
+    replaySkip: () => finishReplay(),
+    replayPause: () => toggleReplayPause(),
     /** Speed (1 fast, 2 medium, 3 slow) and movement centering; `animating` while a moved force is still sliding. */
     get play() { return play; },
     setPlay,

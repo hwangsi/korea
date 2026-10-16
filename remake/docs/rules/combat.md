@@ -111,3 +111,23 @@ GRCMBT 맨 앞(`0000`)에 길이 48의 Pascal 문자열 "Red Chinese army units 
 - SYMBOL 60번대 = 중공군(CPLA). 1995에는 중공군 유닛이 없고 SCENARIO[0] < 4 조건으로도 막힘
 - UTILITY_SPACE[16]은 모든 시나리오 파일에서 0이라 **차가운 강철도 첫 중공군 전투에서 뉴스가 뜸**(원작 그대로). EXE에서 [16]을 읽는 곳은 이 검사뿐
 - 리메이크: `combat.ts`의 `ccfFirstCombat`, 한글 "중공군 부대, 한국전쟁에 참전!", 테스트 `combat.test.ts` 마지막 항목
+
+## 6. 전투 재생 (원작 지상전 화면, 리메이크 `ui/combatReplay.ts`)
+
+원본 게임(브라우저 DOSBox, 2026-10-17)에서 직접 본 DO_GROUND_COMBAT 화면: 전투마다 지도를 목표 헥스로 옮기고 아래 메시지 칸에 차례로
+
+1. "North Korean forces attack hex:14,40." + "Attacking units:" 부대 이름 하나씩(그 부대 쪽에서 목표로 큰 화살표), 이어서 "Defending units:" 하나씩
+2. "Combat Results / Attacker Loss Ratio: 2% / Defender Loss Ratio: 50%"
+3. 유닛마다 "ROK 18/Cap Inf Rgt / Retreats to:14,41"(말이 실제로 옮겨 감), "has been eliminated.", "Bugs out", "Retreat path blocked!", "Advances to:"
+
+를 GAMEDELAY 간격으로 띄우고, 키를 누르지 않아도 다음 전투로 넘어갑니다(문자열은 CHECK_ELIM `28cc`~ 주변, 1장의 GRCMBT 문자열). 돌파는 이동 중에
+"Hex 13,38 has been overrun!" 창으로 따로 알립니다(이 장의 대상 아님).
+
+리메이크
+- 엔진: `CombatReport.attackers/defenders`가 `CombatSide`(전투 전 헥스 `from`, 유닛 목록, 전투 전·후 `shownStrength`, 전투 뒤 위치 `at`, 장비 수 전·후). 전투 결과는 바뀌지 않음
+- 단계(`buildReplay`): 소개 → 공격 부대 하나씩 → 방어 부대 하나씩 → 결과(손실률 막대, 후퇴 확률과 판정, 잃은 장비) → 사건 하나씩 → 끝. 진입(빈 헥스)은 짧게
+- 지도(`overlayFor` → `mapView.replay`): 목표 헥스 노란 테두리, 공격 화살표(지금 부대는 굵게), 그 전투의 부대는 실제 말 대신 **그 순간의 위치·전력으로** 그림,
+  결과 때 폭발 표시, 후퇴는 주황 점선 화살표와 "후퇴", 괴멸은 빨간 X와 "괴멸", 후퇴 불가·버그아웃 꼬리표
+- 진행: 진행 속도(GAMEDELAY ×0.5/×1/×1.5)로 자동 진행. 일시정지·다음·다음 전투·건너뛰기 버튼, Enter/→ 다음, Space 일시정지, Esc 건너뛰기.
+  재생이 끝나야 다음 단계 알림 창이 뜸. 오른쪽 전투 결과 목록에 지금 전투 강조, 끝난 뒤 "▶ 전투 다시 보기"와 전투별 ▶
+- 정보 제한이면 적 전력 숫자는 "?"(이름과 손실률은 원작처럼 보임). "♪ 설정 → 전투 재생 켜짐/꺼짐"(기본 켜짐)

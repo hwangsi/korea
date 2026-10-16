@@ -9,9 +9,11 @@ export interface PlaySettings {
   speed: Speed;
   /** CENTER: keep the moving force in the middle of the map at every step (original default off). */
   follow: boolean;
+  /** Show every ground battle step by step after the combat phase, like the original (ui/combatReplay.ts). */
+  replay: boolean;
 }
 
-export const PLAY_DEFAULTS: PlaySettings = { speed: 2, follow: false };
+export const PLAY_DEFAULTS: PlaySettings = { speed: 2, follow: false, replay: true };
 
 const KEY = 'conflict-korea-remake/play';
 
@@ -21,7 +23,11 @@ export function loadPlaySettings(): PlaySettings {
     if (t) {
       const j = JSON.parse(t) as Partial<PlaySettings>;
       const speed = j.speed === 1 || j.speed === 2 || j.speed === 3 ? j.speed : PLAY_DEFAULTS.speed;
-      return { speed, follow: typeof j.follow === 'boolean' ? j.follow : PLAY_DEFAULTS.follow };
+      return {
+        speed,
+        follow: typeof j.follow === 'boolean' ? j.follow : PLAY_DEFAULTS.follow,
+        replay: typeof j.replay === 'boolean' ? j.replay : PLAY_DEFAULTS.replay,
+      };
     }
   } catch { /* storage not available */ }
   return { ...PLAY_DEFAULTS };
