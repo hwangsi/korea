@@ -3,9 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-17, 노트북(C:\Users\hwang\AIprojects\korea). **부대 편성 화면(FULL_HEX) 완료**
-  (규칙 `docs/rules/forces.md`; 엔진 `src/engine/forces.ts`; 화면 `ui/organize.ts`, 헥스 패널 "편성" 버튼; 테스트 97개 통과;
-  standalone 검증: 떼어 내기·합류·공격 계획 부대 합류·스미스 흡수·이름 바꾸기(Enter)·다음 헥스·Esc, 적 헥스에는 버튼 없음). 다음은 7장 유엔군 컴퓨터 WALTON
+- 마지막 갱신: 2026-10-17, 노트북(C:\Users\hwang\AIprojects\korea). **유엔군 컴퓨터 WALTON 완료** (같은 날 앞서 부대 편성 화면 FULL_HEX 완료)
+  (규칙 `docs/rules/ai.md` 8장; 엔진 `src/engine/ai/walton.ts`, 등록부 `ai/index.ts`; 테스트 102개 통과;
+  standalone 검증: 공산군으로 크로마이트 시작 → 단계 종료 → "컴퓨터(유엔군) 1차 명령 단계: 부대 7개 이동, 공격 13건", 인천 상륙). 다음은 7장 개선판 AI
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -121,7 +121,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
   - UI: 상단 "저장" → 저장·불러오기 대화 상자(자동 저장 + 슬롯 5개, 덮어쓰기·지우기 확인, .json 내려받기·올리기). 새 게임 대화 상자에 "저장한 게임 불러오기".
     자동 저장은 사람의 명령 단계가 시작될 때마다(페이지를 열 때 뒤에 뜨는 기본 게임은 저장 안 함). 브라우저 저장소 키 `conflict-korea-remake/save/<auto|1..5>`
 
-- **컴퓨터 플레이어** (`docs/rules/ai.md`, `src/engine/ai/`, `tests/ai.test.ts` 8개)
+- **컴퓨터 플레이어** (`docs/rules/ai.md`, `src/engine/ai/`, `tests/ai.test.ts` 13개)
   - 원작 KIM(WARRIORS `29df`~`2c30` + 중첩 `0000`~`29de`)과 AISUBS 전부, 공용 경로 행군(`0278`)·경로 찾기(`0605`)·침공 경로 ROUTE(유닛 초기화 `5e4a`),
     REPORTS.SORT_FORCE, CLEAR_PLOTS 컴퓨터 분기를 해독해 그대로 옮김. 난수 호출 순서 일치, 같은 시드면 같은 게임
   - 구조: `ai/types.ts`(AiLevel 'original'|'improved', ComputerPlayer, AiReport), `ai/index.ts`(등록부 COMPUTER_PLAYERS, computerOrders),
@@ -129,7 +129,12 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
   - 턴 진행: `advancePlayer`가 컴퓨터 차례에 `computerOrders` → `computerPhase` 이벤트(보고 포함). 첫 단계에 사람 차례가 없으면 `startNewGame`·`continuePastEnd`가
     다음 사람 단계까지 바로 진행. `combat.ts`에 `rollOverrun`(MOVE_COST 적 분기 OVERRUN) 분리, `endturn.ts`의 `strongNeighbour` export
   - 화면: 단계 알림 창에 "컴퓨터(공산군) 1차 명령 단계: 부대 N개 이동, 공격 M건 계획", 합친 수, 개막 알림(위치는 숨김)
-  - 유엔군 WALTON은 구조·대응표·지정 목표 표만 조사(`ai-walton.md`, `ai-walton-script.txt`). Red Solitaire면 유엔 지상군은 여전히 움직이지 않음
+  - **유엔군 WALTON**(`ai/walton.ts`, ai.md 8장): 본문 `5cf5`, 드라이버 `5b63`(군 2·3 × 패스 3회, 공세 여부 `5b3a` = 10 < TURN < 개입 턴),
+    목표 `3c54`(점수·시나리오 스크립트 전부, 지형 끼임 17곳, 포위 후퇴 = 둘째 차례(`orderStep` 1) 또는 2차 단계), 상륙 `38ca`/`3828`/`3787`
+    (216이 일본에 있으면 70% 인천, 70% 군산, 215·216 순간이동 또는 앞바다에서 공격 계획), 일본 수송 `39c9`, 순간이동·합치기·이름 `3b0e`,
+    공격 계획 `53e9`(무작위 취소 없음, 바다 위 부대 제외), 합치기 `34fc`/`329b`/`2c85`(사단 이름, 1995 국군 군단 번호 UTILITY_SPACE[17], IV 건너뜀).
+    WALTON은 개막 턴도 건너뛰지 않음. 게임 상태 밖 기억 없음(저장·불러오기 뒤 똑같이 진행, 테스트). 새 게임 대화 상자 "공산군으로"의 AI 없음 경고가 사라지고
+    "컴퓨터 AI" 줄에 WALTON 설명(`OPTIONS_UI_KO.aiHint(player)`)
 
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
@@ -165,7 +170,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 
 아직 없음
 - 전체 한글화, 새 그래픽
-- 유엔군 컴퓨터(WALTON), 개선판 AI (등록부와 선택 자리만 있음), 원작 .SAV 가져오기
+- 개선판 AI (등록부와 선택 자리만 있음), 원작 .SAV 가져오기, 중공군 첫 참전 뉴스
 
 ## 3. 폴더 구조
 
@@ -192,7 +197,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/options.md                새 게임 옵션 (시작 메뉴 항목·기본값, 무작위 역량, 시나리오 파일 고르기)
     docs/rules/save.md                   저장/불러오기 (원작 저장 시점·재개, 리메이크 JSON 형식)
     docs/rules/ai.md                     컴퓨터 플레이어 (원작 KIM·AISUBS·침공 경로, 리메이크 구조, 확장 계획)
-    docs/rules/ai-walton.md              유엔군 컴퓨터 WALTON 구조 조사(영문 메모) + ai-walton-script.txt(지정 목표 호출 목록)
+    docs/rules/ai-walton.md              WALTON을 옮기기 전의 구조 조사(영문 메모, 맨 위에 옮기며 바로잡은 점) + ai-walton-script.txt. 기준은 ai.md 8장
     docs/rules/reports.md                보고서 (전략 보고, 비행장·항구, 날씨, 시나리오 정보, 보급망 표시, 전략 개관, FULL_HEX 요약)
     docs/rules/forces.md                 부대 편성 FULL_HEX (유닛 옮기기 허용 조건·이동력 맞추기·스미스 흡수, 부대 이름, +Hex/−Hex)
     docs/audio.md                        배경 음악·효과음 (리메이크 추가, 곡 목록과 저작권)
@@ -212,7 +217,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         save.ts                          저장/불러오기 (GameState ↔ JSON, 저장 가능 여부, 재개)
         reports.ts                       보고서 데이터 (전략 보고, 비행장·항구, 날씨, 전략 개관 칸)
         forces.ts                        부대 편성 (옮기기 판정·실행, 이름, 화면 값, 헥스 순회)
-        ai/                              컴퓨터 플레이어: types.ts(인터페이스), index.ts(등록부), common.ts(AISUBS·경로·합치기, 진영 무관), kim.ts(원작 공산군)
+        ai/                              컴퓨터 플레이어: types.ts(인터페이스), index.ts(등록부), common.ts(AISUBS·경로·합치기, 진영 무관), kim.ts(원작 공산군), walton.ts(원작 유엔군)
         spotting.ts                      이동·전투의 정찰 갱신 (CHEK_HEX, NEAR_THE_FRONT, 12점 규칙, 후퇴 주변)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
@@ -275,6 +280,8 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   (용이 깨어나다는 0턴 유엔 2차 단계부터). 저장: `__app.openSave()`/`closeSave()`/`saveOpen`, `__app.saveSlot('1')`, `__app.loadSlot('auto')`,
   `__app.saveText()`(명령 단계가 아니면 null), `__app.loadText(text)`.
   보고서: `__app.openReports('strategic' | 'facilities' | 'weather' | 'scenario' | 'overview')`, `closeReports()`, `reportsOpen`, `setOverviewMode('terrain' | 'supply')`.
+  컴퓨터 유엔군(WALTON) 검증: `__app.newGame({ scenario: 2, playMode: 2 })`(공산군으로) 후 `closeBanner()`·`endPhase()` → `__app.banner.lines`에 "컴퓨터(유엔군) …".
+  엔진만 볼 때는 Node: `startNewGame(g, { computerSide: 2 })` → `endPlayerPhase` 반복(인천 상륙은 크로마이트 11턴 첫 유엔 단계).
   부대 편성: `__app.openOrganize(x, y)`(명령 단계의 자기 헥스만), `closeOrganize()`, `organizeAt`, `transfer(유닛 번호)`, `renameForce(칸 0|1, 이름)`, `organizeNav(1|-1)`.
   편성 창이 열려 있으면 모달이라 지도 클릭·단계 종료가 막힘.
   소리: `__app.audio`(settings, songs, `sfx(이름)`, `renderOffline(곡 id, 초)`·`renderSfx(이름)`은 OfflineAudioContext로 렌더링만). 자동화 탭은 렌더링이 느려 한 곡씩 비동기로 document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
@@ -328,25 +335,27 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 유엔군 컴퓨터 WALTON
+## 7. 다음 작업: 개선판 AI
 
-목표: Red Solitaire(컴퓨터가 유엔군)에서 유엔 지상군이 움직이도록 원작 WARRIORS.WALTON(본문 `5cf5`, 중첩 `2c85`~`5cf4`)을 코드 그대로 옮기기.
-지금은 유엔 컴퓨터 차례에 부대가 서 있기만 함(항공 자동 임무는 AIRCMBT가 이미 처리).
+목표: 새 게임 대화 상자의 "컴퓨터 AI: 개선판(준비 중)"을 켜기. 원작 AI(KIM·WALTON)는 그대로 두고 `AiLevel` 'improved' 플레이어를 양 진영에 추가.
+원작의 성격(침공 경로, 부산 교두보, 상륙)은 살리되, 원작 AI가 규칙을 어기거나(실제 적 위치를 읽음, 순간이동) 버그로 못 하는 것을 고친다.
 
-1. 구조·대응표는 `docs/rules/ai-walton.md`(영문 메모)와 `ai-walton-script.txt`(지정 목표 호출 목록), 한국어 요약은 `ai.md` 5.2.
-   뼈대는 KIM과 같음: CORPS_LOOP `5b63`(군 2 국군·3 유엔 × 이동 패스) → 부대마다 OBJECTIVE `3c54`(가장 큼, 지정 목표·상륙 `38ca`·일본 수송 `39c9`)
-   → 경로(ROUTE 2·3) 또는 MOVE_FORCE `52f8` → 합치기 `34fc`/`2c85`/`329b` → 1차 단계 공격 계획 `53e9`/`5369`(취소 굴림 없음), 끝에 비행장 속임수.
-2. 규칙 문서: `ai.md`에 WALTON 장 추가(목표 고르기 점수, 지정 표, 상륙 70%·70%, 난수 순서, 매뉴얼과 다른 점)
-3. 엔진: `src/engine/ai/walton.ts`. `ai/common.ts`(진영 무관: 경로 행군·경로 찾기·TELEPORT·합치기·sortForce)를 재사용하고
-   등록부 `ai/index.ts`에 `{ id: 'walton', player: 2, level: 'original' }`. 테스트는 KIM처럼 헤드리스 자가대전(`computerSide: 2`)과 난수 순서 고정 시드
-4. 화면: 새 게임 대화 상자의 Red Solitaire "AI 없음" 안내 제거, 단계 알림 창 "컴퓨터(유엔군) … 부대 N개 이동"(KIM과 같은 `computerPhase` 이벤트)
-5. 이어서: 개선판 AI(`ai.md` 5.1) → 중공군 첫 참전 뉴스(GRCMBT) → 전체 한글화, 밀집 지역 부대 마커 겹침
+1. 설계 먼저: `ai.md` 9장 "개선판"에 원칙을 적는다. 제안:
+   - 사람과 같은 정보: 판단은 `intel.ts`의 `perceivedState`(정찰된 적만), 정보 완전 옵션이면 전부
+   - 사람과 같은 규칙: 이동은 `movement.ts`의 `moveForce`/`railMove`, 해상·공수는 `naval.ts`, 공격은 `combat.ts`의 `assault` 경로를 써서 순간이동·규칙 우회 없음
+     (원작 AI의 MOVE_COST 돌파·준비도 비용−1 같은 차이도 없어짐)
+   - 판단 보강: 공격 전에 `estimateCombat`(예상 손실·후퇴 확률), 보급망(`supplyNet`)을 지키고 끊기, 도시·승리 점수(`territoryBalance`)
+   - 원작 버그 고침: KIM WITHDRAW(+1) 빈 반복, 합칠 때 MOVE 반복문, 상륙 부대가 번호(215·216)에 묶임, 공격 계획이 1차 단계뿐
+2. 엔진: `src/engine/ai/kim-improved.ts`, `walton-improved.ts`(필요하면 공용 `ai/improved.ts`), 등록부에 `level: 'improved'`. `common.ts` 재사용
+3. 검증 도구: 컴퓨터끼리 대전(지금 `computerSide`는 한쪽만이라 테스트 전용 옵션 또는 `tools/selfplay.mjs`)으로
+   원작 대 개선판 승리 수준 비교, 같은 시드 재현, 저장·불러오기 뒤 동일 진행
+4. 화면: 개선판 버튼 활성화, 단계 알림 창에 개선판 표시
+5. 다른 후보(작은 일): 중공군 첫 참전 뉴스(GRCMBT), 전체 한글화, 밀집 지역 부대 마커 겹침, 원작 .SAV 가져오기
 
 ## 8. 미해결 질문
 
-- 편성: 둘 다 공격 계획이고 MASK(유닛) ≥ MASK(선두)면 남은 이동력과 상관없이 합류를 허용하는 것이 의도인지(`232c` `254d`, 지금은 코드대로)
-- 편성: 흡수된 스미스(0,2)와 korea3의 34/24 RCT(0,2)는 ON_MAP이 참이라 REST_UP이 매 턴 처리(공중 보급 판정 → 공수 수요 1 가능).
-  원작 그대로이지만 원본 게임에서 실제로 그런지 확인할 것(`forces.md` 7)
+- (결정) 편성: 둘 다 공격 계획이고 MASK(유닛) ≥ MASK(선두)면 남은 이동력과 상관없이 합류 허용(`232c` `254d`)과
+  스미스 흡수·(0,2) 배치는 사용자 결정(2026-10-17)으로 원작 그대로 둠. (0,2)의 유닛을 REST_UP이 매 턴 처리하는 것도 원작 그대로
 - 표시: 헥스 패널의 유닛 살상-생존은 매뉴얼 식(`strength.ts`), 편성 창은 GET_STRENGTH 모드 0이라 ±1 다를 수 있음. 패널도 GET_STRENGTH로 바꿀지 (UI 과제)
 
 - (해결) STATUS 0x10 = 이번 턴 전력 보고 거짓, 0x20 = 전력 보고 정해짐(intel.md 2.4). 이제 모든 비트 확정

@@ -1,4 +1,11 @@
-<!-- 유엔군 컴퓨터 플레이어 WALTON의 구조 조사(영문 메모, 2026-10-16). 아직 옮기지 않음. 한국어 요약과 확장 계획은 ai.md 5.2. -->
+<!-- 유엔군 컴퓨터 플레이어 WALTON의 구조 조사(영문 메모, 2026-10-16). 2026-10-17에 옮김: 기준 문서는 ai.md 8장, 코드는 src/engine/ai/walton.ts. -->
+
+> **Ported (2026-10-17).** The authoritative description is now `ai.md` chapter 8 and `src/engine/ai/walton.ts`. Corrections to this survey
+> found while porting: HOLD_IF_AT (7,29)/(17,24) runs in scenario 1 only (493E is inside the SCENARIO = 1 branch); the Inch'on check and
+> the Japan shuttle run in scenarios 1 and 2 only (SCENARIO <= 2, first orders phase); PLAN_COMBAT has no random cancel and skips forces at
+> sea; ties of score 0 are never rolled (KIM rolls them); weak forces next to the other army score 5 (KIM: 0); the +8 "behind the line"
+> bonus needs flag 0 *and* a score above 0; GOTO_PLAYERPHASE = 2 means WALTON is the second player of the phase; OBJECTIVE's
+> artillery scoring uses ARTY(u, false) (heavy artillery only); 2C85 names 1995 ROK corps with UTILITY_SPACE[17] skipping IV.
 
 # WARRIORS.WALTON (UN computer player) — structural survey
 

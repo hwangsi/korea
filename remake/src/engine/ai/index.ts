@@ -1,6 +1,6 @@
 // Computer players (docs/rules/ai.md). Pure logic (no DOM).
 //
-//   COMPUTER_PLAYERS  the registry. Now: KIM (original Communist, ai/kim.ts).
+//   COMPUTER_PLAYERS  the registry. Now: KIM (original Communist, ai/kim.ts) and WALTON (original UN, ai/walton.ts).
 //                     To add one: write `orders(g)` (ai/common.ts has the original AISUBS / route / merge code for both
 //                     sides), register it here with its side and level, and allow it in the new game dialog
 //                     (aiAvailable is what the dialog asks).
@@ -10,11 +10,14 @@
 import type { GameState, Player } from '../state.ts';
 import type { AiLevel, AiReport, ComputerPlayer } from './types.ts';
 import { kimOrders } from './kim.ts';
+import { waltonOrders } from './walton.ts';
 
 /** WARRIORS.KIM, the original Communist player. */
 const KIM: ComputerPlayer = { id: 'kim', player: 1, level: 'original', orders: kimOrders };
+/** WARRIORS.WALTON, the original UN player. */
+const WALTON: ComputerPlayer = { id: 'walton', player: 2, level: 'original', orders: waltonOrders };
 
-export const COMPUTER_PLAYERS: ComputerPlayer[] = [KIM];
+export const COMPUTER_PLAYERS: ComputerPlayer[] = [KIM, WALTON];
 
 export function computerPlayer(player: Player, level: AiLevel): ComputerPlayer | null {
   return COMPUTER_PLAYERS.find((p) => p.player === player && p.level === level) ?? null;

@@ -66,7 +66,9 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - 기본 플레이 방식이 UN Solitaire(컴퓨터 공산군 KIM)라 새 게임이 컴퓨터 단계를 이미 지난 상태로 열릴 수 있다. 두 사람 검증은 `__app.newGame({ playMode: 0 })`.
 - 저장·불러오기: `__app.openSave()`/`closeSave()`, `saveSlot('1')`, `loadSlot('auto')`, `saveText()`(명령 단계가 아니면 null), `loadText(text)`.
   document.write 페이지는 localStorage가 막혀 슬롯 저장은 확인할 수 없으니 saveText/loadText로 검증한다.
-- AI 엔진 검증은 Node 스크립트가 빠르다: `createGameState` → `startNewGame(g, { computerSide: 1 })` → `endPlayerPhase` 반복, `computerPhase` 이벤트의 `report`.
+- AI 엔진 검증은 Node 스크립트가 빠르다: `createGameState` → `startNewGame(g, { computerSide: 1 })`(KIM, 유엔군 WALTON은 2) → `endPlayerPhase` 반복, `computerPhase` 이벤트의 `report`.
+  임시 스크립트는 tmp에 `.mjs`로 두고 `await import('file:///C:/Users/hwang/AIprojects/korea/remake/src/engine/state.ts')`처럼 절대 URL로 불러오면 된다.
+- WALTON 등 원작 스크립트의 부대 번호는 시나리오 파일마다 다른 유닛일 수 있다(예: 215는 korea1 미 해병 1연대, korea2 미 17/7 연대전투단). 단정하기 전에 JSON에서 확인.
 - 보고서: `__app.openReports('strategic'|'facilities'|'weather'|'scenario'|'overview')`, `closeReports()`, `setOverviewMode('terrain'|'supply')`.
 - 부대 편성: `__app.openOrganize(x, y)`(명령 단계의 자기 점령 헥스만 열림), `closeOrganize()`, `organizeAt`, `transfer(유닛 번호)`, `renameForce(칸, 이름)`, `organizeNav(1|-1)`.
   엔진 테스트에서 부대를 직접 만들 때는 `unit.x/y/attached`와 `g.stacks[idx]`를 함께 맞춘다(`tests/forces.test.ts`의 `placeForce`).

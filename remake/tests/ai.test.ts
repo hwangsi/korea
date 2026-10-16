@@ -61,11 +61,13 @@ test('the invasion routes (WARRIORS unit init 5E4A)', () => {
   assert.deepEqual(routePoint(2, 72), [26, 59]);
 });
 
-test('registry: the original Communist player exists, the others are planned', () => {
+test('registry: the original players of both sides exist, the improved ones are planned', () => {
   assert.equal(computerPlayer(1, 'original')?.id, 'kim');
+  assert.equal(computerPlayer(2, 'original')?.id, 'walton');
   assert.equal(aiAvailable(1, 'original'), true);
-  assert.equal(aiAvailable(2, 'original'), false, 'WALTON not ported yet');
+  assert.equal(aiAvailable(2, 'original'), true);
   assert.equal(aiAvailable(1, 'improved'), false);
+  assert.equal(aiAvailable(2, 'improved'), false);
 });
 
 test('Dragon Wakes opening: the deployment plots stand, force 18 is sent against Seoul (KIM 2A1D)', opts, () => {
@@ -176,6 +178,94 @@ test('a saved game against KIM goes on exactly as before', opts, () => {
   startNewGame(g, { computerSide: 1, limitedIntel: true });
   for (let k = 0; k < 5; k++) endPlayerPhase(g);
   const h = loadGame(saveGame(g), map, scenario('korea1s'));
+  for (let k = 0; k < 6; k++) {
+    endPlayerPhase(g);
+    endPlayerPhase(h);
+  }
+  const s = (x: GameState) => { const f = saveGame(x, null, new Date(0)).state; delete f.version; return f; };
+  assert.deepEqual(s(h), s(g));
+});
+
+// ---------- WALTON (docs/rules/ai.md 6) ----------
+
+/** Red Solitaire: the computer plays the UN, until turn `until` begins. */
+function redSolitaire(id: string, seed: number, until: number) {
+  const g = createGameState(map, scenario(id), seed);
+  let events = startNewGame(g, { computerSide: 2, limitedIntel: true, competence: 3 });
+  let moved = 0, assaults = 0, merged = 0;
+  for (let k = 0; k < 60 && !g.gameOver && g.turn < until; k++) {
+    for (const e of events) if (e.kind === 'computerPhase' && e.report) { moved += e.report.moved.length; assaults += e.report.assaults; merged += e.report.merged; }
+    checkStacks(g);
+    events = endPlayerPhase(g);
+  }
+  return { g, moved, assaults, merged };
+}
+
+test('WALTON plays every scenario: forces stay consistent, the same seed plays the same game', opts, () => {
+  for (const id of ['korea1', 'korea2', 'korea3', 'korea4']) {
+    const start = scenario(id).turn;
+    const a = redSolitaire(id, 2024, start + 6), b = redSolitaire(id, 2024, start + 6);
+    assert.ok(a.moved > 20, `${id}: the computer moves (${a.moved})`);
+    assert.ok(a.merged > 0, `${id}: forces sharing a hex are merged (${a.merged})`);
+    if (id === 'korea2') assert.ok(a.assaults > 0, `${id}: the UN counter-attacks after Inch'on (${a.assaults})`);
+    const s = (g: GameState) => { const f = saveGame(g, null, new Date(0)).state; delete f.version; return f; };
+    assert.deepEqual(s(b.g), s(a.g), `${id}: reproducible`);
+  }
+});
+
+test('Chromite: the 7th Division lands at Inch\'on or Kunsan on the first UN phase (38CA, 3828)', opts, () => {
+  const seen = new Set<string>();
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const g = createGameState(map, scenario('korea2'), seed);
+    startNewGame(g, { computerSide: 2, limitedIntel: false });
+    assert.equal(g.player, 1, 'the Communist player moves first on turn 11');
+    assert.equal(unit(g, 216).x, 33, 'the 31st RCT waits in Japan');
+    endPlayerPhase(g);
+    assert.ok(g.sealiftDemand >= 3, 'three sealift points for the landing');
+    const at = `${unit(g, 215).x},${unit(g, 215).y}`;
+    assert.ok(['12,41', '11,42', '12,52', '11,53'].includes(at), `landed at ${at}`);
+    assert.equal(`${unit(g, 216).x},${unit(g, 216).y}`, at, 'both RCTs together');
+    // 5D9D: UN-held airfields are back in action after the UN phase
+    for (const af of g.airfields) if (g.possession[idx(g, af.x, af.y)] === 1) assert.ok(af.current >= 1);
+    seen.add(at);
+    checkStacks(g);
+  }
+  assert.ok(seen.has('12,41'), 'Inch\'on is the first choice (70%)');
+});
+
+test('Dragon Wakes turn 3: the 1st Cavalry Division forms and lands at P\'ohang (47E3)', opts, () => {
+  const g = createGameState(map, scenario('korea1'), 7);
+  startNewGame(g, { computerSide: 2, limitedIntel: false });
+  while (g.turn < 4) endPlayerPhase(g);
+  assert.equal(unit(g, 194).forceName, 'US 1st Cav Div');
+  assert.ok(forceHex(g, 194) >= 0, 'the 8th Cavalry leads the division');
+  const members = forceUnits(g, 194).map((u) => u.id);
+  for (const id of [197, 198, 199]) assert.ok(members.includes(id), `unit ${id} is in the division`);
+  checkStacks(g);
+});
+
+test('1995 turn 0: the ROK army artillery groups are formed (3B0E), ROK corps are numbered without IV (2C85)', opts, () => {
+  const g = createGameState(map, scenario('korea4'), 7);
+  startNewGame(g, { computerSide: 2, limitedIntel: false });
+  while (g.turn === 0) endPlayerPhase(g);
+  const group = (x: number, y: number) => {
+    const l = g.stacks[idx(g, x, y)].find((f) => /Army Arty/.test(unit(g, f).forceName));
+    return l ? { name: unit(g, l).forceName, units: forceUnits(g, l).map((u) => u.id) } : null;
+  };
+  assert.deepEqual(group(15, 41), { name: 'ROK 1 Army Arty', units: [0x86, 0x88, 0x89, 0x8a] });
+  assert.deepEqual(group(17, 40), { name: 'ROK 2 Army Arty', units: [0x85, 0x87] });
+  assert.deepEqual(group(20, 38), { name: 'ROK 3 Army Arty', units: [0x84, 0x8b] });
+  const corps = [...g.units.values()].map((u) => u.forceName).filter((n) => /^ROK [IVXL]+ Corps$/.test(n));
+  assert.ok(corps.length > 0, 'merged ROK divisions become corps');
+  assert.ok(!corps.includes('ROK IV Corps'), 'four is skipped');
+  checkStacks(g);
+});
+
+test('a saved game against WALTON goes on exactly as before', opts, () => {
+  const g = createGameState(map, scenario('korea2'), 31);
+  startNewGame(g, { computerSide: 2, limitedIntel: true });
+  for (let k = 0; k < 4; k++) endPlayerPhase(g);
+  const h = loadGame(saveGame(g), map, scenario('korea2'));
   for (let k = 0; k < 6; k++) {
     endPlayerPhase(g);
     endPlayerPhase(h);

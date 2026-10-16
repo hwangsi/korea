@@ -91,7 +91,8 @@ remake/
 - [x] 새 게임 옵션 (원작 시작 메뉴: 시나리오·중공군 개입·역량·플레이 방식·항공·정보) → [`docs/rules/options.md`](docs/rules/options.md)
 - [x] 저장/불러오기 (명령 단계, 브라우저 슬롯 5개 + 자동 저장, 파일 내려받기/올리기, 난수 상태까지) → [`docs/rules/save.md`](docs/rules/save.md)
 - [x] 컴퓨터 공산군 (원작 KIM을 코드 그대로) + 개선판·유엔 AI를 붙일 등록부 → [`docs/rules/ai.md`](docs/rules/ai.md)
-- [ ] 유엔군 컴퓨터 (원작 WALTON, 구조 조사만: `docs/rules/ai-walton.md`), 개선판 AI
+- [x] 유엔군 컴퓨터 (원작 WALTON을 코드 그대로: 부산 교두보, 인천·군산 상륙, 일본 수송) → [`docs/rules/ai.md`](docs/rules/ai.md) 8장
+- [ ] 개선판 AI
 - [x] 보고서 화면 (전략 보고, 비행장·항구, 날씨, 시나리오 정보) + 전략 개관·보급망 미니맵 → [`docs/rules/reports.md`](docs/rules/reports.md)
 - [x] 배경 음악·효과음 (행진곡 메들리, FM 사운드카드풍) → [`docs/audio.md`](docs/audio.md)
 - [x] 부대 편성 화면 (FULL_HEX: 유닛 옮기기·부대 이름·스미스 특수임무부대 흡수) → [`docs/rules/forces.md`](docs/rules/forces.md)
@@ -101,9 +102,8 @@ remake/
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **유엔군 컴퓨터(WALTON)**
-2. 개선판 AI
-3. 중공군 첫 참전 뉴스, 전체 한글화
+1. **개선판 AI** (공산군·유엔군)
+2. 중공군 첫 참전 뉴스, 전체 한글화
 
 ## 저작권 주의
 
