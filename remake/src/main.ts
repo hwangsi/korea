@@ -8,7 +8,7 @@
 import type { MapData, Scenario } from './data/types.ts';
 import { MapView, forcesInHex } from './ui/mapView.ts';
 import type { Layers, StrikeMarker } from './ui/mapView.ts';
-import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstrikes } from './ui/panel.ts';
+import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstrikes, renderBriefing } from './ui/panel.ts';
 import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
@@ -330,6 +330,8 @@ async function main() {
   }
 
   function renderSide() {
+    // while the start menu is open the panel briefs the chosen scenario (not the game running behind the menu)
+    if (draft) { renderBriefing(panel, draft.scenario); return; }
     if (!ctx) return;
     if (inStrikes()) { renderAirstrikes(panel, ctx, strikeHover, message); return; }
     if (airOpen && game && canPlanAir(game)) { renderAirOps(panel, ctx, message); return; }
@@ -1288,6 +1290,7 @@ async function main() {
     if (field === 'load') { openSave(); return; }
     draft = applyChoice(draft, field, b.dataset.value ?? '');
     renderDialog();
+    if (field === 'scenario') { renderSide(); panel.scrollTop = 0; }
     newGameEl.querySelector<HTMLElement>(`[data-ng="${field}"][aria-pressed="true"]`)?.focus();
   });
   $('#new-game').addEventListener('click', () => { if (!draft) openNewGame(); });

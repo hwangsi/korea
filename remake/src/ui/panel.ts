@@ -28,7 +28,7 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
-  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO, SCENARIO_INFO_KO,
+  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO, SCENARIO_INFO_KO, SCENARIO_BRIEF_KO, BRIEF_UI_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { barChart, lineChart, CHART_COLORS } from './charts.ts';
@@ -206,6 +206,44 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         ? HELP_KO.computer(g.computerSide === 1 ? SIDE_KO.communist : SIDE_KO.un, g.computerSide === 1 ? 'KIM' : 'WALTON')
         : HELP_KO.twoPlayer)} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
     </section>`;
+}
+
+/**
+ * Briefing of the scenario chosen in the new game dialog (the right panel while the dialog is open): the period,
+ * both sides, the places to watch and what really happened (i18n/ko.ts SCENARIO_BRIEF_KO).
+ */
+export function renderBriefing(el: HTMLElement, scenario: 1 | 2 | 3 | 4) {
+  const info = SCENARIO_INFO_KO[scenario - 1];
+  const b = SCENARIO_BRIEF_KO[scenario];
+  const T = BRIEF_UI_KO;
+  const photo = SCENARIO_PHOTOS[scenario];
+  const links = b.sources.map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a>`).join(' · ');
+  el.innerHTML = `
+    <section class="card ${photo ? 'hero' : ''} brief">
+      ${photoBanner(scenario)}
+      <p class="eyebrow">${esc(T.eyebrow(scenario))}${b.fictional ? ` <span class="tag warn">${esc(T.fictional)}</span>` : ''}</p>
+      <h2>${esc(info.title)}</h2>
+      <p class="muted">${esc(info.en)} · ${esc(info.date)}</p>
+      <p class="brief-lead">${esc(b.lead)}</p>
+    </section>
+    <section class="card brief">
+      <p class="eyebrow">${esc(T.situation)}</p>
+      <p>${esc(b.situation)}</p>
+      <div class="brief-sides">
+        <div class="un"><b>${esc(T.un)}</b><p>${esc(b.un)}</p></div>
+        <div class="red"><b>${esc(T.communist)}</b><p>${esc(b.communist)}</p></div>
+      </div>
+      <p class="eyebrow">${esc(T.keys)}</p>
+      <ul class="brief-keys">${b.keys.map((k) => `<li>${esc(k)}</li>`).join('')}</ul>
+    </section>
+    <section class="card brief">
+      <p class="eyebrow">${esc(b.historyTitle)}</p>
+      <p>${esc(b.history)}</p>
+      <p class="muted small brief-src">${esc(T.sources)}: ${links}</p>
+      ${photo ? `<p class="muted small brief-src">▣ ${esc(photo.caption)} · ${esc(photo.credit)}</p>` : ''}
+      <p class="muted small brief-src">${esc(T.note)}</p>
+    </section>
+    <p class="muted small brief-hint">${esc(T.hint)}</p>`;
 }
 
 /** Archive photo at the top of the scenario card (src/data/photos.ts, public domain). */

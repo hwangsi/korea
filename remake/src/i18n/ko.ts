@@ -989,3 +989,95 @@ export const FORCES_UI_KO = {
     notOwn: '아군이 점령한 헥스의 아군 부대만 편성할 수 있어요.',
   } as Record<string, string>,
 } as const;
+
+
+// ---------- scenario briefings (right panel while the new game dialog is open, docs/graphics.md 5) ----------
+// Facts checked by web search on 2026-10-17 (sources below each briefing); text written with generative AI and reviewed.
+
+export interface ScenarioBrief {
+  /** One-line hook under the title. */
+  lead: string;
+  /** "가상 시나리오" tag (scenario 4). */
+  fictional?: boolean;
+  situation: string;
+  un: string;
+  communist: string;
+  /** Places to watch in the game. */
+  keys: string[];
+  /** What really happened (scenario 4: what happened instead). */
+  historyTitle: string;
+  history: string;
+  sources: { name: string; url: string }[];
+}
+
+export const BRIEF_UI_KO = {
+  eyebrow: (n: number) => `시나리오 ${n} 브리핑`,
+  fictional: '가상 시나리오',
+  situation: '상황',
+  un: '유엔군',
+  communist: '공산군',
+  keys: '눈여겨볼 곳',
+  sources: '자료',
+  note: '웹 검색으로 사실을 확인하고 생성형 AI로 정리한 글입니다.',
+  hint: '왼쪽에서 다른 시나리오를 고르면 브리핑이 바뀝니다.',
+};
+
+export const SCENARIO_BRIEF_KO: Record<1 | 2 | 3 | 4, ScenarioBrief> = {
+  1: {
+    lead: '1950년 6월 25일 새벽, 북한군이 포격과 함께 38선 전역을 넘습니다.',
+    situation: '소련제 T-34 전차 약 120대를 앞세운 북한군 약 13만 5천 명이 서울을 향해 내려옵니다. 국군은 약 9만 8천 명이지만 전차도, 대전차 무기도, 중포도 없습니다. 유엔 안전보장이사회는 곧바로 침략을 규탄하고, 일본에 있던 미군이 건너오기 시작합니다.',
+    un: '국군이 38선 곳곳에서 버티는 사이 미군이 조금씩 도착합니다. 땅을 내주더라도 시간을 벌어 증원이 쌓일 때까지 무너지지 않는 것이 관건입니다.',
+    communist: '전차와 포병이 있을 때가 기회입니다. 유엔 증원이 쌓이기 전에 서울을 지나 남쪽 끝 부산까지 밀어붙여야 합니다.',
+    keys: ['서울과 한강 방어선', '수원, 대전, 대구로 이어지는 경부 축', '부산: 유엔 증원이 들어오는 마지막 항구'],
+    historyTitle: '역사에서는',
+    history: '서울은 사흘 뒤인 6월 28일 함락되었습니다. 7월 5일 오산에서 미군 스미스 특수임무부대가 첫 지상전을 치렀지만 전차를 막지 못했고, 8월 초 유엔군은 낙동강의 부산 교두보까지 밀려났습니다.',
+    sources: [
+      { name: 'Wikipedia: Korean War', url: 'https://en.wikipedia.org/wiki/Korean_War' },
+      { name: 'ARSOF History: Korean War Phase 1', url: 'https://arsof-history.org/arsof_in_korea/korean_war_phase_1.html' },
+      { name: 'United Nations Command: History', url: 'https://www.unc.mil/history/1950-1953-korean-war-active-conflict/' },
+    ],
+  },
+  2: {
+    lead: '1950년 9월 15일, 맥아더의 유엔군이 전선 훨씬 뒤쪽 인천에 상륙합니다.',
+    situation: '북한군은 8월부터 낙동강 방어선(부산 교두보)을 두드리다 지쳐 있습니다. 미 제10군단(제1해병사단과 제7보병사단)이 약 7만 5천 명과 함정 261척으로 인천에 내려 서울로 향하고, 남쪽의 북한군 보급선을 끊으려 합니다.',
+    un: '제10군단은 인천에서 김포 비행장과 서울로, 제8군은 부산 교두보에서 북쪽으로 반격합니다. 두 부대가 만나면 남쪽의 북한군이 포위됩니다.',
+    communist: '주력은 낙동강에 묶여 있고 서울과 인천 일대는 비어 있습니다. 보급선이 끊기기 전에 서울을 지키거나 북쪽으로 빠져나가야 합니다.',
+    keys: ['인천 항구와 김포 비행장', '서울: 북한군 보급선의 길목', '낙동강 돌파와 오산에서의 연결'],
+    historyTitle: '역사에서는',
+    history: '제8군은 다음 날인 9월 16일 교두보 돌파에 나섰고, 두 부대는 오산 부근에서 만났습니다. 서울은 9월 28일 탈환되었고, 무너진 북한군은 38선 북쪽으로 물러났습니다.',
+    sources: [
+      { name: 'Naval History and Heritage Command: Inchon Landing', url: 'https://www.history.navy.mil/browse-by-topic/wars-conflicts-and-operations/korean-war/korea-operations/inchon.html' },
+      { name: 'Wikipedia: Battle of Inchon', url: 'https://en.wikipedia.org/wiki/Battle_of_Inchon' },
+      { name: 'Wikipedia: Battle of the Pusan Perimeter', url: 'https://en.wikipedia.org/wiki/Battle_of_the_Pusan_Perimeter' },
+    ],
+  },
+  3: {
+    lead: '1950년 11월 말, 압록강을 눈앞에 둔 유엔군은 크리스마스 전에 전쟁을 끝내려 합니다.',
+    situation: '미 제7사단은 압록강변 혜산진에 닿았고, 맥아더는 11월 24일 마지막 공세("크리스마스 공세")를 명령합니다. 그러나 북쪽 산악에는 펑더화이가 이끄는 중공군(인민지원군) 30만 명 이상이 숨어 반격을 기다리고, 혹독한 겨울 추위가 시작됩니다.',
+    un: '서쪽의 제8군은 청천강 일대, 동쪽의 제10군단은 장진호와 동해안으로 넓게 흩어져 있고, 두 부대 사이 산악 지대가 비어 있습니다.',
+    communist: '중공군은 이미 참전해 있습니다. 산을 타고 스며들어 퇴로를 끊는 것이 장기입니다. 흩어진 유엔군을 하나씩 포위하십시오.',
+    keys: ['청천강 일대: 서부 전선', '장진호와 흥남 항구: 동부 전선', '평양과 38선: 다음 방어선'],
+    historyTitle: '역사에서는',
+    history: '중공군은 11월 25일 청천강, 27일 장진호에서 공격했습니다. 유엔군은 38선 남쪽까지 물러났고, 제1해병사단은 장진호에서 싸우며 흥남으로 나와 바다로 철수했습니다. 공산군은 다시 서울을 점령했습니다.',
+    sources: [
+      { name: 'Wikipedia: Second Phase Offensive', url: 'https://en.wikipedia.org/wiki/Second_Phase_Offensive' },
+      { name: 'U.S. Army CMH: Ebb and Flow, Nov 1950 - Jul 1951', url: 'https://permanent.fdlp.gov/websites/history.army.mil/2020/history.army.mil/html/books/020/20-4/CMH_Pub_20-4.pdf' },
+      { name: 'Eisenhower Library: Korean War', url: 'https://www.eisenhowerlibrary.gov/research/online-documents/korean-war' },
+    ],
+  },
+  4: {
+    lead: '영변 핵위기로 인한 미군 공습 이후 시작된 제2차 한국전쟁입니다.',
+    fictional: true,
+    situation: '북한은 1993년 3월 핵확산금지조약(NPT) 탈퇴를 선언했고, 1994년 영변 원자로에서 핵무기 5~6개 분량의 플루토늄이 든 연료봉을 꺼내기 시작했습니다. 미국은 F-117 스텔스기와 순항미사일로 영변 핵시설을 타격하는 계획까지 세웠습니다. 이 시나리오는 그 공습이 실제로 이루어졌다고 가정합니다. 북한은 보복을 선언하고, 1995년 6월 25일 특수부대 침투와 함께 휴전선 전역에서 남침을 시작합니다.',
+    un: '현대화된 국군이 휴전선을 지키고 주한미군과 미 본토 증원이 뒤를 받칩니다. 첫 충격을 견디고 서울을 지키는 것이 먼저입니다.',
+    communist: '수많은 포병과 특수부대를 앞세워 서울을 노립니다. 이번에는 중공군 개입이 없습니다. 증원이 오기 전에 결판을 내야 합니다.',
+    keys: ['휴전선과 서울 북쪽 접근로', '후방에 침투한 특수부대와 보급 기지', '평양으로 향하는 반격로'],
+    historyTitle: '실제로는',
+    history: '1994년 6월 지미 카터 전 미국 대통령이 평양에서 김일성 주석을 만나 위기가 누그러졌고, 10월 21일 제네바 기본합의로 영변 핵시설이 동결되었습니다. 당시 윌리엄 페리 미 국방장관은 전쟁이 났다면 연합군이 이겼겠지만 모든 쪽에 큰 사상자가 났을 것이라고 회고했습니다.',
+    sources: [
+      { name: 'Wikipedia: 1994 North Korean nuclear crisis', url: 'https://en.wikipedia.org/wiki/1994_North_Korean_nuclear_crisis' },
+      { name: 'Arms Control Association: Agreed Framework at a Glance', url: 'https://www.armscontrol.org/factsheets/us-north-korean-agreed-framework-glance' },
+      { name: 'U.S. State Dept.: Perry testimony (1999)', url: 'https://1997-2001.state.gov/policy_remarks/1999/991012_perry_nkorea.html' },
+    ],
+  },
+};

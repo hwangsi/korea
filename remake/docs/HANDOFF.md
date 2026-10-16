@@ -200,6 +200,8 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     빛나는 전선), 화면은 시안 C(다크 유리 카드, `styles.css` 끝 블록). 요약에 세력 막대·전선 추이 차트(`ui/charts.ts`,
     엔진 `GameState.history`·`recordFront`), 시나리오 카드에 퍼블릭 도메인 기록사진(`data/photos.ts`, 출처는 graphics.md 4)
   - 다시 연 페이지 뒤의 기본 게임은 전투 재생을 하지 않고, 새 게임·불러오기는 남은 재생을 정리(`cancelReplay`)
+  - 새 게임 창이 열려 있으면 오른쪽은 고른 시나리오의 **브리핑**(graphics.md 5, `renderBriefing`, `SCENARIO_BRIEF_KO`): 웹 검색으로 확인한
+    사실을 생성형 AI로 정리. 시나리오 4는 "영변 핵위기"(원제 Tomorrow's War, 가상)로 이름을 바꾸고 사진을 AI 삽화로 교체
 
 아직 없음
 - 공습 단계별 연출, 제목 화면, 원본 게임과의 직접 비교(미해결 질문들)
