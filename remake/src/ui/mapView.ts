@@ -265,7 +265,8 @@ export class MapView {
       dy = Math.max(-150, Math.min(150, dy));
       if (dy) this.zoomAt(Math.exp(-dy * 0.0012), p.x, p.y);
     }, { passive: false });
-    c.addEventListener('dblclick', (e) => { const p = local(e); this.zoomAt(1.6, p.x, p.y); });
+    // No double-click zoom: orders are confirmed by clicking the same hex twice (pin, then move / assault / drop,
+    // or cycling stacked forces), which the browser also reports as a dblclick. Zoom is the wheel and the +/- buttons.
     c.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.onContext();
