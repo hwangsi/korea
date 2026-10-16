@@ -21,6 +21,8 @@ import { renderNewGame, applyChoice } from './ui/newGame.ts';
 import { renderSaveDialog } from './ui/saveDialog.ts';
 import { renderSoundPanel } from './ui/soundPanel.ts';
 import { renderReports, overviewHexAt } from './ui/reports.ts';
+import { renderOrganize, forceTitleKo } from './ui/organize.ts';
+import { organizeBlock, nextOrganizeHex, transferUnit, renameForce, hexSlots } from './engine/forces.ts';
 import type { ReportTab } from './ui/reports.ts';
 import { AudioManager } from './audio/index.ts';
 import { privateSongs } from './audio/songs.ts';
@@ -40,7 +42,7 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
-  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
@@ -147,8 +149,13 @@ async function main() {
   let reportsOpen = false;
   let reportTab: ReportTab = 'strategic';
   let overviewMode: 'terrain' | 'supply' = 'terrain';
+  /** Force organisation (docs/rules/forces.md): the hex whose forces are being reorganised. */
+  const organizeEl = $('#organize');
+  let organizeAt: [number, number] | null = null;
+  let organizeMsg: PanelMessage | null = null;
+  let renaming: 0 | 1 | null = null;
   /** Something modal is open: the map and the phase controls wait. */
-  const modal = () => !!banner || !!draft || saveOpen || reportsOpen;
+  const modal = () => !!banner || !!draft || saveOpen || reportsOpen || !!organizeAt;
 
   // ---------- sound (docs/audio.md) ----------
   const audio = new AudioManager();
@@ -320,7 +327,111 @@ async function main() {
     renderDialog();
     renderSaveDlg();
     renderReportsDlg();
+    renderOrganizeDlg();
   }
+
+  // ---------- force organisation (docs/rules/forces.md) ----------
+
+  function renderOrganizeDlg() {
+    if (!organizeAt || !game) { organizeEl.hidden = true; organizeEl.innerHTML = ''; return; }
+    renderOrganize(organizeEl, { game, x: organizeAt[0], y: organizeAt[1], message: organizeMsg, renaming });
+    organizeEl.hidden = false;
+    if (renaming !== null) {
+      const input = organizeEl.querySelector<HTMLInputElement>(`#og-name-${renaming}`);
+      if (input && document.activeElement !== input) { input.focus(); input.select(); }
+    }
+  }
+
+  /** The original opens FULL_HEX from the hex menu of a friendly hex in an orders phase ("Report"). */
+  function openOrganize(x: number, y: number) {
+    if (!game || modal()) return;
+    const why = organizeBlock(game, x, y);
+    if (why) { message = { kind: 'warn', text: FORCES_UI_KO.blockedOpen[why] }; render(); return; }
+    organizeAt = [x, y];
+    organizeMsg = null;
+    renaming = null;
+    orders = null;
+    audio.sfx('select');
+    render();
+  }
+
+  function closeOrganize() {
+    if (!organizeAt || !game) return;
+    const [x, y] = organizeAt;
+    organizeAt = null;
+    renaming = null;
+    organizeMsg = null;
+    // the forces of the hex may have new leaders: start again from the hex
+    sel = [x, y];
+    orders = null;
+    message = null;
+    render();
+  }
+
+  function organizeTransfer(id: number) {
+    if (!game || !organizeAt) return;
+    const [x, y] = organizeAt;
+    const name = unitNameKo(unit(game, id).name);
+    const r = transferUnit(game, x, y, id);
+    renaming = null;
+    if (!r.ok) {
+      audio.sfx('error');
+      organizeMsg = { kind: 'error', text: `${FORCES_UI_KO.failed}: ${FORCES_UI_KO.blocked[r.reason ?? ''] ?? r.reason}` };
+    } else if (r.kind === 'merge') {
+      audio.sfx('march');
+      organizeMsg = { kind: 'ok', text: FORCES_UI_KO.merged(unitNameKo(unit(game, r.mergeInto).name)) };
+    } else {
+      audio.sfx('march');
+      const k = hexSlots(game, x, y).findIndex((ids) => ids.includes(id));
+      const text = FORCES_UI_KO.done(name, k + 1);
+      organizeMsg = { kind: r.cost ? 'warn' : 'ok', text: r.cost ? `${text} ${FORCES_UI_KO.doneCost(r.cost)}` : text };
+    }
+    render();
+  }
+
+  function organizeRename(slot: 0 | 1, text: string) {
+    if (!game || !organizeAt) return;
+    const leader = game.stacks[idx(game, organizeAt[0], organizeAt[1])][slot];
+    renaming = null;
+    if (leader && renameForce(game, leader, text)) {
+      audio.sfx('click');
+      organizeMsg = { kind: 'ok', text: FORCES_UI_KO.renamed(forceTitleKo(game, leader)) };
+    }
+    render();
+  }
+
+  function organizeNav(dir: 1 | -1) {
+    if (!game || !organizeAt) return;
+    const next = nextOrganizeHex(game, organizeAt[0], organizeAt[1], dir);
+    organizeAt = next;
+    renaming = null;
+    organizeMsg = null;
+    view.centerOn(next[0], next[1]);
+    audio.sfx('click');
+    render();
+  }
+
+  organizeEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-og]');
+    if (!b || (b as HTMLButtonElement).disabled || !game || !organizeAt) return;
+    const act = b.dataset.og;
+    if (act === 'close') closeOrganize();
+    else if (act === 'prev') organizeNav(-1);
+    else if (act === 'next') organizeNav(1);
+    else if (act === 'xfer') organizeTransfer(Number(b.dataset.unit));
+    else if (act === 'rename') { renaming = Number(b.dataset.slot) as 0 | 1; organizeMsg = null; render(); }
+    else if (act === 'rename-cancel') { renaming = null; render(); }
+    else if (act === 'rename-ok') {
+      const slot = Number(b.dataset.slot) as 0 | 1;
+      organizeRename(slot, organizeEl.querySelector<HTMLInputElement>(`#og-name-${slot}`)?.value ?? '');
+    }
+  });
+  organizeEl.addEventListener('keydown', (e) => {
+    const input = (e.target as HTMLElement).closest<HTMLInputElement>('input[id^="og-name-"]');
+    if (!input || renaming === null) return;
+    if (e.key === 'Enter') { e.preventDefault(); organizeRename(renaming, input.value); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); renaming = null; render(); }
+  });
 
   // ---------- report screens (docs/rules/reports.md) ----------
 
@@ -332,6 +443,8 @@ async function main() {
 
   function openReports(tab: ReportTab = reportTab) {
     if (!game || draft || saveOpen) return;
+    organizeAt = null;
+    renaming = null;
     reportsOpen = true;
     reportTab = tab;
     audio.sfx('news');
@@ -737,6 +850,7 @@ async function main() {
     else if (action === 'undo') { undo(); return; }
     else if (action === 'mode' && orders) startOrders(orders.leader, btn.dataset.mode as MoveMode);
     else if (action === 'select-force') { message = null; startOrders(Number(btn.dataset.leader)); }
+    else if (action === 'organize') { openOrganize(Number(btn.dataset.x), Number(btn.dataset.y)); return; }
     else if (action === 'mission') {
       if (setMission(game, Number(btn.dataset.unit), Number(btn.dataset.mission))) message = null;
     }
@@ -760,6 +874,10 @@ async function main() {
     }
     if (reportsOpen) {
       if (e.key === 'Escape') closeReports();
+      return;
+    }
+    if (organizeAt) {
+      if (e.key === 'Escape') closeOrganize();
       return;
     }
     if (draft) {
@@ -811,6 +929,8 @@ async function main() {
     turnView = null;
     banner = null;
     strikeMarks = [];
+    organizeAt = null;
+    renaming = null;
     // a computer that moves first may already have fought the first combat phase: its report stays in the panel
     handleEvents(events);
     if (first) { view.fitAll(); first = false; }
@@ -912,6 +1032,8 @@ async function main() {
 
   function openSave() {
     reportsOpen = false;
+    organizeAt = null;
+    renaming = null;
     saveOpen = true;
     saveMsg = null;
     render();
@@ -1035,6 +1157,12 @@ async function main() {
     loadSlot: async (k: string) => { const t = readSlot(k); return t ? loadFromText(t, false) : 'empty'; },
     saveText: () => { const f = saveFile(); return f ? saveToText(f) : null; },
     loadText: (t: string) => loadFromText(t, false),
+    /** Force organisation (docs/rules/forces.md): the dialog of hex x, y, a unit's transfer, a force name, + Hex / - Hex. */
+    openOrganize, closeOrganize,
+    get organizeAt() { return organizeAt; },
+    transfer: (id: number) => organizeTransfer(id),
+    renameForce: (slot: 0 | 1, name: string) => organizeRename(slot, name),
+    organizeNav: (dir: 1 | -1) => organizeNav(dir),
     /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
     setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },
   };

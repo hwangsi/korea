@@ -62,7 +62,7 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel, options, save, ai, reports)
+  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel, options, save, ai, reports, forces)
   docs/audio.md             소리 (곡 목록, 저작권, 효과음)
   data/private/             저작권이 남은 곡의 개인 편곡 (git 제외)
   docs/places.md            지명 판정 방법과 근거
@@ -94,16 +94,16 @@ remake/
 - [ ] 유엔군 컴퓨터 (원작 WALTON, 구조 조사만: `docs/rules/ai-walton.md`), 개선판 AI
 - [x] 보고서 화면 (전략 보고, 비행장·항구, 날씨, 시나리오 정보) + 전략 개관·보급망 미니맵 → [`docs/rules/reports.md`](docs/rules/reports.md)
 - [x] 배경 음악·효과음 (행진곡 메들리, FM 사운드카드풍) → [`docs/audio.md`](docs/audio.md)
-- [ ] 부대 편성 화면 (FULL_HEX)
+- [x] 부대 편성 화면 (FULL_HEX: 유닛 옮기기·부대 이름·스미스 특수임무부대 흡수) → [`docs/rules/forces.md`](docs/rules/forces.md)
 - [ ] 전체 한글화 마무리, 새 그래픽
 
 ## 다음 단계 제안
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **부대 편성 화면** (FULL_HEX: 유닛 옮기기·부대 이름)
-2. 유엔군 컴퓨터(WALTON)
-3. 개선판 AI
+1. **유엔군 컴퓨터(WALTON)**
+2. 개선판 AI
+3. 중공군 첫 참전 뉴스, 전체 한글화
 
 ## 저작권 주의
 

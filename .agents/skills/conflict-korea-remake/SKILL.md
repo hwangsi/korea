@@ -68,6 +68,8 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
   document.write 페이지는 localStorage가 막혀 슬롯 저장은 확인할 수 없으니 saveText/loadText로 검증한다.
 - AI 엔진 검증은 Node 스크립트가 빠르다: `createGameState` → `startNewGame(g, { computerSide: 1 })` → `endPlayerPhase` 반복, `computerPhase` 이벤트의 `report`.
 - 보고서: `__app.openReports('strategic'|'facilities'|'weather'|'scenario'|'overview')`, `closeReports()`, `setOverviewMode('terrain'|'supply')`.
+- 부대 편성: `__app.openOrganize(x, y)`(명령 단계의 자기 점령 헥스만 열림), `closeOrganize()`, `organizeAt`, `transfer(유닛 번호)`, `renameForce(칸, 이름)`, `organizeNav(1|-1)`.
+  엔진 테스트에서 부대를 직접 만들 때는 `unit.x/y/attached`와 `g.stacks[idx]`를 함께 맞춘다(`tests/forces.test.ts`의 `placeForce`).
 - 소리: `__app.audio`. 자동화 탭에서는 소리를 들을 수 없으니 `renderOffline(곡 id, 초)`/`renderSfx(이름)`로 렌더링해 최대값·RMS를 본다(한 번에 하나씩, 비동기로 window에 결과를 두고 폴링: CDP 시간 초과 주의).
   6.25의 노래는 `remake/data/private/music.json`(git 제외)에 있고 빌드가 standalone에 넣는다.
 - 같은 파일을 동시에 두 번 `edit_file`하지 말 것(병렬 호출이면 한쪽 수정이 사라진다).

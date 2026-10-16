@@ -29,8 +29,8 @@ export const STATUS_BURIED = 0x08;
 const SOFT_TYPES = new Set([12, 13]); // Rifle Platoon, Weapons Platoon (Appendix B: everything else is hard)
 const MEDIUM_TANK = 2;
 
-const isClosed = (c: number) => (c >= 0x58 && c <= 0x8e) || c === 0x92;
-const isRiverCode = (c: number) =>
+export const isClosed = (c: number) => (c >= 0x58 && c <= 0x8e) || c === 0x92;
+export const isRiverCode = (c: number) =>
   (c >= 0x01 && c <= 0x0f) || (c >= 0x47 && c <= 0x57) || (c >= 0x59 && c <= 0x6f) || (c >= 0x8c && c <= 0x8e) || (c >= 0x9d && c <= 0x9e);
 const isArtillery = (u: UnitState) => u.symbol % 10 >= 4;
 const isHeavyArtillery = (u: UnitState) => u.symbol % 10 === 4;

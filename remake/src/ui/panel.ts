@@ -29,11 +29,12 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
-  OPTIONS_UI_KO,
+  OPTIONS_UI_KO, FORCES_UI_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
 import { directionsOf, DIRECTIONS } from '../engine/hex.ts';
+import { organizeBlock } from '../engine/forces.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const DIR_KO: Record<string, string> = { N: '북', NE: '북동', SE: '남동', S: '남', SW: '남서', NW: '북서' };
@@ -770,7 +771,8 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         <dt>원본 코드</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(hex.label)}</dd>
       </dl>
     </section>
-    ${forces.length ? `<section class="card"><h3>부대 <span class="muted">${forces.length}개 편성${anyFog ? '' : ` · ${unitCount}개 유닛`}</span></h3>
+    ${forces.length ? `<section class="card"><div class="forces-head"><h3>부대 <span class="muted">${forces.length}개 편성${anyFog ? '' : ` · ${unitCount}개 유닛`}</span></h3>
+      ${organizeBlock(g, x, y) === null ? `<button class="btn small" data-action="organize" data-x="${x}" data-y="${y}" title="${esc(FORCES_UI_KO.buttonTitle)}">${esc(FORCES_UI_KO.button)}</button>` : ''}</div>
       ${forces.map((f) => (fogged(ctx, f.leader) ? fogForceCard(ctx, f) : forceCard(g, f, f.leader === activeLeader))).join('')}</section>` : ''}`;
 }
 
