@@ -2,8 +2,9 @@
 // Buttons carry data-ng (field) and data-value; main.ts handles them with one delegated listener.
 
 import type { GameOptions } from '../engine/options.ts';
+import { aiAvailable } from '../engine/ai/index.ts';
 import { ccfStatus, airShownAsProgram, scenarioFileId, usesDeploymentFile } from '../engine/options.ts';
-import { SCENARIO_INFO_KO, OPTIONS_UI_KO as T } from '../i18n/ko.ts';
+import { SCENARIO_INFO_KO, OPTIONS_UI_KO as T, SAVE_UI_KO } from '../i18n/ko.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -46,9 +47,19 @@ export function renderNewGame(el: HTMLElement, v: NewGameView) {
   const competence = row(T.competence, 'competence',
     T.competenceValues.map((label, k) => ({ value: String(k + 1), label, title: T.competenceEn[k] })), String(o.competence), esc(T.competenceHint), 'six');
 
-  const modeHint = esc(T.playModeHint[o.playMode]) + (o.playMode !== 0 ? `<br><span class="warn-text">${esc(T.noAi)}</span>` : '');
+  // the computer side of UN Solitaire is PLAYER 1 (Communist), of Red Solitaire PLAYER 2 (UN)
+  const computer = o.playMode === 0 ? null : (o.playMode as 1 | 2);
+  const noAi = computer !== null && !aiAvailable(computer, 'original');
+  const modeHint = esc(T.playModeHint[o.playMode]) + (noAi ? `<br><span class="warn-text">${esc(T.noAi)}</span>` : '');
   const mode = row(T.playMode, 'playMode',
     T.playModeValues.map((label, k) => ({ value: String(k), label, title: T.playModeEn[k] })), String(o.playMode), modeHint, 'three');
+  const levels = ['original', 'improved'] as const;
+  const aiRow = computer !== null && !noAi
+    ? row(T.ai, 'ai', levels.map((lv, k) => {
+      const ok = aiAvailable(computer, lv);
+      return { value: lv, label: ok ? T.aiValues[k] : `${T.aiValues[k]} (${T.aiSoon})`, title: T.aiTitles[k], disabled: !ok };
+    }), o.aiLevel ?? 'original', esc(T.aiHint))
+    : '';
 
   const program = airShownAsProgram(o);
   const airHint = esc(T.airHint[o.airPlayerControl ? 0 : 1]) + (o.airPlayerControl && program ? `<br><span class="muted">${esc(T.airShownProgram)}</span>` : '');
@@ -69,6 +80,7 @@ export function renderNewGame(el: HTMLElement, v: NewGameView) {
         ${ccfRow}
         ${competence}
         ${mode}
+        ${aiRow}
         ${air}
         ${intel}
       </div>
@@ -78,6 +90,7 @@ export function renderNewGame(el: HTMLElement, v: NewGameView) {
       </details>
       <div class="actions">
         <button type="button" class="btn primary" data-ng="start">${esc(T.start)} <span class="kbd">Enter</span></button>
+        <button type="button" class="btn" data-ng="load">${esc(SAVE_UI_KO.fromNewGame)}</button>
         ${v.canClose ? `<button type="button" class="btn ghost" data-ng="close">${esc(T.cancel)}</button>` : ''}
       </div>
     </div>`;
@@ -93,6 +106,7 @@ export function applyChoice(o: GameOptions, field: string, value: string): GameO
     case 'air': return { ...o, airPlayerControl: value === '0' };
     case 'intel': return { ...o, limitedIntel: value === '0' };
     case 'variant': return { ...o, variant: value as GameOptions['variant'] };
+    case 'ai': return { ...o, aiLevel: value as GameOptions['aiLevel'] };
     default: return o;
   }
 }

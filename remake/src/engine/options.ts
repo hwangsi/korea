@@ -9,6 +9,7 @@
 //   toStartOptions     the values startNewGame takes (competence 6 = Random is rolled there)
 
 import type { StartOptions } from './turn.ts';
+import type { AiLevel } from './ai/types.ts';
 
 export type ScenarioNo = 1 | 2 | 3 | 4;
 /** SCENARIO[3]: 0 two players, 1 UN Solitaire (the computer plays the Communists), 2 Red Solitaire (the computer plays the UN). */
@@ -31,6 +32,8 @@ export interface GameOptions {
   /** REALITY[4]: limited intelligence. */
   limitedIntel: boolean;
   variant: ScenarioVariant;
+  /** Remake: which computer player plays the computer side (docs/rules/ai.md 4). Only 'original' exists so far. */
+  aiLevel?: AiLevel;
 }
 
 /** The menu as LOAD_NEW_GAME sets it up (49A2). */
@@ -38,8 +41,11 @@ export const ORIGINAL_DEFAULTS: GameOptions = {
   scenario: 1, ccfFixed: false, competence: 3, playMode: 1, airPlayerControl: true, limitedIntel: true, variant: 'auto',
 };
 
-/** Remake defaults: two players while there is no AI (docs/rules/options.md 4), the rest as the original. */
-export const REMAKE_DEFAULTS: GameOptions = { ...ORIGINAL_DEFAULTS, playMode: 0 };
+/**
+ * Remake defaults: the original's (UN Solitaire against KIM, docs/rules/ai.md) since the Communist computer player
+ * exists; the computer player is the original program.
+ */
+export const REMAKE_DEFAULTS: GameOptions = { ...ORIGINAL_DEFAULTS, aiLevel: 'original' };
 
 /** Does this choice load the deployment edition (koreaNs.dat)? */
 export function usesDeploymentFile(o: Pick<GameOptions, 'playMode' | 'variant'>): boolean {
@@ -86,5 +92,6 @@ export function toStartOptions(o: GameOptions): StartOptions {
     limitedIntel: o.limitedIntel,
     ccfFixed: o.ccfFixed,
     airPlayerControl: o.airPlayerControl,
+    aiLevel: o.aiLevel ?? 'original',
   };
 }

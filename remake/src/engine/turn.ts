@@ -23,6 +23,8 @@ import {
   gameOverResult,
 } from './endturn.ts';
 import type { ReinforcementReport, PatrolReport, MineReport, IntelReport, CityChange, GameResult } from './endturn.ts';
+import { computerOrders } from './ai/index.ts';
+import type { AiLevel, AiReport } from './ai/types.ts';
 
 export const PHASE_FIRST_ORDERS = 1;
 export const PHASE_COMBAT = 2;
@@ -40,12 +42,14 @@ export interface StartOptions {
   ccfFixed?: boolean;
   /** REALITY[2] Air Campaign: Player Control (default) or Program Control. */
   airPlayerControl?: boolean;
+  /** Computer player of the computer side: the original program (default) or a remake AI (docs/rules/ai.md 4). */
+  aiLevel?: AiLevel;
 }
 
 export type TurnEvent =
   | { kind: 'ordersPhase'; phase: number; player: Player; reinforcements: boolean }
   | { kind: 'noFirstPhase'; player: Player }
-  | { kind: 'computerPhase'; phase: number; player: Player }
+  | { kind: 'computerPhase'; phase: number; player: Player; report: AiReport | null }
   | { kind: 'airstrikes'; player: Player; count: number }
   | { kind: 'air'; report: AirReport }
   | { kind: 'combat'; reports: CombatReport[] }
@@ -121,8 +125,9 @@ function advancePlayer(g: GameState, events: TurnEvent[]): boolean {
     g.player = p;
     g.undo = null;
     if (g.computerSide === p) {
-      // computer player (WARRIORS.KIM / WALTON) not implemented yet: its forces stand still
-      events.push({ kind: 'computerPhase', phase: g.phase, player: p });
+      // PLAYER_PHASE 1AF4: the computer gives its orders (WARRIORS.KIM; no UN player yet: its forces stand still)
+      const report = computerOrders(g, p);
+      events.push({ kind: 'computerPhase', phase: g.phase, player: p, report });
       continue;
     }
     // PLAYER_PHASE 1C70: "Reinforcements have arrived" (UTILITY_SPACE[19] Communist, [18] UN)
@@ -141,6 +146,7 @@ export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[]
   g.limitedIntel = opts.limitedIntel ?? false;
   g.ccfFixed = opts.ccfFixed ?? false;
   g.airPlayerControl = opts.airPlayerControl ?? true;
+  g.aiLevel = opts.aiLevel ?? 'original';
   g.air = null;
   g.utility[11] = 0; // LOAD_NEW_GAME 4C17: not started yet
   initWeather(g);
@@ -164,6 +170,8 @@ export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[]
   g.gameOver = null;
   const events: TurnEvent[] = [];
   beginOrdersPhase(g, PHASE_FIRST_ORDERS, events);
+  // no human player in this phase (the computer moved, the UN has no first phase): play on to the next human phase
+  if (g.orderStep >= 2) events.push(...endPlayerPhase(g));
   return events;
 }
 
@@ -293,6 +301,7 @@ export function continuePastEnd(g: GameState): TurnEvent[] {
   const events: TurnEvent[] = [];
   nextTurn(g);
   beginOrdersPhase(g, PHASE_FIRST_ORDERS, events);
+  if (g.orderStep >= 2) events.push(...endPlayerPhase(g));
   return events;
 }
 

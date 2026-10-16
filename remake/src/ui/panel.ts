@@ -62,6 +62,7 @@ function settingsLine(ctx: PanelContext): string {
   const ccf = ccfStatus(g.scenarioNo as 1 | 2 | 3 | 4);
   const parts = [
     O.playModeValues[g.computerSide] ?? '',
+    ...(g.computerSide ? [`${O.ai} ${O.aiValues[g.aiLevel === 'improved' ? 1 : 0]}`] : []),
     `${O.competence} ${ctx.options?.competence === RANDOM_COMPETENCE ? O.randomRolled(comp) : comp}`,
     `${O.air} ${O.airValues[airShownAsProgram({ airPlayerControl: g.airPlayerControl, scenario: g.scenarioNo as 1 | 2 | 3 | 4, playMode: g.computerSide as 0 | 1 | 2 }) ? 1 : 0]}`,
     `${O.intel} ${O.intelValues[g.limitedIntel ? 0 : 1]}`,

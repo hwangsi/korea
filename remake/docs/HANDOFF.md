@@ -3,9 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **옵션 화면(새 게임) 완료** (규칙 `docs/rules/options.md`, 엔진 `options.ts`
-  + `startNewGame` 무작위 역량, 화면 `ui/newGame.ts`, 상단 "새 게임" 버튼과 처음 열 때의 대화 상자, 테스트 71개 통과,
-  standalone 브라우저 검증: 크로마이트 편성 배치판 UN Solitaire·무작위 역량, 개입·항공 표시 특수 경우, Enter/Esc). 다음은 7장 저장/불러오기
+- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **저장/불러오기 + 컴퓨터 공산군(원작 KIM) 완료**
+  (규칙 `docs/rules/save.md`, `docs/rules/ai.md`, 유엔 AI 조사 `docs/rules/ai-walton.md`; 엔진 `save.ts`, `ai/`; 화면 `ui/saveDialog.ts`;
+  테스트 82개 통과; standalone 검증: 기본값 UN Solitaire로 KIM 상대 몇 턴, 저장→진행→불러오기→같은 결과). 다음은 7장 보고서 화면
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -111,6 +111,25 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     `toStartOptions`. `startNewGame`의 competence 6 = 무작위
   - UI: 처음 열면 새 게임 대화 상자(뒤에는 기본값 게임). 시나리오 카드 4장 + 개입·역량·플레이 방식·항공·정보 버튼, 고급(데이터: 자동/기본판/편성 배치판과 읽을 파일),
     Enter 시작·Esc 닫기. 상단은 "새 게임" 버튼 + 시나리오 이름. 요약 카드에 현재 설정 줄(원작 Scenario Info). 컴퓨터 진영이 있으면 교대 문구 없음
+  - 기본 플레이 방식은 이제 원작과 같은 **UN Solitaire**(컴퓨터 공산군 KIM, 편성 배치판). 컴퓨터가 들어가면 "컴퓨터 AI: 원작 / 개선판(준비 중)" 줄
+
+- **저장/불러오기** (`docs/rules/save.md`, `src/engine/save.ts`, `src/ui/saveDialog.ts`, `tests/save.test.ts` 3개)
+  - 원작: 명령 단계 메뉴에서만(DO_ITEM 1Eh → GAME_SAVE `0a3a` → SAVE_GAME `1ee0`, 전역 영역 덤프). 불러오면 주 루프가 GOTO_SECONDPHASE·GOTO_PLAYERPHASE·SAVEORDER로
+    저장한 플레이어의 명령 단계를 다시 시작(선공 재판정 없음, FORCE_SPOTTING 한 번). 난수 상태는 저장 안 함
+  - 엔진: GameState를 통째로 JSON(Map·Uint8Array 태그, hexes·장비표·undo 제외, 형식 버전 1, 옵션·요약 포함). `saveBlocked`(명령 단계만),
+    `saveGame`/`parseSave`/`loadGame`/`resumeGame`. **rng·intelSeed까지 저장**해 불러온 게임이 안 불러온 게임과 똑같이 진행(테스트). GameState에 필드를 더하면 자동으로 저장됨
+  - UI: 상단 "저장" → 저장·불러오기 대화 상자(자동 저장 + 슬롯 5개, 덮어쓰기·지우기 확인, .json 내려받기·올리기). 새 게임 대화 상자에 "저장한 게임 불러오기".
+    자동 저장은 사람의 명령 단계가 시작될 때마다(페이지를 열 때 뒤에 뜨는 기본 게임은 저장 안 함). 브라우저 저장소 키 `conflict-korea-remake/save/<auto|1..5>`
+
+- **컴퓨터 플레이어** (`docs/rules/ai.md`, `src/engine/ai/`, `tests/ai.test.ts` 8개)
+  - 원작 KIM(WARRIORS `29df`~`2c30` + 중첩 `0000`~`29de`)과 AISUBS 전부, 공용 경로 행군(`0278`)·경로 찾기(`0605`)·침공 경로 ROUTE(유닛 초기화 `5e4a`),
+    REPORTS.SORT_FORCE, CLEAR_PLOTS 컴퓨터 분기를 해독해 그대로 옮김. 난수 호출 순서 일치, 같은 시드면 같은 게임
+  - 구조: `ai/types.ts`(AiLevel 'original'|'improved', ComputerPlayer, AiReport), `ai/index.ts`(등록부 COMPUTER_PLAYERS, computerOrders),
+    `ai/common.ts`(AISUBS·경로·합치기·MOVE_COST 적 분기의 돌파, **진영 무관**이라 WALTON·개선판이 재사용), `ai/kim.ts`(KIM)
+  - 턴 진행: `advancePlayer`가 컴퓨터 차례에 `computerOrders` → `computerPhase` 이벤트(보고 포함). 첫 단계에 사람 차례가 없으면 `startNewGame`·`continuePastEnd`가
+    다음 사람 단계까지 바로 진행. `combat.ts`에 `rollOverrun`(MOVE_COST 적 분기 OVERRUN) 분리, `endturn.ts`의 `strongNeighbour` export
+  - 화면: 단계 알림 창에 "컴퓨터(공산군) 1차 명령 단계: 부대 N개 이동, 공격 M건 계획", 합친 수, 개막 알림(위치는 숨김)
+  - 유엔군 WALTON은 구조·대응표·지정 목표 표만 조사(`ai-walton.md`, `ai-walton-script.txt`). Red Solitaire면 유엔 지상군은 여전히 움직이지 않음
 
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
@@ -123,9 +142,8 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- AI, 저장/불러오기,
-  보고서 화면(전략 보고, 비행장·항구), 전략 개관 지도(DO_OVERVIEW), 전체 한글화, 새 그래픽/사운드
-- 컴퓨터 진영을 고르면 AI가 없어 그 진영 단계가 그냥 지나감 (기본은 두 사람 대전)
+- 보고서 화면(전략 보고, 비행장·항구, 날씨, 시나리오 정보), 전략 개관 지도(DO_OVERVIEW), 전체 한글화, 새 그래픽/사운드
+- 유엔군 컴퓨터(WALTON), 개선판 AI (등록부와 선택 자리만 있음), 원작 .SAV 가져오기
 
 ## 3. 폴더 구조
 
@@ -150,6 +168,9 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/naval.md                  해상·공수 이동 (자격, 수송 수요, 상륙, 상륙 공격, 일본 철수, 공수 낙하)
     docs/rules/intel.md                  정보(안개) (정찰 단계, 누가 무엇을 보는가, 정찰 갱신, 되돌리기 제한, 거짓 전력 보고)
     docs/rules/options.md                새 게임 옵션 (시작 메뉴 항목·기본값, 무작위 역량, 시나리오 파일 고르기)
+    docs/rules/save.md                   저장/불러오기 (원작 저장 시점·재개, 리메이크 JSON 형식)
+    docs/rules/ai.md                     컴퓨터 플레이어 (원작 KIM·AISUBS·침공 경로, 리메이크 구조, 확장 계획)
+    docs/rules/ai-walton.md              유엔군 컴퓨터 WALTON 구조 조사(영문 메모) + ai-walton-script.txt(지정 목표 호출 목록)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -163,13 +184,15 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         naval.ts                         해상·공수 이동 명령 (자격·범위·상륙·상륙 공격·공수 낙하)
         intel.ts                         정보: 보는 쪽, 부대별 정찰 단계, 전력 보고, 아는 상태(perceivedState)
         options.ts                       새 게임 옵션 (메뉴 값, 기본값, 시나리오 파일, 표시 규칙)
+        save.ts                          저장/불러오기 (GameState ↔ JSON, 저장 가능 여부, 재개)
+        ai/                              컴퓨터 플레이어: types.ts(인터페이스), index.ts(등록부), common.ts(AISUBS·경로·합치기, 진영 무관), kim.ts(원작 공산군)
         spotting.ts                      이동·전투의 정찰 갱신 (CHEK_HEX, NEAR_THE_FRONT, 12점 규칙, 후퇴 주변)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
         hex.ts, strength.ts              헥스 수학, 전투력(부록 F)
       i18n/ko.ts                         한글 용어집·번역 규칙
-      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts)
+      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts), 저장 대화 상자(saveDialog.ts)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
     tools/
@@ -218,6 +241,10 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   정보: 기본이 "정보 제한"이라 적 부대 일부가 안 보임. `__app.newGame({ limitedIntel: false })`면 완전 정보, `__app.viewer`(지금 보는 쪽).
   두 사람 대전 + 정보 제한에서는 단계 알림 창이 떠 있는 동안 지도에 부대가 없음(`view.hideForces`)
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
+  **기본 플레이 방식이 UN Solitaire(컴퓨터 공산군)** 로 바뀜: 두 사람 검증은 `__app.newGame({ playMode: 0 })`. 컴퓨터가 먼저면 새 게임이 사람 단계까지 진행된 채로 열림
+  (용이 깨어나다는 0턴 유엔 2차 단계부터). 저장: `__app.openSave()`/`closeSave()`/`saveOpen`, `__app.saveSlot('1')`, `__app.loadSlot('auto')`,
+  `__app.saveText()`(명령 단계가 아니면 null), `__app.loadText(text)`. document.write로 띄운 about:blank 페이지는 localStorage가 막혀 있어
+  ("브라우저 저장소를 쓸 수 없어요" 표시) 슬롯 저장은 검증 불가, saveText/loadText로 확인
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
   (어기면 standalone.html 전체가 구문 오류로 아무것도 안 뜨고 오류도 안 보임)
 - REPL에서 `node <절대경로>` 스크립트는 되지만 `cd`는 권한 오류. 테스트 glob은 작업 폴더 기준 상대경로(`"korea/remake/tests/**/*.test.ts"`)
@@ -261,27 +288,22 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 | 옵션·새 게임 | TACSUBS.S_DATA `446a`(시작 메뉴, 문자열은 그 앞 중첩 구간 `4385`~), LOAD_NEW_GAME `4b62`, SCENARIO_DISPLAY `4153` / KOREA.NEW_GAME `0990`, INIT_GAME `0389` |
 | 저장 | TACSUBS.SAVE_GAME `1ee0`, LOAD_OLD_GAME `3bf4` / KOREA.GAME_SAVE `0a3a` |
 | 턴 진행 | KOREA.PHASE_PULSE, PLAYER_PHASE / ENDTURN.NEXT_TURN, GROUND_REINFORCEMENTS, DO_INTEL, DO_PATROLS, MINE_WARFARE, CHECK_CHINA, GAME_OVER |
-| AI | WARRIORS.KIM (공산), WALTON (유엔) / AISUBS.* |
+| AI | WARRIORS.KIM (공산, 본문 `29df`~`2c30`, 중첩 `0000`~`29de`), WALTON (유엔, 본문 `5cf5`, 중첩 `2c85`~`5cf4`) / AISUBS.* / 유닛 초기화 `5e4a`(ROUTE). 심볼 길이는 믿지 말 것(ai.md 0) |
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 저장 / 불러오기
+## 7. 다음 작업: 보고서 화면
 
-목표: 게임을 언제든 저장하고 나중에 그 자리에서 이어 하기. 원작은 명령 단계 메뉴의 "Save Game"(KOREA.DO_ITEM `0c20` → GAME_SAVE `0a3a`
-→ TACSUBS.SAVE_GAME `1ee0`, 파일 이름은 GET_NAME, 확장자 .SAV)으로 저장하고, 시작할 때 INIT_GAME이 "A saved game"을 물어 LOAD_OLD_GAME `3bf4`로 읽음
-(파일 목록은 SET_ENVIRONMENT의 "Saved Game File Manager"). 세이브는 시나리오 DAT와 같은 전역변수 영역 덤프(`original-format.md`).
+목표: 원작 명령 단계 메뉴의 보고서들을 한글 화면으로. KOREA.DO_ITEM `0c20`의 항목 번호와 프로시저:
+12h 전략 보고 REPORTS.STRATEGIC_REPORT `10fd:2f75`, 13h 날씨 보고 W_REPORT `3699`, 14h 보급망 표시 SUPPLY.DETERMINE_SUPPLY(1),
+15h 항구·비행장 보고 PORTS_AIRFIELDS_REPORT `0356`, 16h 시나리오 정보 SCENARIO_REPORT `0010`(S_DATA 재사용, 요약의 설정 줄로 이미 있음).
 
-1. 규칙 확인 → `docs/rules/save.md`: SAVE_GAME/LOAD_OLD_GAME이 쓰고 읽는 범위, 언제 저장할 수 있는지(명령 단계만? 전투 단계 공습 중은?),
-   불러온 뒤 어느 단계부터 이어지는지(UTILITY_SPACE[11] = 1이면 INIT_GAME 0턴 사건 생략, SAVEORDER·PLAYER·PHASE 복원)
-2. 엔진: `src/engine/save.ts` — GameState ↔ JSON(Map·Uint8Array 변환, 형식 버전, 시나리오 id와 GameOptions 포함, 정적 데이터인 hexes·장비표는
-   시나리오 JSON에서 다시 만듦). 진행 중 상태(`g.air` 공습 대기, `g.undo`)도 다룰지 결정(원작처럼 명령 단계에서만 저장하면 단순).
-   테스트: 저장 → 불러오기 왕복 뒤 같은 시드로 몇 턴 진행해 결과가 같은지(난수 상태 rng·intelSeed 포함)
-3. UI: 상단 또는 새 게임 대화 상자에 "저장"·"불러오기". 브라우저 저장소(localStorage 슬롯 몇 개 + 자동 저장)와 파일 내려받기/올리기(JSON).
-   두 사람 대전 + 정보 제한이면 불러온 직후 교대 알림 창부터. 원작 .SAV를 가져오는 것은 웹 코드가 원본 바이너리를 직접 읽지 않는
-   규칙(5장) 때문에 필요하면 `tools/extract`에 변환 명령을 추가하는 방식으로
-4. 이어서: AI(WARRIORS.KIM/WALTON, 해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀. AI도 정찰 바이트를 씀:
-   AISUBS `0818`·`0e2c`, WARRIORS `04ec`. 매뉴얼: 컴퓨터는 늘 정보 제한으로 판단) → 보고서 화면(REPORTS.STRATEGIC_REPORT,
-   PORTS_AIRFIELDS_REPORT, W_REPORT, SCENARIO_REPORT) → 전략 개관 지도(DO_OVERVIEW)
+1. 규칙 확인 → `docs/rules/reports.md`: 보고서마다 무엇을 어떤 공식으로 보여 주는지(전력 합계, 부대 수, 손실, 보급 상태, 승리 수준·점령 점수,
+   항구 기뢰·비행장 등급, 예보), **정보 제한일 때 적 정보를 어떻게 감추는지**, GET_STRENGTH 모드 3(전력 보고)을 부르면 STATUS 0x20을 세우는지(8장)
+2. 엔진: `src/engine/reports.ts`(DOM 없이 보고서 데이터만, 보는 쪽 `viewerSide` 기준)
+3. UI: 상단 "보고서" 버튼(상단 막대가 1440px에서 한 줄인지 확인) 또는 요약 패널의 탭. 단계 알림 창·저장 대화 상자처럼 모달이면 `modal()`에 포함
+4. 이어서: 전략 개관 지도(EURSUBS1.DO_OVERVIEW) → 유엔군 컴퓨터 WALTON(`docs/rules/ai-walton.md`, `ai/common.ts` 재사용, 등록부에 추가) →
+   개선판 AI(`ai.md` 5.1 목록) → 중공군 첫 참전 뉴스(GRCMBT), 전체 한글화
 
 ## 8. 미해결 질문
 
@@ -292,7 +314,12 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 - 정보: 원작은 적 점령 바다 헥스(점령값이 남은 곳)의 아군 함대도 정찰 0이면 숨김. 리메이크는 아군을 항상 표시(원본 게임에서 실제로 보이는지 확인해 볼 것)
 - SCENARIO[1], [4], [7], 점령값 3 (쓰는 코드 없음. 새 게임은 [1] = 1, [4] = 0, [7]은 초기화 안 된 지역 변수). REALITY[1]·[3]은 확정(options.md 1).
   UTILITY_SPACE[9]는 확정: 턴당 상륙 공격 명령 수(naval.md 3)
-- 옵션: 원작 기본 플레이 모드는 UN Solitaire(편성 배치판). 리메이크는 AI가 생기면 기본값을 원작대로 돌릴지 결정
+- (해결) 기본 플레이 모드: KIM을 옮긴 뒤 원작과 같은 UN Solitaire(편성 배치판)로 되돌림(options.md 4)
+- AI: KIM의 개막 진격 속도·수세 전환을 원본 게임(UN Solitaire)과 눈으로 비교할 것(난수가 달라 경향만). 유엔이 가만히 있으면
+  테스트에서 서울 2턴, 대전 10턴에 함락. 크로마이트에서는 북한군이 부산 교두보보다 훨씬 약해 공격 계획이 모두 취소됨(1F3F 2부, 원작 그대로)
+- AI: STRONGER의 13×13 상자가 헥스 거리 없는 사각형 오프셋(코드대로). 목표 고르기의 IDLE2 제외 조건(x ≤ 13이고 y ≥ 12)의 의도 불명
+- AI: 정보 완전 옵션에서 KIM의 경로 행군이 정찰 바이트를 1로 쓰는데 원작 화면에 영향이 있는지(리메이크는 정보 완전이면 바이트를 안 봄)
+- 저장: 원작 .SAV를 리메이크 저장 JSON으로 바꾸는 변환기는 없음(필요하면 `tools/extract`에, save.md 3)
 - 해상: 바다 헥스에도 점령값(0/1/2)이 들어 있음(예: 11,41은 유엔). 해상 이동은 바꾸지 않지만 ENEMY_ADJACENT·순찰이 이 값을 읽음(원작 그대로 둠)
 - 해상: 바다에서 턴을 시작한 부대는 정리 단계가 미리 1점 청구해 두고, 항구에 상륙하면 1점이 돌아옴(원작 그대로). 항구→항구는 턴당 3개(매뉴얼은 4개).
   상륙 공격이 막혀 바다에 남는 "드문 경우"는 테스트로만 확인(원본 게임 비교 필요)

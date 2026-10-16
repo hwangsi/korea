@@ -125,6 +125,21 @@ export function overrunCheck(
   return { r1, r2, strongEnough, enoughMove, possible: strongEnough && enoughMove };
 }
 
+/**
+ * MOVEUNIT.OVERRUN as MOVE_COST's enemy branch calls it (OVERRUN(unit, sx, sy, tx, ty, 2, ...)): the 50% roll
+ * (drawn only when the force is strong enough), and on success the leader's attrition and every defender buried.
+ * The caller moves the force in (player orders: `assault`; computer players: ai/common.ts).
+ */
+export function rollOverrun(g: GameState, leader: number, sx: number, sy: number, tx: number, ty: number): boolean {
+  const ov = overrunCheck(g, leader, sx, sy, tx, ty);
+  if (!(ov.strongEnough && rnd(g, 1, 2) === 1 && ov.enoughMove)) return false;
+  unitAttrition(g, unit(g, leader), ov.r2);
+  const ti = idx(g, tx, ty);
+  for (const d of g.stacks[ti].slice()) for (const v of forceUnits(g, d)) bury(g, v);
+  g.stacks[ti] = [];
+  return true;
+}
+
 /** UTILITY_SPACE[7]: UN units eliminated or UN forces retreated this turn (refugee check in NEXT_TURN). */
 function countUnLoss(g: GameState, id: number) {
   if (id >= g.firstUnUnit) g.utility[7] = Math.min(255, g.utility[7] + 1);
@@ -250,17 +265,9 @@ export function assault(g: GameState, leader: number, tx: number, ty: number): A
   for (const u of members) u.move = clearPlots(u.move); // movement start clears plots (CLEAR_PLOTS)
   let cost = pv.step.cost;
   let overran = false;
-  if (pv.overrunRollPossible) {
-    // MOVEUNIT.OVERRUN(unit, sx, sy, tx, ty, 2, ...)
-    const ov = overrunCheck(g, leader, sx, sy, tx, ty);
-    if (ov.strongEnough && rnd(g, 1, 2) === 1 && ov.enoughMove) {
-      unitAttrition(g, lead, ov.r2);
-      const ti = idx(g, tx, ty);
-      for (const d of g.stacks[ti].slice()) for (const v of forceUnits(g, d)) bury(g, v);
-      g.stacks[ti] = [];
-      overran = true;
-      if (lead.move + cost < rate) cost++;
-    }
+  if (pv.overrunRollPossible && rollOverrun(g, leader, sx, sy, tx, ty)) {
+    overran = true;
+    if (lead.move + cost < rate) cost++;
   }
   g.undo = null;
   if (overran) {

@@ -3,6 +3,7 @@
 
 import type { AirUnit, Equipment, EquipmentType, Hex, MapData, Nation, Scenario, Unit, UnitKind } from '../data/types.ts';
 import type { AirPhaseState } from './air.ts';
+import type { AiLevel } from './ai/types.ts';
 
 export type Side = 'un' | 'communist';
 
@@ -82,6 +83,8 @@ export interface GameState {
   refugees: boolean;
   /** SCENARIO[3]: 0 two players, 1 computer plays Communist, 2 computer plays UN. */
   computerSide: number;
+  /** Which computer player plays the computer side (docs/rules/ai.md 4): the original program or a remake AI. */
+  aiLevel: AiLevel;
   /** PHASE global: 1 First Orders, 2 Combat Resolution, 3 Second Orders, 4 General Resolution (docs/rules/turn.md). */
   phase: number;
   /** PLAYER global: whose orders phase it is (1 Communist, 2 UN). */
@@ -193,6 +196,7 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     freezeLine: scenario.freezeLine,
     refugees: scenario.refugees ?? false,
     computerSide: 0,
+    aiLevel: 'original',
     phase: 1,
     player: 1,
     order: [1, 2],

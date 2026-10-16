@@ -18,6 +18,10 @@ import { fogActive, viewerSide, perceivedState, knownForces, dropRisk } from './
 import { REMAKE_DEFAULTS, scenarioFileId, optionsForFile, toStartOptions } from './engine/options.ts';
 import type { GameOptions } from './engine/options.ts';
 import { renderNewGame, applyChoice } from './ui/newGame.ts';
+import { renderSaveDialog } from './ui/saveDialog.ts';
+import type { SlotView } from './ui/saveDialog.ts';
+import { saveGame, saveToText, parseSave, loadGame, resumeGame, saveBlocked } from './engine/save.ts';
+import type { SaveFile } from './engine/save.ts';
 import { assault, assaultPreview, cancelAssault } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
 import { startNewGame, endPlayerPhase, finishGame, continuePastEnd } from './engine/turn.ts';
@@ -31,11 +35,38 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
-  SCENARIO_INFO_KO, OPTIONS_UI_KO,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
 const DATA = 'data/extracted';
+
+// ---------- browser storage of saved games (docs/rules/save.md 3) ----------
+
+const SAVE_KEY = 'conflict-korea-remake/save/';
+const SLOT_KEYS = ['auto', '1', '2', '3', '4', '5'];
+
+function storage(): Storage | null {
+  try {
+    const s = globalThis.localStorage;
+    if (!s) return null;
+    s.getItem(SAVE_KEY + 'probe');
+    return s;
+  } catch { return null; }
+}
+
+function readSlot(key: string): string | null {
+  try { return storage()?.getItem(SAVE_KEY + key) ?? null; } catch { return null; }
+}
+
+function slotViews(): SlotView[] {
+  return SLOT_KEYS.map((key) => {
+    const text = readSlot(key);
+    if (!text) return { key, summary: null, savedAt: null };
+    const p = parseSave(text);
+    return p.ok ? { key, summary: p.file.summary, savedAt: p.file.savedAt } : { key, summary: null, savedAt: null, broken: true };
+  });
+}
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -102,6 +133,12 @@ async function main() {
   let options: GameOptions = { ...REMAKE_DEFAULTS };
   let draft: GameOptions | null = null;
   const newGameEl = $('#newgame');
+  /** Save / load dialog (docs/rules/save.md). */
+  const saveEl = $('#savegame');
+  let saveOpen = false;
+  let saveMsg: { kind: 'ok' | 'warn' | 'error'; text: string } | null = null;
+  /** Something modal is open: the map and the phase controls wait. */
+  const modal = () => !!banner || !!draft || saveOpen;
 
   /** Side whose knowledge the screen shows. */
   const viewer = () => (game ? viewerSide(game) : 'un');
@@ -187,10 +224,11 @@ async function main() {
     pill.innerHTML = game.gameOver
       ? esc(TURN_UI_KO.gameOver)
       : `<span class="dot"></span>${esc(PLAYER_KO[game.player])} · ${esc(PHASE_KO[game.phase] ?? '')}`;
-    ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || !!banner || !!draft;
+    ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || modal();
     const airBtn = $('#air-ops') as HTMLButtonElement;
     const airOk = canPlanAir(game);
-    airBtn.disabled = !airOk || !!banner || !!draft;
+    airBtn.disabled = !airOk || modal();
+    ($('#save-game') as HTMLButtonElement).setAttribute('aria-pressed', String(saveOpen));
     ($('#new-game') as HTMLButtonElement).setAttribute('aria-pressed', String(!!draft));
     airBtn.setAttribute('aria-pressed', String(airOpen && airOk));
   }
@@ -222,6 +260,7 @@ async function main() {
     renderHeader();
     renderBanner();
     renderDialog();
+    renderSaveDlg();
   }
 
   // ---------- turn sequence ----------
@@ -239,7 +278,14 @@ async function main() {
     for (const e of events) {
       if (e.kind === 'ordersPhase' && e.phase === 1) strikeMarks = []; // a new turn
       if (e.kind === 'noFirstPhase') lines.push(TURN_UI_KO.noFirstPhase);
-      else if (e.kind === 'computerPhase') lines.push(`${PLAYER_KO[e.player]}: ${TURN_UI_KO.computerPhase}`);
+      else if (e.kind === 'computerPhase' && !e.report) lines.push(`${PLAYER_KO[e.player]}: ${TURN_UI_KO.computerPhase}`);
+      else if (e.kind === 'computerPhase' && e.report) {
+        // the computer's orders (docs/rules/ai.md): only counts, so limited intelligence keeps its secrets
+        const r = e.report;
+        for (const n of r.notices) lines.push(TURN_UI_KO.computerNotice(unitNameKo(n.unit), `${n.hex[0]},${n.hex[1]}`));
+        lines.push(TURN_UI_KO.computerOrders(PLAYER_KO[e.player], PHASE_KO[e.phase] ?? '', r.moved.length, r.assaults));
+        if (r.merged) lines.push(TURN_UI_KO.computerMerged(r.merged));
+      }
       else if (e.kind === 'combat') combat = e.reports;
       else if (e.kind === 'air') { air = e.report; strikeMarks = reportMarks(e.report); }
       else if (e.kind === 'airstrikes' && g.air) strikeMarks = reportMarks(g.air.report);
@@ -290,7 +336,7 @@ async function main() {
   const gameDateKo = (g: GameState) => { const d = gameDate(g); return dateKo(d.year, d.month, d.day); };
 
   function endPhase(confirmFirst = true) {
-    if (!game || banner || draft) return;
+    if (!game || modal()) return;
     if (inStrikes()) {
       // the program picks the targets of the airstrikes not flown yet (docs/rules/air.md 9)
       const left = game.air!.queue.length;
@@ -298,6 +344,7 @@ async function main() {
       turnView = null;
       message = null;
       handleEvents(endPlayerPhase(game));
+      autoSave();
       render();
       return;
     }
@@ -305,6 +352,7 @@ async function main() {
     if (confirmFirst && !window.confirm(TURN_UI_KO.endPhaseConfirm(PLAYER_KO[game.player], PHASE_KO[game.phase]))) return;
     turnView = null;
     handleEvents(endPlayerPhase(game));
+    autoSave();
     render();
   }
 
@@ -317,6 +365,7 @@ async function main() {
     } else if (action === 'override') {
       banner = null;
       handleEvents(continuePastEnd(game));
+      autoSave();
     } else banner = null;
     render();
   }
@@ -429,7 +478,7 @@ async function main() {
   // ---------- air operations ----------
 
   function toggleAir() {
-    if (!game || banner || draft || !canPlanAir(game)) return;
+    if (!game || modal() || !canPlanAir(game)) return;
     airOpen = !airOpen;
     // the original bases the air units whenever the Air Operations screen opens (OPSSUBS 1058 -> CHOOSE_BASES)
     if (airOpen) { chooseBases(game, game.player); sel = null; orders = null; turnView = null; message = null; }
@@ -468,7 +517,7 @@ async function main() {
   // ---------- map events ----------
 
   view.onClick = (x, y) => {
-    if (!game || banner || draft) return;
+    if (!game || modal()) return;
     const i = idx(game, x, y);
     if (inStrikes()) { if (pendingAirstrike(game)) strikeAt(x, y); return; }
     airOpen = false;
@@ -546,7 +595,7 @@ async function main() {
 
   panel.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
-    if (!btn || !game || banner || draft) return;
+    if (!btn || !game || modal()) return;
     const action = btn.dataset.action;
     if (action === 'confirm') execute();
     else if (action === 'confirm-assault') executeAssault();
@@ -575,6 +624,10 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
+    if (saveOpen) {
+      if (e.key === 'Escape') closeSave();
+      return;
+    }
     if (draft) {
       // the start menu: Enter begins the game (original key 7), Esc closes it while a game is running
       if (e.key === 'Enter') { e.preventDefault(); startGame(draft); }
@@ -594,13 +647,23 @@ async function main() {
   // ---------- scenario loading ----------
 
   /** Start a new game with the start menu values (docs/rules/options.md 2). */
-  async function startGame(o: GameOptions) {
+  async function startGame(o: GameOptions, save = true) {
     const id = scenarioFileId(o);
     scenario = await getJson<Scenario>(`${DATA}/scenarios/${id}.json`);
     game = createGameState(map, scenario, (Date.now() >>> 0) || 1950);
     options = { ...o };
     draft = null;
+    saveOpen = false;
     const events = startNewGame(game, toStartOptions(o));
+    useGame(events);
+    // the game shown behind the start menu when the page opens must not replace the last autosave
+    if (save) autoSave();
+    render();
+  }
+
+  /** Show `game` (new or loaded) and the events that led to its current phase. */
+  function useGame(events: TurnEvent[]) {
+    if (!game || !scenario) return;
     view.setData(map, scenario, game);
     const g = game;
     const chosen = options;
@@ -614,11 +677,133 @@ async function main() {
     turnView = null;
     banner = null;
     strikeMarks = [];
+    // a computer that moves first may already have fought the first combat phase: its report stays in the panel
     handleEvents(events);
-    turnView = null;
     if (first) { view.fitAll(); first = false; }
+  }
+
+  // ---------- save / load (docs/rules/save.md) ----------
+
+  function saveFile(): SaveFile | null {
+    if (!game || saveBlocked(game)) return null;
+    return saveGame(game, options);
+  }
+
+  /** Autosave at the start of a human player's orders phase (docs/rules/save.md 3). */
+  function autoSave() {
+    if (!game || saveBlocked(game) || game.computerSide === game.player || game.phase === 2) return;
+    const f = saveFile();
+    if (!f) return;
+    try { storage()?.setItem(SAVE_KEY + 'auto', saveToText(f)); } catch { /* storage full or unavailable: files still work */ }
+  }
+
+  function saveToSlot(key: string) {
+    const f = saveFile();
+    const s = storage();
+    if (!f || !s) return;
+    if (readSlot(key) && !window.confirm(SAVE_UI_KO.overwrite(key))) return;
+    try {
+      s.setItem(SAVE_KEY + key, saveToText(f));
+      saveMsg = { kind: 'ok', text: SAVE_UI_KO.saved(key) };
+    } catch { saveMsg = { kind: 'error', text: SAVE_UI_KO.storageFull }; }
+  }
+
+  function deleteSlot(key: string) {
+    if (!window.confirm(SAVE_UI_KO.deleteConfirm(key))) return;
+    try { storage()?.removeItem(SAVE_KEY + key); } catch { /* ignore */ }
+    saveMsg = { kind: 'ok', text: SAVE_UI_KO.deleted(key) };
+  }
+
+  /** Load a save file (text). Returns an error text, or null when the game was loaded. */
+  async function loadFromText(text: string, ask = true): Promise<string | null> {
+    const p = parseSave(text);
+    if (!p.ok) return SAVE_UI_KO.errors[p.error];
+    if (ask && game && !game.gameOver && !draft && !window.confirm(SAVE_UI_KO.loadConfirm)) return '';
+    let data: Scenario;
+    try { data = await getJson<Scenario>(`${DATA}/scenarios/${p.file.scenarioId}.json`); } catch { return SAVE_UI_KO.errors.noScenario; }
+    let loaded: GameState;
+    try { loaded = loadGame(p.file, map, data); } catch { return SAVE_UI_KO.errors.scenarioMismatch; }
+    scenario = data;
+    game = loaded;
+    options = p.file.options ? { ...p.file.options } : optionsForFile(p.file.scenarioId, options);
+    draft = null;
+    saveOpen = false;
+    saveMsg = null;
+    useGame(resumeGame(game));
+    if (banner) banner.lines.unshift(SAVE_UI_KO.loaded);
+    render();
+    return null;
+  }
+
+  function downloadSave() {
+    const f = saveFile();
+    if (!f) return;
+    const blob = new Blob([saveToText(f)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `conflict-korea-${f.scenarioId}-${f.summary.turn}턴-${f.summary.player === 1 ? '공산군' : '유엔군'}${f.summary.phase === 1 ? '1차' : '2차'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    saveMsg = { kind: 'ok', text: SAVE_UI_KO.downloaded };
+  }
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json,application/json';
+  fileInput.hidden = true;
+  document.body.appendChild(fileInput);
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    const err = await loadFromText(await file.text());
+    if (err) { saveMsg = { kind: 'error', text: err }; render(); }
+  });
+
+  function renderSaveDlg() {
+    if (!saveOpen) { saveEl.hidden = true; saveEl.innerHTML = ''; return; }
+    const why = game ? saveBlocked(game) : 'phase';
+    renderSaveDialog(saveEl, {
+      slots: slotViews(),
+      blocked: why === 'gameOver' ? SAVE_UI_KO.blockedGameOver : why ? SAVE_UI_KO.blockedPhase : null,
+      noStorage: !storage(),
+      message: saveMsg,
+    });
+    saveEl.hidden = false;
+  }
+
+  function openSave() {
+    saveOpen = true;
+    saveMsg = null;
     render();
   }
+
+  function closeSave() {
+    saveOpen = false;
+    saveMsg = null;
+    render();
+  }
+
+  saveEl.addEventListener('click', async (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-sv]');
+    if (!b || (b as HTMLButtonElement).disabled) return;
+    const act = b.dataset.sv!;
+    const key = b.dataset.slot ?? '';
+    if (act === 'close') { closeSave(); return; }
+    if (act === 'save') saveToSlot(key);
+    else if (act === 'delete') deleteSlot(key);
+    else if (act === 'download') downloadSave();
+    else if (act === 'upload') { fileInput.click(); return; }
+    else if (act === 'load') {
+      const text = readSlot(key);
+      const err = text ? await loadFromText(text) : SAVE_UI_KO.errors.notSave;
+      if (err === null) return;
+      if (err) saveMsg = { kind: 'error', text: err };
+    }
+    render();
+  });
 
   /** Start the scenario data `id` (korea1 .. korea4s) with the current menu values. */
   async function load(id: string) {
@@ -651,11 +836,13 @@ async function main() {
     const field = b.dataset.ng!;
     if (field === 'start') { startGame(draft); return; }
     if (field === 'close') { closeNewGame(); return; }
+    if (field === 'load') { openSave(); return; }
     draft = applyChoice(draft, field, b.dataset.value ?? '');
     renderDialog();
     newGameEl.querySelector<HTMLElement>(`[data-ng="${field}"][aria-pressed="true"]`)?.focus();
   });
   $('#new-game').addEventListener('click', () => { if (!draft) openNewGame(); });
+  $('#save-game').addEventListener('click', () => { if (saveOpen) closeSave(); else openSave(); });
 
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;
@@ -673,7 +860,7 @@ async function main() {
   $('#air-ops').addEventListener('click', toggleAir);
 
   // the original opens with the start menu: a game with the default values runs behind it
-  await startGame(options);
+  await startGame(options, false);
   openNewGame();
   // debugging hooks for the browser console / automated checks
   (globalThis as { __app?: unknown }).__app = {
@@ -697,6 +884,13 @@ async function main() {
     /** Intelligence option for the next new game (true = limited); `load(id)` starts it. */
     setIntel: (limited: boolean) => { options = { ...options, limitedIntel: limited }; },
     get viewer() { return viewer(); },
+    /** Save / load: the dialog, slots ('auto', '1'..'5'), and save files as text. */
+    openSave, closeSave,
+    get saveOpen() { return saveOpen; },
+    saveSlot: (k: string) => { saveToSlot(k); render(); },
+    loadSlot: async (k: string) => { const t = readSlot(k); return t ? loadFromText(t, false) : 'empty'; },
+    saveText: () => { const f = saveFile(); return f ? saveToText(f) : null; },
+    loadText: (t: string) => loadFromText(t, false),
     /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
     setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },
   };

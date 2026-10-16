@@ -335,7 +335,7 @@ function strongHex(g: GameState, x: number, y: number): boolean {
  * EURSUBS1.ENEMY_ADJACENT(x, y, false): a strong force of the other possession next door.
  * friendly = the original's negative-x call (same possession, strength of the centre hex).
  */
-function strongNeighbour(g: GameState, x: number, y: number, friendly: boolean): boolean {
+export function strongNeighbour(g: GameState, x: number, y: number, friendly: boolean): boolean {
   if (!onMap(g, x, y)) return false;
   const p = g.possession[idx(g, x, y)];
   if (p === 3) return false;

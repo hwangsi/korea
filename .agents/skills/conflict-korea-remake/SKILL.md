@@ -63,6 +63,10 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
   두 사람 대전에서는 단계 알림 창이 떠 있는 동안 부대가 안 그려지므로 스크린샷 전에 `closeBanner()`. `__app.viewer`는 지금 보는 쪽.
   엔진 테스트에서 지형을 바꿀 때는 `g.hexes = g.hexes.slice()` 후 항목을 새 객체로 교체(1950년대는 지도 배열을 공유함).
 - 해상·공수: 부대를 `click`으로 고른 뒤 `__app.setMode('sea' | 'air')`. 크로마이트(korea2) 해병 212번은 일본 항구(33,59), 차가운 강철(korea3) 187공수(221)는 평양 비행장(7,29).
+- 기본 플레이 방식이 UN Solitaire(컴퓨터 공산군 KIM)라 새 게임이 컴퓨터 단계를 이미 지난 상태로 열릴 수 있다. 두 사람 검증은 `__app.newGame({ playMode: 0 })`.
+- 저장·불러오기: `__app.openSave()`/`closeSave()`, `saveSlot('1')`, `loadSlot('auto')`, `saveText()`(명령 단계가 아니면 null), `loadText(text)`.
+  document.write 페이지는 localStorage가 막혀 슬롯 저장은 확인할 수 없으니 saveText/loadText로 검증한다.
+- AI 엔진 검증은 Node 스크립트가 빠르다: `createGameState` → `startNewGame(g, { computerSide: 1 })` → `endPlayerPhase` 반복, `computerPhase` 이벤트의 `report`.
 - 같은 파일을 동시에 두 번 `edit_file`하지 말 것(병렬 호출이면 한쪽 수정이 사라진다).
 - 브라우저 창이 1440px이면 상단 막대가 꽉 차니 버튼을 더 넣을 때는 줄바꿈(높이 > 60px)을 확인한다.
 

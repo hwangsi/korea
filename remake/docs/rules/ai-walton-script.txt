@@ -1,0 +1,133 @@
+# WALTON 3c54 scripted objectives: call sites of FORCE_OBJ 36BB / TELEPORT 17E4 / ... with the conditions that guard them
+# (semi-automatic extraction from the disassembly, conditions read backwards from each call; verify against the asm before porting)
+# format: <address> <callee>(<args>) | if: <compare>/<jump> ; ...
+
+44ba 36BBh(X0,1Dh) | if: [bp+6],0/jne 44D5h ; Y0,1Dh/jge 44D5h ; [bp-25h],0/jne 44D5h ; X0,0Fh/jg 44BFh
+44c7 231Fh(0Eh,10h) | if: 
+44d2 36BBh(1Dh) | if: 
+4544 36BBh() | if: [bp+6],0/jne 4547h ; [bp-24h],0/je 4547h ; [bp-18h],0/jne 4547h ; [bp-25h],0/je 4547h ; [di+5669h],2                     ; [TERRAIN+1h + reg]/jne 4547h
+4582 17E4h(U,1Ch,38h) | if: [bp+6],0/je 4550h ; ds:[8A6Ch],1                     ; [SCENARIO]/je 455Ah ; U,0A6h/jne 458Bh ; ds:[8BE0h],1                     ; [TURN]/jne 458Bh ; ax,3/je 458Bh
+45a0 36BBh(X0,Y0) | if: U,0ADh/jne 45D8h ; ds:[8BE0h],0                     ; [TURN]/jne 45A3h
+45b5 17E4h(U,18h,32h) | if: ds:[8BE0h],1                     ; [TURN]/jne 45BEh
+45d5 36BBh(16h,32h) | if: ds:[8BE0h],1                     ; [TURN]/jle 45D8h ; ds:[8BE0h],0Bh                   ; [TURN]/jge 45D8h
+45ef 36BBh(11h,3Dh) | if: U,0B2h/jne 461Ch ; ds:[8BE0h],0                     ; [TURN]/jne 45F4h
+4604 36BBh(17h,35h) | if: ds:[8BE0h],6                     ; [TURN]/jge 4609h
+4619 36BBh(17h,36h) | if: ds:[8BE0h],0Bh                   ; [TURN]/jge 461Ch
+4636 36BBh(18h,28h) | if: ds:[8BE0h],0Bh                   ; [TURN]/jl 4626h ; U,0A1h/jne 4639h
+4649 36BBh(11h,29h) | if: U,0A5h/jne 464Ch
+465c 36BBh(0Eh,28h) | if: U,0A7h/jne 465Fh
+466f 36BBh(18h,28h) | if: U,0B0h/jne 4672h
+4682 36BBh(11h,2Bh) | if: U,0A9h/jne 4685h
+4695 36BBh(11h,31h) | if: U,0B1h/jne 4698h
+46a8 36BBh(10h,2Fh) | if: U,0AAh/jne 46ABh
+46bb 36BBh(10h,2Dh) | if: U,9Fh/jne 46BEh
+46ce 36BBh(12h,2Dh) | if: U,0ACh/jne 46D1h
+46e8 36BBh(13h,2Bh) | if: ds:[8BE0h],1                     ; [TURN]/jl 46EBh ; U,0AEh/jne 46EBh
+4705 36BBh(1Bh,31h) | if: ds:[8BE0h],2                     ; [TURN]/jge 46F5h ; U,0A8h/jne 4708h
+4718 36BBh(1Bh,2Eh) | if: U,0BBh/jne 471Bh
+473f 36BBh(1Ah,33h) | if: U,0BCh/jl 4742h ; U,0BFh/jg 4742h ; ds:[8BE0h],7                     ; [TURN]/jge 4742h ; [bp-23h],0/je 4742h
+475f 36BBh(18h,32h) | if: U,0C1h/je 4750h ; U,0C4h/jne 4762h ; [bp-23h],0/je 4762h
+4778 36BBh(18h,32h) | if: U,0BEh/jne 477Bh ; [bp-23h],0/je 477Bh
+4792 36BBh(1Ah,34h) | if: U,0C0h/jne 47A4h ; ds:[8BE0h],5                     ; [TURN]/jge 4797h
+47a1 36BBh(ds:[3DC1h]; [UNITS+35bbh]) | if: 
+47b4 36BBh(17h,39h) | if: U,0A6h/jne 47B7h
+47cd 36BBh(18h,39h) | if: [bp-23h],0/je 47E3h ; U,0C8h/jne 47D0h
+47e0 36BBh(18h,3Bh) | if: U,0C9h/jne 47E3h
+47ee 0(0C5h) | if: ds:[8BE0h],3                     ; [TURN]/jne 484Eh
+47f5 0(0C7h) | if: 
+4804 17E4h(0C6h,ds:[3E96h]; [UNITS+3690h],ds:[3E98h]; [UNITS+3692h]) | if: 
+480d 0(0C6h) | if: 
+481e 2CD6h("US 1st Cav Div",14h) | if: 
+4836 17E4h(0C2h,1Bh,34h) | if: ds:[7A3Bh],1                     ; [TERRAIN+23d3h]/jne 483Dh
+4849 17E4h(0C2h,1Ch,38h) | if: 
+4868 36BBh(16h,32h) | if: ds:[8BE0h],3                     ; [TURN]/jge 4858h ; U,0ADh/jne 486Bh
+487b 36BBh(1Ah,34h) | if: U,0C3h/jne 487Eh
+489f 36BBh(X0,Y0) | if: ds:[8BE0h],9                     ; [TURN]/jge 48A2h ; U,0BAh/jg 48A2h ; X0,11h/jne 48A2h ; Y0,33h/jne 48A2h
+48c1 36BBh(ds:[4115h]; [UNITS+390fh],47h,[di+7F5h]; [R+13h + reg]) | if: U,0D2h/je 48B0h ; U,0D3h/jne 48C4h
+48db 36BBh(1Bh,34h) | if: U,0C2h/jne 48DEh ; ds:[8BE0h],7                     ; [TURN]/jge 48DEh
+48f4 36BBh(18h,39h) | if: [bp-23h],0/je 493Eh ; U,0CDh/jne 48F7h
+4907 36BBh(18h,3Bh) | if: U,0CCh/jne 490Ah
+4928 36BBh(17h,35h) | if: U,0CEh/je 491Fh ; U,0D0h/je 491Fh ; U,0D2h/jne 493Eh
+4939 2CD6h("US 2nd Div",14h) | if: 
+4953 3966h(7,1Dh) | if: [bp-25h],0/jne 494Ah ; [bp-26h],0/je 4956h
+4965 3966h(11h,18h) | if: [bp-25h],0/je 4968h
+499a 38CAh() | if: ds:[8A6Ch],2                     ; [SCENARIO]/jbe 4972h ; ds:[8BFDh],0                     ; [GOTO_SECONDPHASE]/je 497Ch ; ax,3/je 499Dh ; ds:[43DBh],21h                   ; [UNITS+3bd5h]/jne 499Dh ; ds:[43DDh],14h                   ; [UNITS+3bd7h]/jle 499Dh
+4a00 39C9h(47h,47h,47h,47h,14Ah,U) | if: [di+7F3h],21h                    ; [R+11h + reg]/jne 49BBh ; [di+7F5h],14h                    ; [R+13h + reg]/jg 49EBh ; [di+5668h],0A5h                  ; [TERRAIN + reg]/jb 4A03h ; ds:[8BD4h],4                     ; [SEALIFT_DEMAND]/jge 4A03h ; ss:[di-13h],0/jne 4A03h
+4a21 36BBh(X0,Y0) | if: ds:[8A6Ch],4                     ; [SCENARIO]/jb 4A0Dh ; U,0D7h/jne 4A24h ; [bp-24h],0/jne 4A24h
+4a34 36BBh(0Dh,3Bh) | if: U,0E2h/jne 4A37h
+4a47 36BBh(18h,36h) | if: U,0E7h/jne 4A4Ah
+4a5a 36BBh(10h,2Dh) | if: U,0EBh/jne 4A5Dh
+4a6d 36BBh(16h,22h) | if: U,0ECh/jne 4A70h
+4a80 36BBh(0Eh,22h) | if: U,0F3h/jne 4A83h
+4a98 36DFh(0Eh,29h) | if: [bp-23h],0/jne 4A9Bh ; [bp-24h],0/jne 4A9Bh
+4ac7 36BBh(14Ah,X0,Y0) | if: ds:[8BE0h],2Bh                   ; [TURN]/jl 4ACAh ; [di+5668h],93h                   ; [TERRAIN + reg]/jne 4ACAh
+4ae2 36DFh(0Fh,2Bh) | if: X0,11h/jne 4AE5h ; Y0,33h/jne 4AE5h
+4afa 36DFh(11h,27h) | if: X0,18h/jne 4AFDh ; Y0,36h/jne 4AFDh
+4b12 36DFh(0Eh,34h) | if: X0,0Dh/jne 4B15h ; Y0,35h/jne 4B15h
+4b24 1DB8h(ds:[3A6Dh]; [UNITS+3267h],ds:[3A6Fh]; [UNITS+3269h]) | if: U,0BAh/jne 4B39h
+4b36 36DFh(ds:[3A6Dh]; [UNITS+3267h],ds:[3A6Fh]; [UNITS+3269h]) | if: 
+4b4f 1DB8h(ds:[3B89h]; [UNITS+3383h],ds:[3B8Bh]; [UNITS+3385h]) | if: U,0BCh/je 4B47h ; U,0BDh/jne 4B6Bh
+4b68 36DFh(ds:[3B89h]; [UNITS+3383h],0BDh) | if: 
+4b87 3B0Eh(86h,0Fh,29h,"ROK 1 Army Arty") | if: ds:[8BE0h],0                     ; [TURN]/je 4B75h
+4b9c 3B0Eh(88h,0Fh,29h,"ROK 1 Army Arty") | if: 
+4bb1 3B0Eh(89h,0Fh,29h,"ROK 1 Army Arty") | if: 
+4bc6 3B0Eh(8Ah,0Fh,29h,"ROK 1 Army Arty") | if: 
+4bdb 3B0Eh(85h,11h,28h,"ROK 2 Army Arty") | if: 
+4bf0 3B0Eh(87h,11h,28h,"ROK 2 Army Arty") | if: 
+4c05 3B0Eh(84h,14h,26h,"ROK 3 Army Arty") | if: 
+4c1a 3B0Eh(8Bh,14h,26h,"ROK 3 Army Arty") | if: 
+4c2d 36BBh(16h,26h) | if: U,9Eh/jne 4C30h
+4c40 36BBh(14h,24h) | if: U,9Bh/jne 4C43h
+4c53 36BBh(13h,26h) | if: U,98h/jne 4C56h
+4c66 36BBh(15h,25h) | if: U,9Ch/jne 4C69h
+4c79 36BBh(10h,26h) | if: U,8Eh/jne 4C7Ch
+4c8c 36BBh(0Fh,27h) | if: U,95h/jne 4C8Fh
+4c9f 36BBh(0Fh,27h) | if: U,9Dh/jne 4CA2h
+4cb2 36BBh(11h,26h) | if: U,8Fh/jne 4CB5h
+4cc5 36BBh(15h,25h) | if: U,94h/jne 4CC8h
+4cd8 36BBh(11h,27h) | if: U,0B6h/jne 4CDBh
+4ceb 36BBh(10h,28h) | if: U,0B9h/jne 4CEEh
+4cfd 36BBh(0Dh,28h) | if: U,7Fh/jne 4D00h
+4d10 36BBh(0Dh,28h) | if: U,8Ch/jne 4D13h
+4d23 36BBh(16h,26h) | if: U,82h/jne 4D26h
+4d36 36BBh(14h,24h) | if: U,92h/jne 4D39h
+4d48 36BBh(11h,26h) | if: U,7Ch/jne 4D4Bh
+4d5b 36BBh(0Eh,27h) | if: U,93h/jne 4D5Eh
+4d6e 36BBh(0Eh,27h) | if: U,8Dh/jne 4D71h
+4d81 36BBh(0Eh,26h) | if: U,90h/jne 4D84h
+4da1 36BBh(X0,Y0) | if: ds:[8BE0h],1                     ; [TURN]/je 4D8Eh ; X0,0Dh/jne 4DA4h ; Y0,28h/jne 4DA4h
+4db7 36BBh(X0,Y0) | if: X0,0Eh/jne 4DBAh ; Y0,27h/jne 4DBAh
+4dcd 36BBh(X0,Y0) | if: X0,0Fh/jne 4DD0h ; Y0,27h/jne 4DD0h
+4de3 36BBh(X0,Y0) | if: X0,10h/jne 4DE6h ; Y0,26h/jne 4DE6h
+4df9 36BBh(X0,Y0) | if: X0,11h/jne 4DFCh ; Y0,26h/jne 4DFCh
+4e0f 36BBh(X0,Y0) | if: X0,0Eh/jne 4E12h ; Y0,28h/jne 4E12h
+4e25 36BBh(X0,Y0) | if: X0,11h/jne 4E28h ; Y0,27h/jne 4E28h
+4e38 36BBh(11h,26h) | if: U,8Fh/jne 4E3Bh
+4e4b 36BBh(11h,26h) | if: U,91h/jne 4E4Eh
+4e5e 36BBh(17h,27h) | if: U,97h/jne 4E61h
+4e71 36BBh(0Fh,28h) | if: U,96h/jne 4E74h
+4e85 34FCh(U,ss:[di+4]) | if: U,0A1h/jne 4E94h
+4e91 36BBh(10h,26h) | if: 
+4ea5 34FCh(U,ss:[di+4]) | if: U,0A3h/jne 4EB4h
+4eb1 36BBh(0Fh,27h) | if: 
+4ec5 34FCh(U,ss:[di+4]) | if: U,0A5h/jne 4ED4h
+4ed1 36BBh(0Fh,28h) | if: 
+4ef1 36BBh(X0,Y0) | if: ds:[8BE0h],2                     ; [TURN]/je 4EDEh ; X0,0Eh/jne 4EF4h ; Y0,28h/jne 4EF4h
+4f04 36BBh(11h,29h) | if: U,96h/jne 4F07h
+4f17 36BBh(19h,28h) | if: U,0A8h/jne 4F1Ah
+4f2b 34FCh(U,ss:[di+4]) | if: U,0AEh/jne 4F3Ah
+4f37 36BBh(10h,28h) | if: 
+4f4b 34FCh(U,ss:[di+4]) | if: U,0B0h/jne 4F5Ah
+4f57 36BBh(0Eh,29h) | if: 
+4f6b 34FCh(U,ss:[di+4]) | if: U,0B2h/jne 4F7Ah
+4f77 36BBh(0Eh,2Ah) | if: 
+4f8e 17E4h(U) | if: ds:[8BE0h],0                     ; [TURN]/jle 4FD7h ; ds:[8BE0h],5                     ; [TURN]/jge 4FD7h
+4fa4 36BBh(X0,Y0) | if: Y0,2Ah/jge 4FA7h
+4fba 36BBh(X0,Y0) | if: X0,13h/jne 4FBDh ; Y0,26h/jne 4FBDh
+4fd4 36BBh(14h,27h) | if: ds:[8BE0h],2                     ; [TURN]/jle 4FD7h ; U,96h/jne 4FD7h
+5003 36BBh(14Ah,X0,Y0) | if: ds:[8BE0h],0Eh                   ; [TURN]/jl 5006h ; [di+5668h],93h                   ; [TERRAIN + reg]/jne 5006h
+503a 17E4h(14Ah,U) | if: [bp-29h],0/je 5081h ; ss:[di-6],2/jne 5081h ; [di+5668h],93h                   ; [TERRAIN + reg]/je 5081h
+504c 1DB8h(X0,Y0) | if: 
+505d 231Fh(1,7) | if: 
+5071 231Fh(1,5) | if: 
+507e 36BBh() | if: 

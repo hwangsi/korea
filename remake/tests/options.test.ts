@@ -23,7 +23,8 @@ test('menu defaults of LOAD_NEW_GAME and the remake', () => {
   assert.deepEqual(ORIGINAL_DEFAULTS, {
     scenario: 1, ccfFixed: false, competence: 3, playMode: 1, airPlayerControl: true, limitedIntel: true, variant: 'auto',
   });
-  assert.equal(REMAKE_DEFAULTS.playMode, 0, 'two players until there is an AI');
+  assert.equal(REMAKE_DEFAULTS.playMode, 1, 'UN Solitaire against KIM, as the original');
+  assert.equal(REMAKE_DEFAULTS.aiLevel, 'original');
   assert.equal(REMAKE_DEFAULTS.limitedIntel, true);
 });
 
@@ -69,9 +70,12 @@ test('starting a game with the menu values', opts, () => {
       assert.equal(g.ccfFixed, true);
       assert.equal(g.airPlayerControl, false);
       assert.equal(g.limitedIntel, false);
-      assert.ok(g.spotted.every((v) => v === 2), 'complete intelligence');
-      // the computer side's orders phase passes (no AI yet); a human side gets an orders phase
+      // complete intelligence: every hex spotted to level 2 (KIM's own movers may write the byte afterwards, docs/rules/ai.md 3.3)
+      if (playMode !== 1) assert.ok(g.spotted.every((v) => v === 2), 'complete intelligence');
+      // the computer side gives its orders (KIM) or passes (no UN AI yet); a human side gets an orders phase
       if (playMode !== 0) assert.ok(events.some((e) => e.kind === 'computerPhase' || e.kind === 'ordersPhase'));
+      if (playMode === 1) assert.ok(events.some((e) => e.kind === 'computerPhase' && e.report?.ai === 'kim'));
+      if (playMode === 2) assert.ok(events.every((e) => e.kind !== 'computerPhase' || e.report === null));
       if (playMode === 0) assert.ok(events.every((e) => e.kind !== 'computerPhase'));
     }
   }

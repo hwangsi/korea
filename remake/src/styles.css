@@ -278,3 +278,24 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .newgame .actions .btn.primary { flex: 1; justify-content: center; }
 .settings-line { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .info #scenario-name { font-weight: 600; white-space: nowrap; }
+
+/* ---------- save / load dialog (docs/rules/save.md) ---------- */
+.savegame-wrap { z-index: 9; }
+.banner .box.savegame { max-width: 760px; }
+.sv-slots { list-style: none; margin: 12px 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.sv-slot { display: grid; grid-template-columns: 68px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.sv-slot.auto { background: #f7f9fc; }
+.sv-name { font-size: 13px; font-weight: 600; }
+.sv-body { font-size: 12px; line-height: 1.4; display: flex; flex-direction: column; }
+.sv-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.sv-buttons { display: flex; gap: 6px; }
+.sv-buttons .btn, .sv-files .btn { font-size: 12px; padding: 5px 10px; }
+.sv-buttons .btn:disabled, .sv-files .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.sv-files { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sv-files .ng-hint { font-size: 12px; color: var(--muted); }
+.banner p.sv-msg { margin: 10px 0 0; font-size: 13px; }
+.sv-msg.ok { color: #1d6b38; }
+.sv-msg.warn { color: #8a5a00; }
+.sv-msg.error { color: var(--red); }
+.savegame .warn-text { color: #8a5a00; }
+#save-game[aria-pressed="true"] { background: #14325c; border-color: #14325c; color: #fff; }
