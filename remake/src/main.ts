@@ -164,6 +164,10 @@ async function main() {
   let replay: {
     battles: ReplayBattle[]; b: number; s: number; paused: boolean; timer: ReturnType<typeof setTimeout> | null;
     after: typeof banner; afterEvents: TurnEvent[];
+    /** Only battle b (the ▶ of one battle in the results list): the replay ends with it. */
+    single: boolean;
+    /** First showing after the combat phase: the results list grows one battle at a time (`revealed`). */
+    first: boolean; revealed: number;
   } | null = null;
   const replayEl = $('#combat-replay');
 
@@ -521,18 +525,32 @@ async function main() {
     const replaying = !!game && replayBattles && play.replay && replayable(reports);
     // while the battles are replayed, the call of the next phase sounds only when its banner appears
     handlePhaseEvents(events, replaying ? events.filter((e) => e.kind !== 'combat' && e.kind !== 'ordersPhase') : events);
-    if (replaying) startReplay(reports!, events.filter((e) => e.kind === 'ordersPhase'));
+    if (replaying) startReplay(reports!, events.filter((e) => e.kind === 'ordersPhase'), 0, false, true);
   }
 
-  function startReplay(reports: NonNullable<TurnView['combat']>, afterEvents: TurnEvent[], from = 0) {
+  /**
+   * Replay the battles from `from` (all of them) or only battle `from` (`single`). `first`: the replay right after
+   * the combat phase, when the results are not known yet.
+   */
+  function startReplay(reports: NonNullable<TurnView['combat']>, afterEvents: TurnEvent[], from = 0, single = false, first = false) {
     if (!game) return;
     stopReplayTimer();
     const battles = buildReplay(reports);
     if (!battles.length) return;
-    replay = { battles, b: Math.min(from, battles.length - 1), s: 0, paused: false, timer: null, after: replay?.after ?? banner, afterEvents: replay?.afterEvents ?? afterEvents };
+    replay = {
+      battles, b: Math.min(from, battles.length - 1), s: 0, paused: false, timer: null,
+      after: replay?.after ?? banner, afterEvents: replay?.afterEvents ?? afterEvents,
+      single, first: first || !!replay?.first, revealed: replay?.revealed ?? 0,
+    };
     banner = null;
-    if (turnView) turnView = { ...turnView, current: replay.b };
+    syncReplayPanel();
     showReplayStep(true);
+  }
+
+  /** The results list follows the replay: the battle on the map is marked, unseen results stay hidden. */
+  function syncReplayPanel() {
+    if (!replay || !turnView) return;
+    turnView = { ...turnView, current: replay.b, revealed: replay.first ? replay.revealed : undefined };
   }
 
   /** Drop a replay without showing what waited behind it (a new or loaded game replaces everything). */
@@ -558,9 +576,12 @@ async function main() {
       view.centerOn(tx, ty, Math.max(view.cam.zoom, 0.95));
       view.cam.y += 120 / view.cam.zoom;
     }
-    view.replay = overlayFor(battle, replay.s);
+    // a battle's result joins the list when its replay ends (or is skipped past)
+    replay.revealed = Math.max(replay.revealed, replay.b + (step.kind === 'end' ? 1 : 0));
+    // in a full replay the forces of the battles to come stand where they were before them
+    view.replay = overlayFor(battle, replay.s, replay.single ? [] : replay.battles.slice(replay.b + 1));
     view.invalidate();
-    if (turnView) turnView = { ...turnView, current: replay.b };
+    syncReplayPanel();
     // sounds: the attack begins, the clash, a unit destroyed, a retreat
     if (step.kind === 'intro' && !battle.report.moveIn) audio.sfx('bugle');
     else if (step.kind === 'result') audio.sfx('battle', { count: 1 });
@@ -569,7 +590,7 @@ async function main() {
       if (e.kind === 'eliminated' || e.kind === 'lostAtSea') audio.sfx('explosion');
       else if (e.kind === 'retreat' || e.kind === 'advance' || e.kind === 'moveIn') audio.sfx('march');
     }
-    renderReplay(replayEl, { game, battles: replay.battles, b: replay.b, s: replay.s, paused: replay.paused, hideEnemy: fogActive(game), viewer: viewer() });
+    renderReplay(replayEl, { game, battles: replay.battles, b: replay.b, s: replay.s, paused: replay.paused, hideEnemy: fogActive(game), viewer: viewer(), single: replay.single });
     renderSide();
     panel.querySelector('.report.current')?.scrollIntoView({ block: 'nearest' });
     scheduleReplay();
@@ -591,7 +612,7 @@ async function main() {
 
   function replayNextBattle() {
     if (!replay) return;
-    if (replay.b + 1 >= replay.battles.length) { finishReplay(); return; }
+    if (replay.single || replay.b + 1 >= replay.battles.length) { finishReplay(); return; }
     replay.b++;
     replay.s = 0;
     showReplayStep(true);
@@ -605,7 +626,7 @@ async function main() {
     view.replay = null;
     replayEl.hidden = true;
     replayEl.innerHTML = '';
-    if (turnView) turnView = { ...turnView, current: undefined };
+    if (turnView) turnView = { ...turnView, current: undefined, revealed: undefined };
     banner = after;
     if (afterEvents.length) soundForEvents(afterEvents);
     render();
@@ -1002,7 +1023,11 @@ async function main() {
     else if (action === 'undo') { undo(); return; }
     else if (action === 'mode' && orders) startOrders(orders.leader, btn.dataset.mode as MoveMode);
     else if (action === 'select-force') { message = null; startOrders(Number(btn.dataset.leader)); }
-    else if (action === 'replay-battle' && turnView?.combat) { startReplay(turnView.combat, [], Number(btn.dataset.index ?? 0)); return; }
+    else if (action === 'replay-battle' && turnView?.combat) {
+      // "전투 다시 보기" plays every battle in turn; the ▶ of one battle plays only that battle
+      startReplay(turnView.combat, [], Number(btn.dataset.index ?? 0), btn.dataset.scope === 'one');
+      return;
+    }
     else if (action === 'organize') { openOrganize(Number(btn.dataset.x), Number(btn.dataset.y)); return; }
     else if (action === 'mission') {
       if (setMission(game, Number(btn.dataset.unit), Number(btn.dataset.mission))) message = null;
@@ -1329,7 +1354,7 @@ async function main() {
     renameForce: (slot: 0 | 1, name: string) => organizeRename(slot, name),
     organizeNav: (dir: 1 | -1) => organizeNav(dir),
     /** Combat replay: state (battle b, step s), and the controls. */
-    get replay() { return replay && { b: replay.b, s: replay.s, battles: replay.battles.length, steps: replay.battles[replay.b].steps.map((x) => x.kind), paused: replay.paused }; },
+    get replay() { return replay && { b: replay.b, s: replay.s, battles: replay.battles.length, steps: replay.battles[replay.b].steps.map((x) => x.kind), paused: replay.paused, single: replay.single, first: replay.first, revealed: replay.revealed }; },
     replayNext: () => { stopReplayTimer(); replayNext(); },
     replayNextBattle: () => { stopReplayTimer(); replayNextBattle(); },
     replaySkip: () => finishReplay(),

@@ -12,7 +12,7 @@ export const SCENARIO_TITLES: Record<number, { en: string; ko: string }> = {
   1: { en: 'The Dragon Wakes', ko: '용이 깨어나다' },
   2: { en: 'Operation Chromite', ko: '크로마이트 작전' },
   3: { en: 'Cold Steel', ko: '차가운 강철' },
-  4: { en: "Tomorrow's War", ko: '내일의 전쟁' },
+  4: { en: "Tomorrow's War", ko: '영변 핵위기' }, // Korean title chosen by the user (i18n/ko.ts SCENARIO_INFO_KO)
 };
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

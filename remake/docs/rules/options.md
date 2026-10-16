@@ -21,7 +21,7 @@
 
 | 키 | 항목 | 저장 위치 | 값 (누를 때마다 순환) | 기본값 |
 |---|---|---|---|---|
-| 1 | Scenario | SCENARIO[0] | 1 The Dragon Wakes → 2 Operation Chromite → 3 Cold Steel → 4 Tomorrow's War | 1 |
+| 1 | Scenario | SCENARIO[0] | 1 The Dragon Wakes → 2 Operation Chromite → 3 Cold Steel → 4 Tomorrow's War(리메이크 한글 제목 "영변 핵위기") | 1 |
 | 2 | CCF Intervention | SCENARIO[6] | 0 Historical ↔ 1 Fixed. 시나리오 3이면 "In progress", 4면 "Not allowed"로만 표시(값은 그대로 바뀜) | 0 |
 | 3 | Red Competence | SCENARIO[2] | 1 Pushover, 2 Moderate, 3 Challenging, 4 Hairy, 5 Hideous!, 6 Random? | 3 |
 | 4 | Play Mode | SCENARIO[3] | 0 Two player, 1 UN Solitaire(컴퓨터가 공산군), 2 Red Solitaire(컴퓨터가 유엔군) | **1** |

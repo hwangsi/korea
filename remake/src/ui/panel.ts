@@ -28,7 +28,7 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
-  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO,
+  OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO, SCENARIO_INFO_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { barChart, lineChart, CHART_COLORS } from './charts.ts';
@@ -97,6 +97,9 @@ export interface TurnView {
   combat: CombatReport[] | null;
   /** Battle being replayed on the map (ui/combatReplay.ts). */
   current?: number;
+  /** First replay after the combat phase: only this many battles are listed (the rest would give the replay away),
+   *  and the end-of-turn report waits too. Undefined = everything. */
+  revealed?: number;
   /** DO_AIR_COMBAT of the combat phase that just ran. */
   air: AirReport | null;
   resolution: ResolutionReport | null;
@@ -171,7 +174,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
     <section class="card ${SCENARIO_PHOTOS[s.scenario] ? 'hero' : ''}">
       ${photoBanner(s.scenario)}
       <p class="eyebrow">시나리오 ${s.scenario}${s.variant === 'S' ? ' · 편성 배치' : ''}</p>
-      <h2>${esc(s.title.ko)}</h2>
+      <h2>${esc(SCENARIO_INFO_KO[s.scenario - 1]?.title ?? s.title.ko)}</h2>
       <p class="muted">${esc(s.title.en)} · ${dateOfTurn(g, g.turn)} · ${g.turn}턴</p>
       ${settingsLine(ctx)}
       <p class="phase-line"><span class="chip ${g.player === 2 ? 'un-bg' : 'red-bg'}"></span><b>${esc(PHASE_KO[g.phase] ?? '')}</b> · ${esc(PLAYER_KO[g.player])}${g.gameOver ? ` · <span class="tag warn">${esc(TURN_UI_KO.gameOver)}</span>` : ''}</p>
@@ -248,10 +251,11 @@ function forecastLine(g: GameState): string {
 /** Combat results and/or the General Resolution report of the turn that just ended. */
 export function renderTurnView(el: HTMLElement, ctx: PanelContext, view: TurnView, message: PanelMessage | null) {
   const parts: string[] = [messageCard(message)];
-  if (view.result) parts.push(resultCard(ctx, view.result));
-  if (view.resolution) parts.push(resolutionCard(ctx, view.resolution));
+  const hiding = view.revealed !== undefined;
+  if (view.result && !hiding) parts.push(resultCard(ctx, view.result));
+  if (view.resolution && !hiding) parts.push(resolutionCard(ctx, view.resolution));
   if (view.air) parts.push(airReportCard(ctx, view.air));
-  if (view.combat) parts.push(combatCard(ctx, view.combat, view.current));
+  if (view.combat) parts.push(combatCard(ctx, view.combat, view.current, view.revealed));
   el.innerHTML = parts.join('');
 }
 
@@ -620,10 +624,11 @@ export function renderCombatReports(el: HTMLElement, ctx: PanelContext, reports:
   el.innerHTML = messageCard(message) + combatCard(ctx, reports);
 }
 
-function combatCard(ctx: PanelContext, reports: CombatReport[], current?: number): string {
+function combatCard(ctx: PanelContext, reports: CombatReport[], current?: number, revealed?: number): string {
   const g = ctx.game;
   const name = (id: number) => forceTitle(g, id);
-  const cards = reports.map((r, k) => {
+  const shown = revealed === undefined ? reports : reports.slice(0, revealed);
+  const cards = shown.map((r, k) => {
     const target = placeName(ctx, r.target[1] * g.width + r.target[0]);
     const events = r.events.filter((e) => e.kind !== 'expGain').map((e) => {
       const leader = 'leader' in e ? e.leader : undefined;
@@ -633,15 +638,26 @@ function combatCard(ctx: PanelContext, reports: CombatReport[], current?: number
     return `
       <article class="report ${r.moveIn ? '' : r.retreated ? 'win' : 'hold'} ${k === current ? 'current' : ''}">
         <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(target)}</b><span class="tag">${esc(head)}</span>
-          ${current === undefined ? `<button type="button" class="btn small ghost" data-action="replay-battle" data-index="${k}" title="${esc(REPLAY_KO.replayOne)}">▶</button>` : ''}</header>
+          ${current === undefined ? `<button type="button" class="btn small ghost" data-action="replay-battle" data-scope="one" data-index="${k}" title="${esc(REPLAY_KO.replayOne)}">▶</button>` : ''}</header>
         ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => name(a.leader)).join(', '))} vs ${esc(r.defenders.map((d) => name(d.leader)).join(', '))}</p>
         <p class="small">${esc(COMBAT_UI_KO.lossRatio)}: ${esc(COMBAT_UI_KO.attackerSide)} ${r.attackerLoss}% · ${esc(COMBAT_UI_KO.defenderSide)} ${r.defenderLoss}% · ${esc(COMBAT_UI_KO.retreatChance)} ${r.retreatChance}%</p>`}
         ${events ? `<ul class="events">${events}</ul>` : ''}
       </article>`;
   }).join('');
   const again = reports.length && current === undefined
-    ? `<button type="button" class="btn small" data-action="replay-battle" data-index="0">${esc(REPLAY_KO.replayAll)}</button>` : '';
-  return `<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><div class="forces-head"><h2>${reports.length}건</h2>${again}</div>${cards || `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>`}</section>`;
+    ? `<button type="button" class="btn small" data-action="replay-battle" data-scope="all" data-index="0">${esc(REPLAY_KO.replayAll)}</button>` : '';
+  // the battle on the map whose result is not out yet: only who attacks where
+  const r = current !== undefined && revealed !== undefined && current >= revealed ? reports[current] : undefined;
+  const fighting = r ? `
+      <article class="report current fighting">
+        <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(placeName(ctx, r.target[1] * g.width + r.target[0]))}</b><span class="tag">${esc(REPLAY_KO.fighting)}</span></header>
+        ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => name(a.leader)).join(', '))} vs ${esc(r.defenders.map((d) => name(d.leader)).join(', '))}</p>`}
+      </article>` : '';
+  const count = revealed === undefined ? `${reports.length}건` : REPLAY_KO.inProgress(shown.length, reports.length);
+  const left = revealed === undefined ? 0 : reports.length - shown.length;
+  const pending = left ? `<p class="muted small report-pending">${esc(REPLAY_KO.pending(left))}</p>` : '';
+  const empty = !reports.length ? `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>` : '';
+  return `<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><div class="forces-head"><h2>${esc(count)}</h2>${again}</div>${cards}${fighting}${pending}${empty}</section>`;
 }
 
 /** Sea move preview: embarkation, the sea, the landing hex (docs/rules/naval.md 2). */

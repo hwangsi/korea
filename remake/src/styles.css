@@ -586,3 +586,7 @@ pre { background: #060c16; }
 .card.hero > :not(.hero-photo) { position: relative; }
 .card.hero .eyebrow { color: #cfd9e8; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
 .card.hero h2 { text-shadow: 0 2px 6px rgba(0, 0, 0, 0.75); font-size: 22px; }
+
+/* results list during the first combat replay: the battle being fought, results still to come */
+.report.fighting .tag { background: rgba(255, 196, 77, 0.16); color: #ffc44d; border-color: rgba(255, 196, 77, 0.35); }
+.report-pending { margin: 10px 2px 0; }

@@ -471,6 +471,11 @@ export const ARMY_NAME_KO = ['북한군', '중공군', '국군', '유엔군'];
 export const REPLAY_KO = {
   title: '지상전',
   battleOf: (i: number, n: number) => `전투 ${i} / ${n}`,
+  oneBattle: (i: number) => `전투 ${i} 다시 보기`,
+  close: '닫기',
+  fighting: '전투 중',
+  inProgress: (done: number, n: number) => `${done} / ${n}건 (재생 중)`,
+  pending: (k: number) => `남은 전투 ${k}건은 재생이 끝나면 나옵니다.`,
   attacks: (army: string, place: string) => `${army}, ${place} 공격`,
   moveIn: (army: string, place: string) => `${army}, 비어 있는 ${place}로 진입`,
   attackers: '공격 부대',
@@ -519,7 +524,8 @@ export const SCENARIO_INFO_KO: { no: 1 | 2 | 3 | 4; title: string; en: string; d
   { no: 1, title: '용이 깨어나다', en: 'The Dragon Wakes', date: '1950년 6월 25일', desc: '북한군의 남침으로 시작합니다.' },
   { no: 2, title: '크로마이트 작전', en: 'Operation Chromite', date: '1950년 9월 15일', desc: '유엔군이 인천 상륙을 준비하는 시점입니다.' },
   { no: 3, title: '차가운 강철', en: 'Cold Steel', date: '1950년 11월 22일', desc: '중공군이 기습 반격에 나서는 시점입니다.' },
-  { no: 4, title: '내일의 전쟁', en: "Tomorrow's War", date: '1995년 6월 25일', desc: '1995년을 가정한 현대전입니다.' },
+  // the original's "Tomorrow's War", renamed by the user (2026-10-17); `en` keeps the original title
+  { no: 4, title: '영변 핵위기', en: "Tomorrow's War", date: '1995년 6월 25일', desc: '영변 핵위기로 인한 미군 공습 이후 시작된 제2차 한국전쟁입니다.' },
 ];
 
 export const OPTIONS_UI_KO = {

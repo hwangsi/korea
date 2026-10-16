@@ -46,7 +46,7 @@
 | 1 용이 깨어나다 | 대전역에 도착한 미 육군 첫 지상군(1950-07) | US Army | https://commons.wikimedia.org/wiki/File:Task_Force_Smith.jpg |
 | 2 크로마이트 작전 | 인천 레드 비치의 LST들(1950-09) | US Navy | https://commons.wikimedia.org/wiki/File:Battle_of_Inchon.png |
 | 3 차가운 강철 | 장진호에서 철수하는 미 제1해병사단(1950-12) | Cpl. Peter McDonald, USMC | https://commons.wikimedia.org/wiki/File:Chosin.jpg |
-| 4 내일의 전쟁 | 팀 스피릿 '88 훈련의 전차 상륙 | US Department of Defense | Commons "Tanks are offloaded onto the beach from utility landing craft 1632 ... TEAM SPIRIT'88" |
+| 4 영변 핵위기 | 팀 스피릿 '88 훈련의 전차 상륙 | US Department of Defense | Commons "Tanks are offloaded onto the beach from utility landing craft 1632 ... TEAM SPIRIT'88" |
 
 ## 5. 남은 것
 

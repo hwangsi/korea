@@ -51,6 +51,8 @@ export interface ReplayGhost {
   at: [number, number];
   strength: Strength | null;
   gone: boolean;
+  /** A force of a battle not replayed yet: shown as it was before that battle (no spoilers on the map). */
+  waiting?: boolean;
 }
 
 export interface ReplayOverlay {
@@ -71,7 +73,29 @@ export const armySide = (army: number): Side => (army < 2 ? 'communist' : 'un');
 
 const sideHas = (s: CombatSide, id: number) => s.units.includes(id);
 
-export function overlayFor(b: ReplayBattle, s: number): ReplayOverlay {
+/**
+ * What the map shows at step `s` of battle `b`. `later` are the battles still to come in the replay: their forces
+ * are drawn as they stood before their battle (the engine has already resolved them, the live map would give the
+ * results away). A force that fights several times is shown for the earliest of them.
+ */
+export function overlayFor(b: ReplayBattle, s: number, later: ReplayBattle[] = []): ReplayOverlay {
+  const o = currentOverlay(b, s);
+  const claimed = new Set(o.hide);
+  for (const lb of later) {
+    const lr = lb.report;
+    for (const [role, list] of [['attacker', lr.attackers], ['defender', lr.defenders]] as const) {
+      for (const side of list) {
+        if (side.units.some((id) => claimed.has(id))) continue;
+        for (const id of side.units) claimed.add(id);
+        o.ghosts.push({ side, role, at: side.from, strength: side.before, gone: false, waiting: true });
+      }
+    }
+  }
+  o.hide = claimed;
+  return o;
+}
+
+function currentOverlay(b: ReplayBattle, s: number): ReplayOverlay {
   const r = b.report;
   const done = b.steps.slice(0, s + 1);
   const cur = b.steps[s];
@@ -141,6 +165,8 @@ export interface ReplayView {
   /** The viewer does not know enemy strengths (limited intelligence). */
   hideEnemy: boolean;
   viewer: Side;
+  /** Only this battle is replayed (the ▶ of one battle in the results list): no "next battle". */
+  single?: boolean;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -236,13 +262,13 @@ export function renderReplay(el: HTMLElement, v: ReplayView) {
   el.innerHTML = `
     <div class="rp-box side-${aSide}" role="dialog" aria-label="${esc(T.title)}">
       <header>
-        <span class="rp-count">${esc(T.battleOf(v.b + 1, v.battles.length))}</span>
+        <span class="rp-count">${esc(v.single ? T.oneBattle(v.b + 1) : T.battleOf(v.b + 1, v.battles.length))}</span>
         <b class="rp-title">${esc(r.moveIn ? T.moveIn(army, target) : T.attacks(army, target))}</b>
         <span class="rp-ctrl">
           <button type="button" class="btn small" data-replay="pause">${esc(v.paused ? T.resume : T.pause)}</button>
           <button type="button" class="btn small" data-replay="next">${esc(T.next)}</button>
-          <button type="button" class="btn small" data-replay="battle">${esc(T.nextBattle)}</button>
-          <button type="button" class="btn small" data-replay="skip">${esc(T.skip)}</button>
+          ${v.single ? '' : `<button type="button" class="btn small" data-replay="battle">${esc(T.nextBattle)}</button>`}
+          <button type="button" class="btn small" data-replay="skip">${esc(v.single ? T.close : T.skip)}</button>
         </span>
       </header>
       <div class="rp-cols ${r.moveIn ? 'one' : ''}">

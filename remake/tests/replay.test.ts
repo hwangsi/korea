@@ -74,3 +74,25 @@ test('replay steps follow the original order and the overlay ends where the batt
     }
   }
 });
+
+test('during a full replay the forces of the battles to come stand as they were before them (no spoilers)', opts, () => {
+  const { reports } = openingBattles(7);
+  const battles = buildReplay(reports);
+  assert.ok(battles.length >= 2);
+  const o = overlayFor(battles[0], 0, battles.slice(1));
+  const own = new Set([...battles[0].report.attackers, ...battles[0].report.defenders].flatMap((s) => s.units));
+  for (const lb of battles.slice(1)) {
+    for (const s of [...lb.report.attackers, ...lb.report.defenders]) {
+      for (const id of s.units) assert.ok(o.hide.has(id), 'live counter of a later battle hidden');
+      if (s.units.some((id) => own.has(id))) continue;
+      const gh = o.ghosts.find((x) => x.side === s);
+      assert.ok(gh && gh.waiting, `${s.name} waits for its battle`);
+      assert.deepEqual(gh.at, s.from);
+      assert.deepEqual(gh.strength, s.before);
+      assert.ok(!gh.gone);
+    }
+  }
+  // the last battle (or a single-battle replay) has nothing waiting
+  const last = battles.at(-1)!;
+  assert.ok(overlayFor(last, 0).ghosts.every((gh) => !gh.waiting));
+});
