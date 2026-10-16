@@ -5,13 +5,16 @@
 import type { MapData, Scenario } from './data/types.ts';
 import { MapView, forcesInHex } from './ui/mapView.ts';
 import type { Layers } from './ui/mapView.ts';
-import { renderPanel, renderSummary } from './ui/panel.ts';
+import { renderPanel, renderSummary, renderCombatReports } from './ui/panel.ts';
 import type { PanelContext, PanelMessage } from './ui/panel.ts';
 import { createGameState, forceHex, idx } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
-import { reach, pathTo, moveForce, railMove, undoMove, bugOut } from './engine/movement.ts';
+import { reach, pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
+import { assault, assaultPreview, cancelAssault, resolveGroundCombat, plottedAssaults } from './engine/combat.ts';
+import type { CombatReport } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
-import { TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO } from './i18n/ko.ts';
+import { TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO } from './i18n/ko.ts';
+import { placeAt } from './data/places.ts';
 
 const DATA = 'data/extracted';
 
@@ -45,6 +48,8 @@ interface Orders {
   pinned: number | null;
   /** hex under the mouse (hex index) */
   hover: number | null;
+  /** adjacent enemy hex pinned for an assault (hex index) */
+  assault: number | null;
 }
 
 async function main() {
@@ -65,6 +70,7 @@ async function main() {
   let sel: [number, number] | null = null;
   let orders: Orders | null = null;
   let message: PanelMessage | null = null;
+  let reports: CombatReport[] | null = null;
   let first = true;
 
   const select = $('#scenario') as unknown as HTMLSelectElement;
@@ -72,8 +78,23 @@ async function main() {
 
   // ---------- rendering ----------
 
+  /** Enemy-occupied hex next to the selected force (assault target). */
+  function isEnemyNeighbor(i: number): boolean {
+    if (!orders || !game || orders.reach.origin < 0) return false;
+    const o = orders.reach.origin;
+    if (!sideMask(o % game.width, Math.floor(o / game.width), i % game.width, Math.floor(i / game.width))) return false;
+    return orders.reach.blocked.get(i) === 'enemy';
+  }
+
+  function assaultView() {
+    if (!orders || !game) return null;
+    const hex = orders.assault ?? (orders.pinned === null && orders.hover !== null && isEnemyNeighbor(orders.hover) ? orders.hover : null);
+    if (hex === null) return null;
+    return { hex, pinned: orders.assault !== null, preview: assaultPreview(game, orders.leader, hex % game.width, Math.floor(hex / game.width)) };
+  }
+
   function previewPath(): { path: number[] | null; pinned: boolean } {
-    if (!orders) return { path: null, pinned: false };
+    if (!orders || orders.assault !== null) return { path: null, pinned: false };
     if (orders.pinned !== null) return { path: pathTo(orders.reach, orders.pinned), pinned: true };
     if (orders.hover !== null) return { path: pathTo(orders.reach, orders.hover), pinned: false };
     return { path: null, pinned: false };
@@ -84,15 +105,19 @@ async function main() {
     view.selected = sel;
     view.selectedLeader = orders?.leader ?? null;
     // a force that cannot move keeps its highlight but gets no reach overlay
-    view.movement = orders && !orders.reach.cannot ? { reach: orders.reach, path: p.path, pinned: p.pinned } : null;
+    const av = assaultView();
+    view.movement = orders && !orders.reach.cannot
+      ? { reach: orders.reach, path: p.path, pinned: p.pinned, assault: av && { hex: av.hex, pinned: av.pinned, allowed: av.preview.allowed } }
+      : null;
     view.invalidate();
   }
 
   function renderSide() {
     if (!ctx) return;
+    if (!sel && reports) { renderCombatReports(panel, ctx, reports, message); return; }
     if (!sel) { renderSummary(panel, ctx, message); return; }
     const p = previewPath();
-    renderPanel(panel, ctx, sel[0], sel[1], orders && { leader: orders.leader, mode: orders.mode, reach: orders.reach, path: p.path, pinned: p.pinned }, message);
+    renderPanel(panel, ctx, sel[0], sel[1], orders && { leader: orders.leader, mode: orders.mode, reach: orders.reach, path: p.path, pinned: p.pinned, assault: assaultView() }, message);
   }
 
   function render() {
@@ -104,7 +129,7 @@ async function main() {
 
   function startOrders(leader: number, mode: MoveMode = 'tactical') {
     if (!game) return;
-    orders = { leader, mode, reach: reach(game, leader, mode), pinned: null, hover: null };
+    orders = { leader, mode, reach: reach(game, leader, mode), pinned: null, hover: null, assault: null };
     const at = forceHex(game, leader);
     if (at >= 0) sel = [at % game.width, Math.floor(at / game.width)];
   }
@@ -143,6 +168,29 @@ async function main() {
     }
   }
 
+  function executeAssault() {
+    if (!game || !orders || orders.assault === null) return;
+    const { leader } = orders;
+    const t = orders.assault;
+    const res = assault(game, leader, t % game.width, Math.floor(t / game.width));
+    if (!res.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
+    else if (res.result === 'overrun') message = { kind: 'ok', text: COMBAT_UI_KO.overran };
+    else if (res.result === 'stopped') message = { kind: 'warn', text: COMBAT_UI_KO.stopped };
+    else message = { kind: 'ok', text: COMBAT_UI_KO.plottedDone };
+    startOrders(leader);
+  }
+
+  function resolveCombat() {
+    if (!game) return;
+    if (!plottedAssaults(game).length) { message = { kind: 'warn', text: COMBAT_UI_KO.noAssaults }; render(); return; }
+    if (!window.confirm(COMBAT_UI_KO.resolveConfirm)) return;
+    reports = resolveGroundCombat(game);
+    sel = null;
+    orders = null;
+    message = null;
+    render();
+  }
+
   function undo() {
     if (!game) return;
     const leader = undoMove(game);
@@ -153,7 +201,8 @@ async function main() {
   }
 
   function cancel() {
-    if (orders && orders.pinned !== null) orders.pinned = null;
+    if (orders && orders.assault !== null) orders.assault = null;
+    else if (orders && orders.pinned !== null) orders.pinned = null;
     else if (orders) orders = null;
     else sel = null;
     message = null;
@@ -165,12 +214,19 @@ async function main() {
   view.onClick = (x, y) => {
     if (!game) return;
     const i = idx(game, x, y);
+    reports = null;
     if (orders) {
+      if (isEnemyNeighbor(i)) {
+        if (orders.assault === i) executeAssault();
+        else { orders.assault = i; orders.pinned = null; message = null; }
+        render();
+        return;
+      }
       const node = orders.reach.nodes.get(i);
       if (node && i !== orders.reach.origin) {
         if (node.canStop) {
           if (orders.pinned === i) execute();
-          else { orders.pinned = i; message = null; }
+          else { orders.pinned = i; orders.assault = null; message = null; }
         }
         render();
         return;
@@ -188,7 +244,8 @@ async function main() {
     const h = game.hexes[i];
     const owner = game.possession[i];
     const forces = forcesInHex(game, x, y);
-    let text = `(${x}, ${y}) ${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
+    const place = placeAt(x, y, game.scenarioNo === 4);
+    let text = `(${x}, ${y}) ${place ? place.label + ' · ' : ''}${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
     if (orders) {
       const n = orders.reach.nodes.get(i);
       const blocked = orders.reach.blocked.get(i);
@@ -196,9 +253,10 @@ async function main() {
         text += orders.mode === 'rail' ? ` · ${MOVE_UI_KO.railStops}` : ` · ${MOVE_UI_KO.after} ${orders.reach.rate - n.used}`;
         if (!n.canStop) text += ` · ${MOVE_UI_KO.cannotStopHere}`;
       } else if (blocked) text += ` · ${BLOCK_KO[blocked]}`;
+      if (isEnemyNeighbor(i)) text += ` · ${COMBAT_UI_KO.assault}`;
       if (orders.hover !== i) {
         orders.hover = i;
-        if (orders.pinned === null) render();
+        if (orders.pinned === null && orders.assault === null) render();
       }
     }
     status.textContent = text;
@@ -211,6 +269,11 @@ async function main() {
     if (!btn || !game) return;
     const action = btn.dataset.action;
     if (action === 'confirm') execute();
+    else if (action === 'confirm-assault') executeAssault();
+    else if (action === 'cancel-plot' && orders) {
+      if (cancelAssault(game, orders.leader)) message = { kind: 'ok', text: COMBAT_UI_KO.cancelled };
+      startOrders(orders.leader);
+    }
     else if (action === 'cancel') { cancel(); return; }
     else if (action === 'undo') { undo(); return; }
     else if (action === 'mode' && orders) startOrders(orders.leader, btn.dataset.mode as MoveMode);
@@ -226,6 +289,7 @@ async function main() {
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
     if (e.key === 'Escape') cancel();
+    else if (e.key === 'Enter' && orders && orders.assault !== null) { executeAssault(); render(); }
     else if (e.key === 'Enter' && orders?.pinned !== null && orders) { execute(); render(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
   });
@@ -242,6 +306,7 @@ async function main() {
     sel = null;
     orders = null;
     message = null;
+    reports = null;
     $('#date').textContent = `${dateKo(scenario.date.year, scenario.date.month, scenario.date.day)} · ${scenario.turn}턴`;
     const t = TEMPERATURE_KO[scenario.weatherNow.temperature];
     const freeze = scenario.freezeLine > 0 ? ` · 결빙선 ${scenario.freezeLine}행` : '';
@@ -264,6 +329,7 @@ async function main() {
   $('#zoom-in').addEventListener('click', () => view.zoomAt(1.3));
   $('#zoom-out').addEventListener('click', () => view.zoomAt(1 / 1.3));
   $('#zoom-fit').addEventListener('click', () => view.fitAll());
+  $('#resolve').addEventListener('click', resolveCombat);
 
   await load(SCENARIOS[0].id);
   // debugging hooks for the browser console / automated checks
@@ -272,6 +338,7 @@ async function main() {
     get game() { return game; },
     get orders() { return orders; },
     click: (x: number, y: number) => view.onClick(x, y),
+    resolve: () => { if (game) { reports = resolveGroundCombat(game); sel = null; orders = null; message = null; render(); } return reports; },
     hover: (x: number, y: number) => view.onHover(x, y),
     cancel, undo,
   };

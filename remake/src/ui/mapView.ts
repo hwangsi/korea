@@ -5,15 +5,17 @@ import type { Force, Hex, MapData, Nation, Scenario } from '../data/types.ts';
 import { hexCenter, hexCorners, sideMidpoint, neighbor, pixelToHex, directionsOf, SQRT3 } from '../engine/hex.ts';
 import type { Pt } from '../engine/hex.ts';
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
-import { forceUnits } from '../engine/state.ts';
+import { forceUnits, sideOf } from '../engine/state.ts';
+import { plottedAssaults } from '../engine/combat.ts';
 import type { GameState, UnitState } from '../engine/state.ts';
 import { allowance, frozen } from '../engine/movement.ts';
 import type { Reach } from '../engine/movement.ts';
 import { echelonOf, MOVE_MODE_KO, pathLabelKo } from '../i18n/ko.ts';
+import { placesFor } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
 
-export interface Layers { possession: boolean; units: boolean; grid: boolean; coords: boolean; }
+export interface Layers { possession: boolean; units: boolean; names: boolean; grid: boolean; coords: boolean; }
 
 const FONT = '"Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
@@ -43,6 +45,8 @@ export interface MoveOverlay {
   reach: Reach;
   path: number[] | null;
   pinned: boolean;
+  /** Adjacent enemy hex under the mouse / pinned for an assault. */
+  assault?: { hex: number; pinned: boolean; allowed: boolean } | null;
 }
 
 export class MapView {
@@ -52,7 +56,7 @@ export class MapView {
   hexes: Hex[] = [];
   scenario: Scenario | null = null;
   game: GameState | null = null;
-  layers: Layers = { possession: true, units: true, grid: false, coords: false };
+  layers: Layers = { possession: true, units: true, names: true, grid: false, coords: false };
   cam = { x: 0, y: 0, zoom: 0.5 };
   selected: [number, number] | null = null;
   hover: [number, number] | null = null;
@@ -305,9 +309,8 @@ export class MapView {
     if (this.movement) this.drawReach(vis, this.movement);
     this.drawPlaces();
     if (this.layers.units && sc) this.drawUnits(vis);
-    if (this.movement) this.drawMoveLabels(vis, this.movement);
 
-    // hover / selection
+    // hover / selection (under the place names so labels on the hex edge stay readable)
     const outline = (hx: [number, number] | null, color: string, width: number) => {
       if (!hx) return;
       this.hexPath(hexCenter(hx[0], hx[1], HEX));
@@ -317,6 +320,10 @@ export class MapView {
     };
     outline(this.hover, 'rgba(255,255,255,0.85)', 2);
     outline(this.selected, '#ffd400', 3.5);
+
+    if (this.layers.units && sc) this.drawAssaultPlots();
+    if (this.layers.names) this.drawPlaceLabels();
+    if (this.movement) this.drawMoveLabels(vis, this.movement);
 
     if (this.layers.coords && z > 0.9) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -455,46 +462,70 @@ export class MapView {
     ctx.stroke();
   }
 
+  /** Port, airfield and supply point icons (labels: drawPlaceLabels). */
   private drawPlaces() {
     const map = this.map!;
     const sc = this.scenario;
-    const ctx = this.ctx;
-    const z = this.cam.zoom;
     const is1995 = sc?.scenario === 4;
     // icons in world space
     for (const p of map.ports) this.icon(hexCenter(p.x, p.y, HEX), 'port', sc?.ports.find((q) => q.id === p.id)?.mined ?? false);
     for (const a of map.airfields) this.icon(hexCenter(a.x, a.y, HEX), 'airfield', false);
     if (!is1995) for (const sp of map.supplyPoints) this.icon(hexCenter(sp.x, sp.y, HEX), 'supply', false);
-    // labels in screen space
+  }
+
+  /**
+   * Names of every icon hex (src/data/places.ts), drawn above the counters. Major cities first; a
+   * label that would overlap an earlier one tries the other side of the hex, then is skipped.
+   */
+  private drawPlaceLabels() {
+    const ctx = this.ctx;
+    const z = this.cam.zoom;
+    const is1995 = this.scenario?.scenario === 4;
+    const { w, h } = this.viewSize();
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const label = (text: string, p: Pt, size: number, weight: number) => {
-      const s = this.toScreen(p);
-      ctx.font = `${weight} ${size}px ${FONT}`;
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.strokeText(text, s.x, s.y);
-      ctx.fillStyle = '#1f2328';
-      ctx.fillText(text, s.x, s.y);
+    const style: Record<number, { size: number; weight: number; color: string; minZoom: number }> = {
+      1: { size: Math.max(11, Math.min(18, 13 * z + 6)), weight: 700, color: '#1f2328', minZoom: 0 },
+      2: { size: Math.max(10, Math.min(15, 10 * z + 5)), weight: 600, color: '#2a2f36', minZoom: 0 },
+      3: { size: Math.max(9.5, Math.min(13, 8 * z + 4.5)), weight: 500, color: '#3d4652', minZoom: 0.3 },
     };
-    const citySize = Math.max(11, Math.min(18, 13 * z + 6));
-    for (const c of map.cities) {
-      if (c.only1995 && !is1995) continue;
-      const p = hexCenter(c.x, c.y, HEX);
-      label(c.ko, { x: p.x, y: p.y - HEX * 0.95 }, citySize, 700);
-    }
-    if (z > 0.75) {
-      for (const p of map.ports) {
-        if (map.cities.some((c) => c.x === p.x && c.y === p.y)) continue;
-        if (p.ko === '일본') continue;
-        const q = hexCenter(p.x, p.y, HEX);
-        label(p.ko, { x: q.x, y: q.y + HEX * 0.95 }, 11, 500);
+    const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    const free = (r: { x0: number; y0: number; x1: number; y1: number }) =>
+      !placed.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
+    const items = placesFor(is1995).slice().sort((a, b) => a.rank - b.rank);
+    for (const p of items) {
+      const st = style[p.rank];
+      if (z < st.minZoom) continue;
+      const c = hexCenter(p.x, p.y, HEX);
+      ctx.font = `${st.weight} ${st.size}px ${FONT}`;
+      const tw = ctx.measureText(p.label).width;
+      let spot: { x: number; y: number; r: { x0: number; y0: number; x1: number; y1: number } } | null = null;
+      for (const dy of [-0.95, 0.95]) {
+        const s = this.toScreen({ x: c.x, y: c.y + HEX * dy });
+        const r = { x0: s.x - tw / 2 - 3, y0: s.y - st.size / 2 - 2, x1: s.x + tw / 2 + 3, y1: s.y + st.size / 2 + 2 };
+        if (r.x1 < 0 || r.y1 < 0 || r.x0 > w || r.y0 > h) break;
+        if (free(r)) { spot = { x: s.x, y: s.y, r }; break; }
       }
+      if (!spot) continue;
+      placed.push(spot.r);
+      ctx.lineWidth = 3.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.strokeText(p.label, spot.x, spot.y);
+      ctx.fillStyle = st.color;
+      ctx.fillText(p.label, spot.x, spot.y);
     }
-    const japan = this.hexes.find((h) => h.terrain === 'japan');
-    if (japan) label('일본', hexCenter(japan.x, japan.y + 2, HEX), 12, 700);
+    const japan = this.hexes.find((hx) => hx.terrain === 'japan');
+    if (japan) {
+      const s = this.toScreen(hexCenter(japan.x, japan.y + 2, HEX));
+      ctx.font = `700 12px ${FONT}`;
+      ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+      ctx.strokeText('일본', s.x, s.y);
+      ctx.fillStyle = '#1f2328';
+      ctx.fillText('일본', s.x, s.y);
+    }
     ctx.restore();
   }
 
@@ -650,6 +681,54 @@ export class MapView {
     ctx.restore();
   }
 
+  // ---------- assault orders ----------
+
+  private arrow(from: Pt, to: Pt, color: string, width: number, dash: number[] = []) {
+    const ctx = this.ctx;
+    const a = this.toScreen(from), b0 = this.toScreen(to);
+    const ang = Math.atan2(b0.y - a.y, b0.x - a.x);
+    const len = Math.hypot(b0.x - a.x, b0.y - a.y);
+    const b = { x: a.x + Math.cos(ang) * len * 0.78, y: a.y + Math.sin(ang) * len * 0.78 };
+    const ah = Math.max(9, width * 3);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x - Math.cos(ang) * ah * 0.6, b.y - Math.sin(ang) * ah * 0.6);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = width + 3;
+    ctx.setLineDash(dash);
+    ctx.stroke();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - Math.cos(ang - 0.45) * ah, b.y - Math.sin(ang - 0.45) * ah);
+    ctx.lineTo(b.x - Math.cos(ang + 0.45) * ah, b.y - Math.sin(ang + 0.45) * ah);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  /** Every plotted assault on the map, as a red arrow into the target hex (the original draws the same). */
+  private drawAssaultPlots() {
+    const g = this.game;
+    if (!g) return;
+    const z = this.cam.zoom;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    for (const p of plottedAssaults(g)) {
+      const color = sideOf(g.units.get(p.leader)!) === 'un' ? '#1f5fbf' : '#c0262d';
+      this.arrow(hexCenter(p.from[0], p.from[1], HEX), hexCenter(p.to[0], p.to[1], HEX), color, Math.max(3, 4 * z));
+    }
+    ctx.restore();
+  }
+
   // ---------- movement overlay ----------
 
   /** Dim everything the force cannot reach, tint and outline the reachable area. */
@@ -748,6 +827,22 @@ export class MapView {
         ctx.fillStyle = n.canStop ? '#6b4a00' : '#5c6470';
         ctx.fillText(text, s.x, sy);
       }
+    }
+    // assault preview
+    if (m.assault) {
+      const t = m.assault.hex;
+      const tc = hexCenter(t % map.width, Math.floor(t / map.width), HEX);
+      const oc = hexCenter(r.origin % map.width, Math.floor(r.origin / map.width), HEX);
+      ctx.save();
+      ctx.setTransform(this.dpr * z, 0, 0, this.dpr * z, -this.cam.x * z * this.dpr, -this.cam.y * z * this.dpr);
+      this.hexPath(tc);
+      ctx.fillStyle = m.assault.allowed ? 'rgba(208, 49, 45, 0.28)' : 'rgba(90, 90, 90, 0.28)';
+      ctx.fill();
+      ctx.strokeStyle = m.assault.allowed ? '#d0312d' : '#666';
+      ctx.lineWidth = 3.5 / z;
+      ctx.stroke();
+      ctx.restore();
+      this.arrow(oc, tc, m.assault.allowed ? '#d0312d' : '#777', Math.max(3.5, 5 * z), m.assault.pinned ? [] : [8, 6]);
     }
     // path
     if (m.path && m.path.length) {

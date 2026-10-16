@@ -194,6 +194,10 @@ export const BLOCK_KO: Record<string, string> = {
   enemy: '적 부대 (공격은 전투 시스템에서)',
   allowance: '이동력 부족',
   notOnMap: '지도에 배치되지 않은 부대',
+  notEnemy: '적 부대가 없는 헥스',
+  blocked: '들어갈 수 없는 헥스',
+  needSixPoints: '공격에는 모든 유닛에 이동력 6점 필요',
+  phase: '지금 단계에서는 불가',
   noAllowance: '이번 턴 이동력을 모두 씀',
   cannotEntrain: '철도 이동 조건이 맞지 않음',
   cannotStop: '그 헥스에서는 멈출 수 없음',
@@ -238,6 +242,57 @@ export const MOVE_UI_KO = {
   unlimited: '무제한',
   cannotStopHere: '멈출 수 없음 (통과만)',
 } as const;
+
+// ---------- ground combat (docs/rules/combat.md) ----------
+
+export const COMBAT_UI_KO = {
+  assault: '공격',
+  assaultPreview: '공격 미리보기',
+  plot: '공격 명령',
+  tryOverrun: '돌파 시도',
+  overrunChance: '돌파 가능: 50% 확률로 방어 부대를 즉시 격멸하고 진입, 실패하면 공격 명령',
+  overrunNo: '돌파 불가 (전력 차이가 부족)',
+  plotNote: '전투 단계에서 실행됩니다. 명령에 6점(예약 5 + 공격 1)이 들고, 취소하면 5점이 돌아옵니다.',
+  needSix: '부대의 모든 유닛에 이동력이 6점 이상 남아 있어야 공격 명령을 내릴 수 있어요.',
+  stopped: '2차 명령 단계에서는 공격 명령을 낼 수 없어 이동이 끝났습니다.',
+  attackerSide: '공격',
+  defenderSide: '방어',
+  lethality: '살상력',
+  survivability: '생존력',
+  lossRatio: '예상 손실률',
+  retreatChance: '방어 부대 후퇴 확률',
+  artillery: '중포병 지원',
+  naval: '함포 지원',
+  joined: '같은 군의 다른 부대가 이미 같은 헥스를 공격 예정',
+  plotted: '공격 명령',
+  cancelPlot: '공격 취소 (1점은 소모됨)',
+  cancelled: '공격 명령을 취소했습니다',
+  overran: '돌파 성공! 방어 부대를 격멸하고 헥스를 점령했습니다',
+  plottedDone: '공격 명령을 내렸습니다. 전투 해결 때 실행됩니다',
+  resolve: '전투 해결',
+  resolveConfirm: '모든 공격 명령을 실행할까요? (턴 진행이 아직 없어 지금 바로 전투 단계만 실행합니다)',
+  noAssaults: '실행할 공격 명령이 없습니다',
+  results: '전투 결과',
+  attacks: '공격',
+  retreated: '방어 부대 후퇴',
+  held: '방어 부대 고수',
+  moveIn: '적 없음: 그대로 진입',
+  hint: '인접한 적 부대 헥스를 클릭하면 공격 미리보기, 한 번 더 클릭하면 공격 명령(돌파 가능하면 돌파 시도)입니다.',
+} as const;
+
+export const ARMY_NAME_KO = ['북한군', '중공군', '국군', '유엔군'];
+
+export function combatEventKo(e: { kind: string; name?: string; to?: [number, number] }, forceName: (id: number) => string, leader?: number): string {
+  switch (e.kind) {
+    case 'eliminated': return `${unitNameKo(e.name ?? '')} 괴멸`;
+    case 'retreat': return `${forceName(leader ?? 0)} 후퇴 → (${e.to?.[0]}, ${e.to?.[1]})`;
+    case 'blocked': return `${forceName(leader ?? 0)} 후퇴로 막힘: 추가 손실`;
+    case 'bugout': return `${unitNameKo(e.name ?? '')} 버그아웃 (장비 버리고 도주)`;
+    case 'moveIn': return `${forceName(leader ?? 0)} 진입 → (${e.to?.[0]}, ${e.to?.[1]})`;
+    case 'advance': return `${forceName(leader ?? 0)} 전진 → (${e.to?.[0]}, ${e.to?.[1]})`;
+    default: return '';
+  }
+}
 
 /** Bubble over the destination of a previewed path. */
 export function pathLabelKo(spent: number, remaining: number): string {

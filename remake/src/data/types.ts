@@ -81,6 +81,8 @@ export interface Scenario {
   /** DUAL arrays, index 0 = Communist player, 1 = United Nations player */
   interdiction: number[];
   railDemand: number[];
+  /** REPLACEMENTS[nation][type - 1] = [new equipment, recovered from eliminated units] */
+  replacements?: Partial<Record<Nation, number[][]>>;
   units: Unit[];
   forces: Force[];
   equipmentTypes: EquipmentType[];

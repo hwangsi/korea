@@ -154,3 +154,24 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .steps .pts { font-weight: 700; font-variant-numeric: tabular-nums; }
 .force.active { background: #fffbe6; margin-left: -8px; margin-right: -8px; padding-left: 8px; padding-right: 8px; border-radius: 8px; }
 .force header .btn.small, .force header .tag.on { align-self: center; }
+
+/* ---------- ground combat ---------- */
+.topbar #resolve { padding: 7px 14px; }
+.btn.danger-fill { background: #b3261e; border-color: #b3261e; }
+.btn.danger-fill:hover { background: #8f1e18; }
+.note.plot { display: flex; align-items: center; gap: 8px; background: #fbe3e1; color: #7a1c17; flex-wrap: wrap; }
+.note.plot .btn.small { margin-left: auto; }
+.preview.assault { border-color: #d0312d; }
+.preview.assault.pinned { box-shadow: 0 0 0 2px rgba(208, 49, 45, 0.25); }
+.versus { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.versus > div { background: #f7f5f0; border-radius: 8px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+.versus .label { display: block; font-size: 11px; color: var(--muted); }
+.versus b { font-size: 20px; }
+.versus ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; }
+.stats.compact.three, .preview.assault .stats.compact { grid-template-columns: repeat(3, 1fr); }
+.report { border-top: 1px solid #f0ede6; padding: 10px 0; }
+.report header { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 13px; }
+.report.win .tag { background: #e8f3ea; color: #22663a; }
+.report.hold .tag { background: #fbe3e1; color: var(--red); }
+.report p { margin: 4px 0; }
+.events { margin: 4px 0 0; padding-left: 18px; font-size: 12px; }

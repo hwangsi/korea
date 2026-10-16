@@ -60,6 +60,14 @@ export interface GameState {
   corps: { from: number; to: number }[];
   /** WEATHER[0] mod 10: 1 clear, 2 cloudy, 3 storm (other values = not initialised). */
   sky: number;
+  /** WEATHER[0] div 10: 1 cold, 2 mild, 3 hot. */
+  temperature: number;
+  /** TURN global (0 = 25 June). */
+  turn: number;
+  /** SCENARIO[2]: Communist competence 1 Pushover .. 5 Hideous (3 = x1.0). */
+  competence: number;
+  /** REPLACEMENTS[nation][equipment type - 1] = [new equipment, recovered from eliminated units]. */
+  replacements: Record<Nation, [number, number][]>;
   freezeLine: number;
   refugees: boolean;
   /** SCENARIO[3]: 0 two players, 1 computer plays Communist, 2 computer plays UN. */
@@ -123,6 +131,13 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     airfields: scenario.airfields.map((a) => ({ ...a })),
     corps: scenario.corps.map((c) => ({ from: c.from, to: c.to })),
     sky: (((scenario.weatherRaw?.[0] ?? 0) % 10) + 10) % 10,
+    temperature: Math.trunc((scenario.weatherRaw?.[0] ?? 0) / 10),
+    turn: scenario.turn,
+    // the original takes this from the start menu; the files hold 1 or 3. Neutral default until options exist.
+    competence: 3,
+    replacements: Object.fromEntries(
+      Object.entries(scenario.replacements ?? {}).map(([n, rows]) => [n, rows.map((r) => [r[0], r[1]] as [number, number])]),
+    ) as Record<Nation, [number, number][]>,
     freezeLine: scenario.freezeLine,
     refugees: scenario.refugees ?? false,
     computerSide: 0,
@@ -226,6 +241,7 @@ export interface Snapshot {
   spotted: Uint8Array;
   airfields: AirfieldState[];
   railDemand: [number, number];
+  replacements: Record<string, [number, number][]>;
   rng: number;
 }
 
@@ -241,6 +257,7 @@ export function snapshot(g: GameState, unitIds?: Iterable<number>): Snapshot {
     spotted: g.spotted.slice(),
     airfields: g.airfields.map((a) => ({ ...a })),
     railDemand: [g.railDemand[0], g.railDemand[1]],
+    replacements: Object.fromEntries(Object.entries(g.replacements).map(([n, rows]) => [n, rows.map((r) => [r[0], r[1]] as [number, number])])),
     rng: g.rng,
   };
 }
@@ -252,6 +269,7 @@ export function restore(g: GameState, s: Snapshot) {
   g.spotted = s.spotted.slice();
   g.airfields = s.airfields.map((a) => ({ ...a }));
   g.railDemand = [s.railDemand[0], s.railDemand[1]];
+  g.replacements = Object.fromEntries(Object.entries(s.replacements).map(([n, rows]) => [n, rows.map((r) => [r[0], r[1]] as [number, number])])) as Record<Nation, [number, number][]>;
   g.rng = s.rng;
   g.version++;
 }

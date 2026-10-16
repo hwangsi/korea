@@ -7,11 +7,15 @@ import type { GameState, UnitState } from '../engine/state.ts';
 import { forceUnits, sideOf, unit } from '../engine/state.ts';
 import { allowance, canEntrain, canBugOut } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
+import { assaultTarget } from '../engine/combat.ts';
+import type { AssaultPreview, CombatReport } from '../engine/combat.ts';
 import {
   TERRAIN_KO, NATION_KO, KIND_KO, EXPERIENCE_KO, EQUIPMENT_KO, POSSESSION_KO, SIDE_OF, SIDE_KO,
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
+  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
+import { placeAt, hexToLatLon } from '../data/places.ts';
 import { directionsOf, DIRECTIONS } from '../engine/hex.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -33,6 +37,8 @@ export interface OrdersView {
   /** Previewed path (hex indices, origin excluded). */
   path: number[] | null;
   pinned: boolean;
+  /** Adjacent enemy hex under the mouse or pinned, with what an assault would do. */
+  assault: { hex: number; pinned: boolean; preview: AssaultPreview } | null;
 }
 
 export interface PanelMessage { kind: 'ok' | 'warn' | 'error'; text: string; }
@@ -45,12 +51,16 @@ function forceTitle(g: GameState, leader: number): string {
 }
 
 function placeName(ctx: PanelContext, i: number): string {
-  const { map, game } = ctx;
+  const { game } = ctx;
   const x = i % game.width, y = Math.floor(i / game.width);
-  const is1995 = game.scenarioNo === 4;
-  const city = map.cities.find((c) => c.x === x && c.y === y && (!c.only1995 || is1995));
-  return `${city?.ko ?? TERRAIN_KO[game.hexes[i].terrain]} (${x}, ${y})`;
+  const place = placeAt(x, y, game.scenarioNo === 4);
+  return `${place?.label ?? TERRAIN_KO[game.hexes[i].terrain]} (${x}, ${y})`;
 }
+
+const latLonKo = (x: number, y: number) => {
+  const { lat, lon } = hexToLatLon(x, y);
+  return `북위 ${lat.toFixed(2)}° · 동경 ${lon.toFixed(2)}°`;
+};
 
 function messageCard(m: PanelMessage | null): string {
   if (!m) return '';
@@ -88,6 +98,8 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         <li>범위 안 헥스에 마우스: 경로·비용 미리보기</li>
         <li>목적지 클릭: 경로 고정 → 한 번 더 클릭: 이동</li>
         <li>같은 헥스 다시 클릭: 겹친 다른 부대 선택</li>
+        <li>옆의 적 부대 클릭: 공격 미리보기 → 한 번 더: 공격 명령(또는 돌파)</li>
+        <li>상단 ⚔ 전투 해결: 모든 공격 명령 실행</li>
         <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
         <li>드래그: 지도 이동 · 휠: 확대·축소</li>
       </ul>
@@ -141,9 +153,71 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
         <button type="button" data-action="mode" data-mode="rail" aria-pressed="${o.mode === 'rail'}" ${railOk || o.mode === 'rail' ? '' : `disabled title="${esc(BLOCK_KO.cannotEntrain)}"`}>${esc(MOVE_MODE_KO.rail)}</button>
       </div>
       ${body}
+      ${plotLine(ctx, o.leader)}
+      ${!r.cannot ? `<p class="muted small">${esc(COMBAT_UI_KO.hint)}</p>` : ''}
       ${g.undo ? `<button class="btn ghost" data-action="undo">↶ ${esc(MOVE_UI_KO.undo)} <span class="muted small">Ctrl+Z</span></button>` : ''}
     </section>`;
-  return card + previewCard(ctx, o);
+  return card + (o.assault ? assaultCard(ctx, o) : previewCard(ctx, o));
+}
+
+function plotLine(ctx: PanelContext, leader: number): string {
+  const t = assaultTarget(ctx.game, leader);
+  if (!t) return '';
+  return `<div class="note plot"><b>${esc(COMBAT_UI_KO.plotted)}</b> → ${esc(placeName(ctx, t[1] * ctx.game.width + t[0]))}
+    <button class="btn small" data-action="cancel-plot">${esc(COMBAT_UI_KO.cancelPlot)}</button></div>`;
+}
+
+function assaultCard(ctx: PanelContext, o: OrdersView): string {
+  const a = o.assault!;
+  const p = a.preview;
+  const g = ctx.game;
+  const est = p.estimate;
+  const overrun = p.overrun?.possible;
+  const rows = (ids: number[]) => ids.map((l) => `<li>${esc(forceTitle(g, l))}</li>`).join('');
+  const body = est ? `
+      <div class="versus">
+        <div><span class="label">${esc(COMBAT_UI_KO.attackerSide)}</span><b>${est.aL}</b><span class="muted"> / ${est.aS}</span><ul>${rows(est.attackers)}</ul></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.defenderSide)}</span><b>${est.dL}</b><span class="muted"> / ${est.dS}</span><ul>${rows(est.defenders)}</ul></div>
+      </div>
+      <p class="muted small">${esc(COMBAT_UI_KO.lethality)} / ${esc(COMBAT_UI_KO.survivability)} (원작 전투 합산 단위: 살상÷5, 생존÷50)${est.artillery.attacker || est.artillery.defender ? ` · ${esc(COMBAT_UI_KO.artillery)} ${est.artillery.attacker}/${est.artillery.defender}` : ''}${est.naval ? ` · ${esc(COMBAT_UI_KO.naval)} ${est.naval}` : ''}</p>
+      <div class="stats compact">
+        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.attackerSide)})</span><span class="value small">${est.attackerLoss}%</span></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.defenderSide)})</span><span class="value small">${est.defenderLoss}%</span></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.retreatChance)}</span><span class="value small">${est.retreatChance}%</span></div>
+      </div>
+      ${est.attackers.length > 1 ? `<p class="muted small">${esc(COMBAT_UI_KO.joined)}</p>` : ''}` : '';
+  const mode = overrun ? COMBAT_UI_KO.overrunChance : p.overrunRollPossible ? COMBAT_UI_KO.overrunNo : '';
+  return `
+    <section class="card preview assault ${a.pinned ? 'pinned' : ''}">
+      <p class="eyebrow">${esc(COMBAT_UI_KO.assaultPreview)}</p>
+      <h3>${esc(placeName(ctx, a.hex))}</h3>
+      ${body}
+      ${mode ? `<p class="note">${esc(mode)}</p>` : ''}
+      ${p.allowed ? `<p class="muted small">${esc(COMBAT_UI_KO.plotNote)}</p>` : `<p class="note warn">${esc(BLOCK_KO[p.error ?? ''] ?? p.error ?? '')}</p>`}
+      ${a.pinned && p.allowed ? `<div class="actions"><button class="btn primary danger-fill" data-action="confirm-assault">${esc(overrun ? COMBAT_UI_KO.tryOverrun : COMBAT_UI_KO.plot)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
+    </section>`;
+}
+
+/** Results of the ground combat phase. */
+export function renderCombatReports(el: HTMLElement, ctx: PanelContext, reports: CombatReport[], message: PanelMessage | null) {
+  const g = ctx.game;
+  const name = (id: number) => forceTitle(g, id);
+  const cards = reports.map((r) => {
+    const target = placeName(ctx, r.target[1] * g.width + r.target[0]);
+    const events = r.events.filter((e) => e.kind !== 'expGain').map((e) => {
+      const leader = 'leader' in e ? e.leader : undefined;
+      return `<li>${esc(combatEventKo(e as { kind: string; name?: string; to?: [number, number] }, name, leader))}</li>`;
+    }).join('');
+    const head = r.moveIn ? COMBAT_UI_KO.moveIn : r.retreated ? COMBAT_UI_KO.retreated : COMBAT_UI_KO.held;
+    return `
+      <article class="report ${r.moveIn ? '' : r.retreated ? 'win' : 'hold'}">
+        <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(target)}</b><span class="tag">${esc(head)}</span></header>
+        ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => unitNameKo(a.name)).join(', '))} vs ${esc(r.defenders.map((d) => unitNameKo(d.name)).join(', '))}</p>
+        <p class="small">${esc(COMBAT_UI_KO.lossRatio)}: ${esc(COMBAT_UI_KO.attackerSide)} ${r.attackerLoss}% · ${esc(COMBAT_UI_KO.defenderSide)} ${r.defenderLoss}% · ${esc(COMBAT_UI_KO.retreatChance)} ${r.retreatChance}%</p>`}
+        ${events ? `<ul class="events">${events}</ul>` : ''}
+      </article>`;
+  }).join('');
+  el.innerHTML = `${messageCard(message)}<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><h2>${reports.length}건</h2>${cards || `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>`}</section>`;
 }
 
 function previewCard(ctx: PanelContext, o: OrdersView): string {
@@ -188,7 +262,7 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   const s = ctx.scenario;
   const hex = g.hexes[y * map.width + x];
   const is1995 = g.scenarioNo === 4;
-  const city = map.cities.find((c) => c.x === x && c.y === y && (!c.only1995 || is1995));
+  const place = placeAt(x, y, is1995);
   const port = map.ports.find((p) => p.x === x && p.y === y);
   const portState = port ? s.ports.find((p) => p.id === port.id) : undefined;
   const airfield = map.airfields.find((a) => a.x === x && a.y === y);
@@ -205,8 +279,11 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   return `
     <section class="card">
       <p class="eyebrow">헥스 ${x}, ${y}</p>
-      <h2>${esc(city?.ko ?? TERRAIN_KO[hex.terrain])}</h2>
+      <h2>${esc(place?.label ?? TERRAIN_KO[hex.terrain])}</h2>
       <dl class="facts">
+        ${place ? `<dt>지명</dt><dd>${esc(place.ko)}${place.historic ? ` <span class="muted">(옛 이름: ${esc(place.historic)})</span>` : ''}${place.original ? ` <span class="muted small">· 원작 표기 ${esc(place.original)}</span>` : ''}</dd>` : ''}
+        ${place?.note ? `<dt>비고</dt><dd>${esc(place.note)}</dd>` : ''}
+        <dt>실제 위치</dt><dd>${latLonKo(x, y)} <span class="muted small">(헥스 보정 추정, 오차 약 10km)</span></dd>
         <dt>지형</dt><dd>${esc(TERRAIN_KO[hex.terrain])}${hex.closed ? ' <span class="tag">험한 지형</span>' : ''}</dd>
         <dt>지형 요소</dt><dd>${features.length ? esc(features.join(', ')) : '없음'}</dd>
         <dt>점령</dt><dd>${owner ? `<span class="${owner === 1 ? 'un' : 'red'}">${POSSESSION_KO[owner]}</span>` : '-'}</dd>
