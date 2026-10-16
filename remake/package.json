@@ -1,0 +1,18 @@
+{
+  "name": "conflict-korea-remake",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Conflict: Korea (SSI 1992) 현대적 재해석 리메이크 - 개인 프로젝트",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "extract": "node tools/extract/extract.ts",
+    "strings": "node tools/disasm/strings.cjs",
+    "asm": "node tools/disasm/dis.cjs --all",
+    "dev": "node tools/dev-server.mjs",
+    "build": "node tools/build.mjs",
+    "typecheck": "tsc -p ."
+  }
+}

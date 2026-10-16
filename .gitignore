@@ -1,0 +1,13 @@
+# Original game files and manual (copyrighted, keep private and transfer separately)
+Conflict-Korea-The-First-Year-1950-51_DOS_EN/
+*.zip
+*.pdf
+
+# Generated (rebuild with: node tools/extract/extract.ts, node tools/build.mjs)
+remake/dist/
+remake/data/extracted/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db

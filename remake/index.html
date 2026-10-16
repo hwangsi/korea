@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Conflict: Korea 리메이크 · 프로토타입</title>
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <strong>Conflict: Korea</strong>
+      <span>리메이크 프로토타입</span>
+    </div>
+    <label class="field">
+      <span>시나리오</span>
+      <select id="scenario"></select>
+    </label>
+    <div class="info"><span id="date">-</span><span id="weather" class="muted">-</span></div>
+    <div class="spacer"></div>
+    <div class="group" role="group" aria-label="표시 레이어">
+      <button data-layer="possession" type="button">점령지</button>
+      <button data-layer="units" type="button">부대</button>
+      <button data-layer="grid" type="button">격자</button>
+      <button data-layer="coords" type="button">좌표</button>
+    </div>
+    <div class="group" role="group" aria-label="확대">
+      <button id="zoom-out" type="button" title="축소">−</button>
+      <button id="zoom-in" type="button" title="확대">+</button>
+      <button id="zoom-fit" type="button" title="전체 보기">전체</button>
+    </div>
+  </header>
+  <main class="layout">
+    <div class="map-wrap">
+      <canvas id="map"></canvas>
+      <div id="status" class="status">지도 위에 마우스를 올려 보세요</div>
+    </div>
+    <aside id="panel" class="panel"><section class="card"><p class="muted">불러오는 중...</p></section></aside>
+  </main>
+  <script type="module" src="src/main.ts"></script>
+</body>
+</html>

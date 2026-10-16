@@ -1,0 +1,13 @@
+node_modules/
+dist/
+
+# Generated from the original game files (copyrighted): keep local, never publish
+data/extracted/
+
+# Never commit the original game files
+*.EXE
+*.DAT
+*.LBM
+*.IMG
+*.BGI
+*.SAV

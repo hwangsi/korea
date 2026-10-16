@@ -1,0 +1,45 @@
+{
+  "name": "iced-x86",
+  "description": "iced-x86 is a blazing fast and correct x86/x64 disassembler, assembler and instruction decoder written in Rust and compiled to WebAssembly",
+  "version": "1.21.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/icedland/iced",
+    "directory": "src/rust/iced-x86-js"
+  },
+  "files": [
+    "iced_x86_bg.wasm",
+    "iced_x86.js",
+    "iced_x86.d.ts",
+    "tests/*"
+  ],
+  "main": "iced_x86.js",
+  "homepage": "https://github.com/icedland/iced",
+  "types": "iced_x86.d.ts",
+  "keywords": [
+    "disassembler",
+    "assembler",
+    "decoder",
+    "encoder",
+    "asm",
+    "disassembly",
+    "x86",
+    "amd64",
+    "x64",
+    "x86_64",
+    "wasm",
+    "webassembly",
+    "rust"
+  ],
+  "bugs": "https://github.com/icedland/iced/issues",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.0.1"
+  }
+}

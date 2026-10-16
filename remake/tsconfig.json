@@ -1,0 +1,18 @@
+{
+  // Editor / `tsc` type checking only. Code runs without a build step through Node's type stripping,
+  // so only erasable TypeScript syntax is allowed (no enum, namespace or constructor parameter properties).
+  // Full checking of tools/ needs `npm i -D typescript @types/node`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "tools/extract"]
+}
