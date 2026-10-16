@@ -25,6 +25,8 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .brand strong { font-size: 15px; letter-spacing: -0.01em; }
 .brand span { font-size: 11px; color: var(--muted); }
 .field { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#intel { padding: 6px 8px; }
 select {
   font: inherit; font-size: 13px; color: var(--text); padding: 6px 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface); cursor: pointer;
@@ -240,4 +242,10 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
   .info { gap: 8px; }
   .group button { padding: 6px 8px; }
   #air-ops, #end-phase { padding: 7px 10px; }
+  .field { gap: 6px; }
 }
+/* limited intelligence: what is known of an enemy force (docs/rules/intel.md) */
+.force.fog header { align-items: center; }
+.force.fog .intel-line { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.tag.scout { background: #ece6f6; color: #4b2f7a; }
+.tag.scout.l0 { background: #eee; color: #666; }

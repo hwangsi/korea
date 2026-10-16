@@ -189,6 +189,12 @@ export function seaMove(g: GameState, leader: number, path: number[]): MoveResul
     const [fx, fy] = xy(g, at);
     const [tx, ty] = xy(g, path[k]);
     const sc = stepCost(g, leader, fx, fy, tx, ty, 'sea');
+    if (sc.blocked === 'enemy' && g.limitedIntel && g.spotted[path[k]] === 0) {
+      // limited intelligence: the landing hex hides enemy forces. Spot it; the player may now assault it.
+      g.spotted[path[k]] = 1;
+      g.version++;
+      return { ...fail('enemyFound', usedBefore), revealed: [path[k]] };
+    }
     if (sc.blocked) return fail(sc.blocked, usedBefore);
     if (sc.lands && k !== path.length - 1) return fail('cannotStop', usedBefore);
     costs.push(sc);

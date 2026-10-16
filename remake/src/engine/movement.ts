@@ -17,6 +17,7 @@ import {
   POSSESSION_CODE, DUAL_INDEX, STATUS_MOVED, STATUS_READY, idx, onMap, unit, sideOf, enemyOf, forceUnits,
   forceHex, corpsOf, isStorm, rnd, snapshot, restore,
 } from './state.ts';
+import { chekHex, nearUnspottedEnemy, communistRecon } from './spotting.ts';
 
 /** Movement modes of MOVE_UNIT: tactical, rail (SYMBOL 83), sea (81) and air (82). */
 export type MoveMode = 'tactical' | 'rail' | 'sea' | 'air';
@@ -578,6 +579,10 @@ export interface MoveResult {
   /** Airborne movement: drop loss ratio (percent) and whether the unit was destroyed. */
   dropLoss?: number;
   destroyed?: boolean;
+  /** Limited intelligence: enemy hexes spotted during the move (CHEK_HEX, or a hidden force in the way). */
+  revealed?: number[];
+  /** The move stopped early because enemy forces showed up ('revealed') or blocked the next hex ('bumped'). */
+  interrupted?: 'revealed' | 'bumped';
 }
 
 export function fail(error: MoveResult['error'], usedBefore = 0): MoveResult {
@@ -613,6 +618,10 @@ export function capture(g: GameState, side: Side, hex: number) {
 /**
  * Tactical movement along `path` (hex indices, origin excluded), one hex at a time with the original
  * per-step rules. Atomic: if any step is illegal, nothing changes.
+ *
+ * Limited intelligence (docs/rules/intel.md 5): the path was planned on what the player knows. A step that
+ * spots new enemy forces (CHEK_HEX) ends the move there, and a hidden enemy force in the next hex stops the
+ * move in front of it (that hex becomes spotted). Neither is reversible.
  */
 export function moveForce(g: GameState, leader: number, path: number[]): MoveResult {
   const why = cannotMove(g, leader);
@@ -629,20 +638,39 @@ export function moveForce(g: GameState, leader: number, path: number[]): MoveRes
   const steps: StepRecord[] = [];
   let at = forceHex(g, leader);
   let captured = false;
+  let nearFog = false;
   const bugOuts: number[] = [];
-  for (const to of path) {
+  const revealed: number[] = [];
+  let interrupted: MoveResult['interrupted'];
+  for (let k = 0; k < path.length; k++) {
+    const to = path[k];
     const fx = at % g.width, fy = Math.floor(at / g.width);
     const tx = to % g.width, ty = Math.floor(to / g.width);
     const sc = stepCost(g, leader, fx, fy, tx, ty, 'tactical', { leaderMove: lead.move });
+    if (sc.blocked === 'enemy' && g.limitedIntel && g.spotted[to] === 0) {
+      // a hidden enemy force in the way: stop in front of it, it is spotted now
+      if (!steps.length || !canStopAt(g, leader, at, 'tactical')) {
+        restore(g, before);
+        g.spotted[to] = 1;
+        return { ...fail('enemyFound', usedBefore), revealed: [to] };
+      }
+      g.spotted[to] = 1;
+      revealed.push(to);
+      interrupted = 'bumped';
+      break;
+    }
     const moved = (lead.status & STATUS_MOVED) !== 0;
     const err = sc.blocked ?? (stepAllowed(lead.move, sc.cost, rate, moved) ? undefined : 'allowance');
     if (err) {
       restore(g, before);
       return fail(err, usedBefore);
     }
+    // MOVE_UNIT 3908: no move back into a hex next to unspotted enemy land (checked before this step spots anything)
+    if (g.limitedIntel && nearUnspottedEnemy(g, tx, ty, side)) nearFog = true;
     // MOVE_UNIT step: allowance, stacks, possession, then every unit of the force
     lead.move = sc.cost < rate ? lead.move + sc.cost : rate;
     lead.move = Math.max(0, Math.min(rate, lead.move));
+    communistRecon(g, lead, to); // 3A01: Communist forces past 12 MP may be spotted
     relocate(g, leader, at, to);
     if (sc.captures) captured = true;
     capture(g, side, to);
@@ -664,19 +692,25 @@ export function moveForce(g: GameState, leader: number, path: number[]): MoveRes
         }
       }
     }
+    // 2DE9 -> CHEK_HEX: enemy forces next to the hex just entered are spotted (level 1)
+    const seen = chekHex(g, tx, ty);
     steps.push({ hex: to, cost: sc.cost, items: sc.items, captured: sc.captures });
     at = to;
+    if (seen.length) {
+      revealed.push(...seen);
+      if (g.limitedIntel && k < path.length - 1 && canStopAt(g, leader, at, 'tactical')) { interrupted = 'revealed'; break; }
+    }
   }
   if (!canStopAt(g, leader, at, 'tactical')) {
     restore(g, before);
     return fail('cannotStop', usedBefore);
   }
-  const undoable = !captured && bugOuts.length === 0;
+  const undoable = !captured && bugOuts.length === 0 && !nearFog && revealed.length === 0;
   g.undo = undoable ? { leader, snapshot: before } : null;
   g.version++;
   return {
     ok: true, steps, usedBefore, usedAfter: usedMove(lead.move), readinessLoss: readinessBefore - lead.readiness, undoable,
-    bugOuts,
+    bugOuts, revealed, interrupted,
   };
 }
 

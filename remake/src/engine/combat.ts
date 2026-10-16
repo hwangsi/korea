@@ -17,6 +17,7 @@ import {
   bugOutUnit, unitAttrition, sideMask, isDeepOcean,
 } from './movement.ts';
 import type { StepCost } from './movement.ts';
+import { raiseAround } from './spotting.ts';
 
 /** Strength modes of GET_STRENGTH. 0 plain, 1 attacker, 2 defender, 3 authorised (full) strength, 4 overrun attacker. */
 export type StrengthMode = 0 | 1 | 2 | 3 | 4;
@@ -586,6 +587,7 @@ function retreat(g: GameState, leader: number, ratio: number, events: CombatEven
     for (const v of forceUnits(g, leader)) { v.x = nx; v.y = ny; }
     g.spotted[ni] = 2;
     if (g.possession[ni] === POSSESSION_CODE.un && side === 'communist') g.possession[ni] = POSSESSION_CODE.communist;
+    raiseAround(g, nx, ny); // GRCMBT 14B3: the hexes around the retreat hex gain a spotting level
     events.push({ kind: 'retreat', leader, to: [nx, ny] });
   } else {
     applyLosses(g, leader, ratio, true, events);

@@ -7,11 +7,13 @@ import type { Pt } from '../engine/hex.ts';
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import { forceUnits, sideOf } from '../engine/state.ts';
 import { plottedAssaults } from '../engine/combat.ts';
-import type { GameState, UnitState } from '../engine/state.ts';
+import type { GameState, Side, UnitState } from '../engine/state.ts';
+import { fogActive, forceIntel, knownEnemyAt, strengthReport } from '../engine/intel.ts';
+import type { IntelLevel } from '../engine/intel.ts';
 import { allowance, frozen } from '../engine/movement.ts';
 import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
-import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO } from '../i18n/ko.ts';
+import { echelonOf, MOVE_MODE_KO, pathLabelKo, AIR_UI_KO, NAVAL_UI_KO, INTEL_UI_KO } from '../i18n/ko.ts';
 import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
@@ -92,6 +94,10 @@ export class MapView {
   showMigAlley = false;
   /** Airstrike targeting: the hex under the mouse and whether it is a legal target. */
   strikeAim: { hex: number; valid: boolean } | null = null;
+  /** Side whose knowledge the map shows (limited intelligence, docs/rules/intel.md). */
+  viewer: Side = 'un';
+  /** Hand-over screen of a two-player game with limited intelligence: draw no forces at all. */
+  hideForces = false;
   onClick: (x: number, y: number) => void = () => {};
   onContext: () => void = () => {};
   onHover: (x: number, y: number) => void = () => {};
@@ -99,7 +105,9 @@ export class MapView {
   private dpr = 1;
   private pending = false;
   private forcesByHex = new Map<number, Force[]>();
-  private forcesVersion = -1;
+  /** What the viewer knows about each drawn force (2 = everything). */
+  private forceLevel = new Map<number, IntelLevel>();
+  private forcesKey = '';
   private drag: { sx: number; sy: number; cx: number; cy: number; moved: boolean } | null = null;
   private netCache: { version: number; net: Uint8Array } | null = null;
   /** Arrow keys held down (smooth keyboard panning). */
@@ -129,22 +137,41 @@ export class MapView {
     this.hexes = game.hexes;
     this.scenario = scenario;
     this.game = game;
-    this.forcesVersion = -1;
+    this.forcesKey = '';
     this.netCache = null;
     this.movement = null;
     this.selectedLeader = null;
     this.invalidate();
   }
 
-  /** Rebuild force lists when the game state changed (moves, undo). */
+  /** Rebuild force lists when the game state or the viewer changed (moves, undo, a new phase). */
   private syncForces() {
     const g = this.game;
-    if (!g || this.forcesVersion === g.version) return;
-    this.forcesVersion = g.version;
+    if (!g) return;
+    const fog = fogActive(g);
+    const key = `${g.version}|${fog ? this.viewer : ''}|${this.hideForces}`;
+    if (this.forcesKey === key) return;
+    this.forcesKey = key;
     this.forcesByHex.clear();
+    this.forceLevel.clear();
+    if (this.hideForces) return;
     g.stacks.forEach((s, i) => {
-      if (s.length) this.forcesByHex.set(i, forcesInHex(g, i % g.width, Math.floor(i / g.width)));
+      if (!s.length) return;
+      const forces = forcesInHex(g, i % g.width, Math.floor(i / g.width)).filter((f) => {
+        const level = fog ? forceIntel(g, this.viewer, f.leader) : 2;
+        this.forceLevel.set(f.leader, level);
+        return level > 0;
+      });
+      if (forces.length) this.forcesByHex.set(i, forces);
     });
+  }
+
+  /** The viewer knows less than everything about this force (an enemy force under limited intelligence). */
+  private fogged(leader: number): boolean {
+    const g = this.game;
+    if (!g || !fogActive(g)) return false;
+    const u = g.units.get(leader);
+    return !!u && sideOf(u) !== this.viewer;
   }
 
   forcesAt(x: number, y: number): Force[] {
@@ -794,8 +821,11 @@ export class MapView {
     const w = HEX * 1.08, h = HEX * 0.82;
     const x = c.x - w / 2, y = c.y - h / 2;
     const selected = this.selectedLeader === f.leader;
-    // forces with no movement left are drawn faded (wargame convention)
-    const spent = this.game ? allowance(this.game, f.leader).remaining === 0 : false;
+    // enemy forces under limited intelligence: the original shows the unit symbol only (docs/rules/intel.md 2.2)
+    const fogged = this.fogged(f.leader);
+    const level = this.forceLevel.get(f.leader) ?? 2;
+    // forces with no movement left are drawn faded (wargame convention); not the enemy's under limited intelligence
+    const spent = this.game && !fogged ? allowance(this.game, f.leader).remaining === 0 : false;
     ctx.save();
     if (spent && !selected) ctx.globalAlpha = 0.62;
     if (selected) {
@@ -853,6 +883,25 @@ export class MapView {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
+    if (fogged) {
+      // level 1: type only; level 2: echelon (from the name) and the strength report
+      if (level >= 2) {
+        const ech2 = echelonOf(f.name || lead.forceName || lead.name);
+        if (ech2) {
+          ctx.font = `700 ${Math.max(8, 7 * z)}px ${FONT}`;
+          const e = ctxS({ x: c.x, y: y + h * 0.1 });
+          ctx.fillText(ech2, e.x, e.y);
+        }
+      }
+      ctx.font = `700 ${Math.max(8, 7.5 * z)}px ${FONT}`;
+      const t2 = ctxS({ x: c.x, y: y + h * 0.84 });
+      ctx.fillText(level >= 2 && this.game
+        ? (strengthReport(this.game, f.leader) === 'under' ? INTEL_UI_KO.underShort : INTEL_UI_KO.fullShort)
+        : '?', t2.x, t2.y);
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
     const ech = echelonOf(f.name || lead.forceName || lead.name);
     if (ech) {
       ctx.font = `700 ${Math.max(8, 7 * z)}px ${FONT}`;
@@ -1048,8 +1097,15 @@ export class MapView {
     const ctx = this.ctx;
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const orders = g.phase === 1 || g.phase === 3;
     for (const p of plottedAssaults(g)) {
-      const color = sideOf(g.units.get(p.leader)!) === 'un' ? '#1f5fbf' : '#c0262d';
+      // orders phases: only the viewer's own plans (the original shows SHOW_ALL_PLOTS in the combat phase only);
+      // otherwise every plan of a force the viewer can see
+      const side = sideOf(g.units.get(p.leader)!);
+      if (this.hideForces) continue;
+      if (orders && !g.gameOver && side !== this.viewer) continue;
+      if (!this.forceLevel.get(p.leader) && fogActive(g)) continue;
+      const color = side === 'un' ? '#1f5fbf' : '#c0262d';
       this.arrow(hexCenter(p.from[0], p.from[1], HEX), hexCenter(p.to[0], p.to[1], HEX), color, Math.max(3, 4 * z));
     }
     ctx.restore();
@@ -1124,7 +1180,7 @@ export class MapView {
       const g = this.game;
       for (const h of vis) {
         const i = h.y * map.width + h.x;
-        if (nodes.has(i) && g.possession[i] === 2 && g.stacks[i].length > 0) {
+        if (nodes.has(i) && knownEnemyAt(g, this.viewer, i)) {
           this.hexPath(hexCenter(h.x, h.y, HEX));
           ctx.stroke();
         }

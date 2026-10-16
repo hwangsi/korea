@@ -323,6 +323,8 @@ export const BLOCK_KO: Record<string, string> = {
   notAlone: '다른 유닛이 붙어 있지 않아야 함',
   noLaunch: '그 옆에 들어갈 수 있는 바다 헥스가 없음',
   seaAssaultLimit: '상륙 공격 명령은 턴당 2개까지 (돌파도 불가)',
+  // intelligence (docs/rules/intel.md)
+  enemyFound: '숨어 있던 적 부대를 발견했습니다 (정찰 1단계)',
 };
 
 export const MOVE_UI_KO = {
@@ -446,6 +448,38 @@ export const COMBAT_UI_KO = {
 } as const;
 
 export const ARMY_NAME_KO = ['북한군', '중공군', '국군', '유엔군'];
+
+// ---------- intelligence / fog of war (docs/rules/intel.md) ----------
+
+export const INTEL_UI_KO = {
+  option: '정보',
+  limited: '정보 제한',
+  complete: '완전 정보',
+  optionTitle: '정보 옵션: 새 게임(시나리오 다시 불러오기)부터 적용',
+  restartConfirm: (label: string) => `정보 옵션을 "${label}"(으)로 바꾸고 이 시나리오를 처음부터 다시 시작할까요?`,
+  level: (n: number) => `정찰 ${n}단계`,
+  levelNote: ['적 부대가 있어도 알 수 없음', '부대 종류만 앎', '부대 이름과 완편 여부까지 앎'],
+  scouting: '정찰',
+  enemyType: (kind: string) => `적 ${kind}`,
+  full: '완편',
+  under: '정원 미달',
+  fullShort: '완편',
+  underShort: '약화',
+  reportHint: '정원의 절반 미만이면 정원 미달. 정찰 보고는 3번에 1번꼴로 미달 부대를 완편으로 잘못 알려요 (전투를 치른 부대는 정확).',
+  unitsUnknown: '유닛 구성 모름',
+  stoppedRevealed: '이동 중 적 부대를 발견해 그 자리에서 멈췄습니다 (정찰 1단계)',
+  stoppedBumped: '앞 헥스에 숨어 있던 적 부대와 마주쳐 멈췄습니다',
+  spotted: (n: number) => `적 부대 ${n}곳 발견`,
+  hiddenEstimate: '정보 제한: 적 전력을 몰라 예상 손실률과 후퇴 확률을 알 수 없어요.',
+  overrunUnknown: '돌파 여부는 실제 전력으로 판정합니다 (가능하면 돌파를 먼저 시도).',
+  plotOrTry: '공격 명령 (돌파 가능하면 돌파)',
+  seaPlotOrTry: '상륙 공격 (돌파 가능하면 돌파 상륙)',
+  dropUnknown: '정찰되지 않은 적 점령지: 적 부대가 숨어 있으면 낙하한 공수 부대가 전멸합니다.',
+  enemyUnits: '?',
+  summaryNote: '정보 제한: 정찰된 적 부대만 보입니다. 정찰 0단계는 숨김, 1단계는 부대 종류, 2단계는 이름과 완편 여부.',
+  completeNote: '완전 정보: 모든 적 부대와 전력이 보입니다.',
+  handoverHidden: '정보 제한: 교대 화면에서는 지도에 부대를 표시하지 않습니다.',
+} as const;
 
 export function combatEventKo(e: { kind: string; name?: string; to?: [number, number] }, forceName: (id: number) => string, leader?: number): string {
   switch (e.kind) {

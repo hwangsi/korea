@@ -63,7 +63,7 @@ export interface GameState {
   stacks: number[][];
   /** Per hex: TERRAIN byte 1, 0 none, 1 United Nations, 2 Communist. */
   possession: Uint8Array;
-  /** Per hex: TERRAIN byte 2 (spotting level; intelligence is not modelled yet). */
+  /** Per hex: TERRAIN byte 2, spotting level 0..2 of the hex for the side that does not hold it (docs/rules/intel.md). */
   spotted: Uint8Array;
   airfields: AirfieldState[];
   /** CORPS ranges; index 1 (CPLA) gets the rough/mountain discount. */
@@ -128,6 +128,8 @@ export interface GameState {
   railDemand: [number, number];
   /** mulberry32 state */
   rng: number;
+  /** Seed of the new game: the false strength reports (STATUS 0x10) are derived from it, not from `rng` (intel.ts). */
+  intelSeed: number;
   /** Increments on every change, so views can cache derived data. */
   version: number;
   /** One level of undo for the last movement order (see movement.ts). */
@@ -218,6 +220,7 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     interdiction: [scenario.interdiction?.[0] ?? 0, scenario.interdiction?.[1] ?? 0],
     railDemand: [scenario.railDemand?.[0] ?? 0, scenario.railDemand?.[1] ?? 0],
     rng: seed >>> 0,
+    intelSeed: seed >>> 0,
     version: 0,
     undo: null,
   };

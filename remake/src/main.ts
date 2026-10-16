@@ -13,7 +13,8 @@ import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
 import { pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
-import { orderReach, defaultMode, seaMove, seaAssault, seaAssaultPreview, airDrop, airdropLoss, dropOnEnemy } from './engine/naval.ts';
+import { orderReach, defaultMode, seaMove, seaAssault, seaAssaultPreview, airDrop, airdropLoss } from './engine/naval.ts';
+import { fogActive, viewerSide, perceivedState, knownForces, dropRisk } from './engine/intel.ts';
 import { assault, assaultPreview, cancelAssault } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
 import { startNewGame, endPlayerPhase, finishGame, continuePastEnd } from './engine/turn.ts';
@@ -26,7 +27,7 @@ import { territoryBalance } from './engine/endturn.ts';
 import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
-  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO,
+  PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
@@ -106,6 +107,19 @@ async function main() {
 
   const select = $('#scenario') as unknown as HTMLSelectElement;
   select.innerHTML = SCENARIOS.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
+  /** REALITY[4] for the next new game (docs/rules/intel.md 5: limited by default, the historical setting). */
+  let limitedIntel = true;
+  const intelSelect = $('#intel') as unknown as HTMLSelectElement;
+  intelSelect.innerHTML = `<option value="limited">${INTEL_UI_KO.limited}</option><option value="complete">${INTEL_UI_KO.complete}</option>`;
+  intelSelect.title = INTEL_UI_KO.optionTitle;
+
+  /** Side whose knowledge the screen shows. */
+  const viewer = () => (game ? viewerSide(game) : 'un');
+  /** Forces of a hex the viewer knows about (everything with complete intelligence). */
+  const knownAt = (g: GameState, x: number, y: number) => {
+    const known = new Set(knownForces(g, viewerSide(g), idx(g, x, y)).map((f) => f.leader));
+    return forcesInHex(g, x, y).filter((f) => known.has(f.leader));
+  };
 
   /** Orders can be given in an orders phase, to forces of the side whose phase it is. */
   const canCommand = (leader: number) =>
@@ -159,6 +173,9 @@ async function main() {
       }
       : null;
     view.airstrikes = strikeMarks;
+    view.viewer = viewer();
+    // two players, limited intelligence: the hand-over screen shows no forces at all
+    view.hideForces = !!game && !!banner && fogActive(game) && game.computerSide === 0;
     view.showMigAlley = !!game && game.scenarioNo < 4 && (airOpen || inStrikes() || orders?.mode === 'air');
     if (!inStrikes() || !pendingAirstrike(game!)) view.strikeAim = null;
     view.invalidate();
@@ -319,7 +336,9 @@ async function main() {
     if (!game) return;
     if (!canCommand(leader)) { orders = null; return; }
     const m = mode ?? defaultMode(game, leader);
-    orders = { leader, mode: m, reach: orderReach(game, leader, m), pinned: null, hover: null, assault: null };
+    // the reach is planned on what this side knows: hidden enemy forces are not in it (docs/rules/intel.md 5)
+    const known = perceivedState(game, sideOf(unit(game, leader)));
+    orders = { leader, mode: m, reach: orderReach(known, leader, m), pinned: null, hover: null, assault: null };
     const at = forceHex(game, leader);
     if (at >= 0) sel = [at % game.width, Math.floor(at / game.width)];
   }
@@ -357,10 +376,16 @@ async function main() {
       if (res.bugOuts?.length) message = { kind: 'warn', text: `${MOVE_UI_KO.bugOutMoving}: ${res.bugOuts.map((id) => unitNameKo(unit(game!, id).name)).join(', ')}` };
       if (mode === 'sea') message = { kind: res.beachLoss ? 'warn' : 'ok', text: NAVAL_UI_KO.seaDone(res.sealift ?? 0) + (res.beachLoss ? ` · ${NAVAL_UI_KO.beachWarn}` : '') };
       if (mode === 'air') message = res.destroyed ? { kind: 'error', text: NAVAL_UI_KO.airDestroyed } : { kind: 'ok', text: NAVAL_UI_KO.airDone(res.dropLoss ?? 0) };
+      if (res.interrupted) {
+        message = { kind: 'warn', text: `${res.interrupted === 'bumped' ? INTEL_UI_KO.stoppedBumped : INTEL_UI_KO.stoppedRevealed} · ${parts.slice(1).join(' · ')}` };
+      } else if (res.revealed?.length && fogActive(game)) {
+        message = { kind: message.kind, text: `${message.text} · ${INTEL_UI_KO.spotted(res.revealed.length)}` };
+      }
       if (res.destroyed) { orders = null; sel = null; return; }
       startOrders(leader);
     } else {
-      message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
+      const found = res.error === 'enemyFound';
+      message = { kind: found ? 'warn' : 'error', text: found ? BLOCK_KO.enemyFound : `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
       startOrders(leader, mode);
     }
   }
@@ -480,7 +505,7 @@ async function main() {
     const i = idx(game, x, y);
     const h = game.hexes[i];
     const owner = game.possession[i];
-    const forces = forcesInHex(game, x, y);
+    const forces = knownAt(game, x, y);
     const place = placeAt(x, y, game.scenarioNo === 4);
     const feature = featureAt(x, y);
     let text = `(${x}, ${y}) ${place ? place.label + ' · ' : ''}${feature ? feature.label + (feature.elevation ? ` ${feature.elevation}m` : '') + ' · ' : ''}${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
@@ -502,7 +527,8 @@ async function main() {
         if (orders.mode === 'sea') text += ` · ${n.step.lands ? NAVAL_UI_KO.landing : `${NAVAL_UI_KO.atSeaStep} (${MOVE_UI_KO.cannotStopHere})`}`;
         else if (orders.mode === 'air') {
           text += ` · ${NAVAL_UI_KO.dropLoss} ${airdropLoss(game, x, y)}%`;
-          if (dropOnEnemy(game, i)) text += ` · ${NAVAL_UI_KO.dropConfirmDanger}`;
+          const risk = dropRisk(game, viewer(), i);
+          if (risk) text += ` · ${risk === 'enemy' ? NAVAL_UI_KO.dropConfirmDanger : INTEL_UI_KO.dropUnknown}`;
           if (!n.canStop) text += ` · ${MOVE_UI_KO.cannotStopHere}`;
         } else {
           text += orders.mode === 'rail' ? ` · ${MOVE_UI_KO.railStops}` : ` · ${MOVE_UI_KO.after} ${orders.reach.rate - n.used}`;
@@ -569,10 +595,14 @@ async function main() {
     select.value = id;
     scenario = await getJson<Scenario>(`${DATA}/scenarios/${id}.json`);
     game = createGameState(map, scenario, (Date.now() >>> 0) || 1950);
-    const events = startNewGame(game);
+    intelSelect.value = limitedIntel ? 'limited' : 'complete';
+    const events = startNewGame(game, { limitedIntel });
     view.setData(map, scenario, game);
     const g = game;
-    ctx = { map, hexes: g.hexes, scenario, game: g, forcesAt: (x, y) => forcesInHex(g, x, y), supplyNet: () => view.supplyNet() };
+    ctx = {
+      map, hexes: g.hexes, scenario, game: g, forcesAt: (x, y) => knownAt(g, x, y), supplyNet: () => view.supplyNet(),
+      viewer: () => viewerSide(g),
+    };
     sel = null;
     orders = null;
     message = null;
@@ -587,6 +617,17 @@ async function main() {
 
   // give the keyboard back to the map (arrow keys would otherwise switch the scenario)
   select.addEventListener('change', () => { select.blur(); load(select.value); });
+  intelSelect.addEventListener('change', () => {
+    intelSelect.blur();
+    const want = intelSelect.value === 'limited';
+    const label = want ? INTEL_UI_KO.limited : INTEL_UI_KO.complete;
+    if (game && want !== game.limitedIntel && !window.confirm(INTEL_UI_KO.restartConfirm(label))) {
+      intelSelect.value = limitedIntel ? 'limited' : 'complete';
+      return;
+    }
+    limitedIntel = want;
+    load(select.value);
+  });
 
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;
@@ -618,6 +659,9 @@ async function main() {
     closeBanner: () => { if (banner) onBanner(banner.buttons[0].action); },
     bannerAction: (a: string) => onBanner(a),
     cancel, undo,
+    /** Intelligence option for the next new game (true = limited); `load(id)` starts it. */
+    setIntel: (limited: boolean) => { limitedIntel = limited; },
+    get viewer() { return viewer(); },
     /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
     setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },
   };

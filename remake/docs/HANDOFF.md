@@ -3,9 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16 21:10, 노트북(C:\Users\hwang\AIprojects\korea). **해상·공수 이동 완료** (규칙 `docs/rules/naval.md`, 엔진 `naval.ts`
-  + `movement.ts` MOVE_COST 해상·공수 분기 + `combat.ts` 상륙 공격 처리, 이동 모드 4개 UI, 테스트 57개 통과,
-  standalone 브라우저 검증: 크로마이트 인천 상륙(돌파·상륙 공격·전진), 차가운 강철 187공수 낙하). 다음은 7장 정보(안개) 화면
+- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **정보(안개) 화면 완료** (규칙 `docs/rules/intel.md`, 엔진 `intel.ts`·`spotting.ts`
+  + `movement.ts` 이동 중 정찰·발견 정지·되돌리기 제한, `combat.ts` 후퇴 주변 정찰, 상단 "정보 제한/완전 정보" 선택, 테스트 66개 통과,
+  standalone 브라우저 검증: 용이 깨어나다 양쪽 시점·교대 화면·이동 중 발견, 크로마이트 인천 숨은 적 발견, 차가운 강철 낙하 경고). 다음은 7장 옵션 화면
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -87,6 +87,20 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     공수: 보라색 범위, 낙하 손실률과 내역(지형·흐림·미그 앨리), 적 부대 헥스 전멸 경고, 미그 앨리 경계 표시.
     바다 위 부대는 선택하면 바로 해상 모드, 지도 말에 배 배지. 전투 결과에 "상륙 실패: 일본으로 철수"·"전진"
 
+- **정보(안개)** (`docs/rules/intel.md`, `src/engine/intel.ts`, `src/engine/spotting.ts`, `tests/intel.test.ts` 9개)
+  - 규칙: SHOW_HEX(정찰 0이고 적 점령인 헥스의 부대만 숨김, 1과 2는 지도에서 같음), UNIT_INFORMATION(적 헥스: 정찰 1 "Enemy Infantry",
+    2 부대 이름 + understrength/full strength), IDENTIFY_UNIT, 보는 쪽(컴퓨터 단계면 사람 쪽). **STATUS 0x10 = 이번 턴 전력 보고 거짓**(GET_STRENGTH
+    모드 3이 처음 볼 때 0x20 + 1/3로 0x10, 지상전이 0x10 해제, 거짓이면 항상 "완편"). 이동 중 CHEK_HEX(들어간 헥스 주변 적 부대 정찰 1),
+    공산군 12점 규칙(`RND(1,4) > 하늘`, movement.md의 부등호가 반대였던 것 정정), 후퇴 헥스 주변 +1(GRCMBT `14b3`), 되돌리기 제한
+    NEAR_THE_FRONT(x, y, −PLAYER). LOSS_INFLATOR는 쓰기만 하고 EXE 어디서도 읽지 않음(매뉴얼의 "보고 과장" 미구현). 매뉴얼과 다른 점 5가지
+  - 엔진: `viewerSide`, `forceIntel`/`knownForces`/`hexIntel`, `strengthReport`/`misreported`(게임 난수 대신 시드·턴·선두 해시, GameState.intelSeed),
+    `perceivedState`(숨은 적 부대를 뺀 상태: 이동 범위 계산용), `dropRisk`. `moveForce`: 새 적을 발견하면 그 걸음에서 멈춤(`interrupted:'revealed'`),
+    다음 헥스에 숨은 적이 있으면 앞에서 멈추고 정찰 1(`'bumped'`, 첫 걸음이면 `error:'enemyFound'`). `seaMove`: 상륙 헥스에 숨은 적이면 `enemyFound`
+  - UI: 상단 "정보 제한 / 완전 정보"(기본 제한, 바꾸면 확인 후 새 게임). 지도: 숨은 적 없음, 정찰 1은 기호와 "?", 2는 편제와 "완편/약화",
+    두 사람 대전의 교대 알림 창 동안 부대 안 그림, 명령 단계의 공격 화살표는 자기 것만, 적 부대 흐림(이동력 소진) 없음. 헥스 패널: 정찰 단계 줄,
+    적 부대 카드(종류/이름·완편 여부, 유닛 목록 없음). 공격·상륙 공격 미리보기: 적 전력·예상 손실·후퇴·돌파 여부 감춤.
+    공수: 정찰 0 적 점령지면 "숨어 있으면 전멸". 요약의 적 유닛 수 "?". 이동 메시지 "적 부대 발견"
+
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
 - 시나리오 날짜: 1950-06-25 / 1950-09-15 / 1950-11-22 / 1995-06-25
@@ -98,8 +112,8 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- 정보(안개) 화면 표시(엔진의 정찰 단계 계산은 있음, UI는 완전 정보), 옵션 화면(역량·개입·정보·플레이 모드), AI, 저장/불러오기,
-  보고서 화면(전략 보고, 비행장·항구), 전체 한글화, 새 그래픽/사운드
+- 옵션 화면(역량·개입·플레이 모드·Air Campaign, 정보는 상단 임시 선택만), AI, 저장/불러오기,
+  보고서 화면(전략 보고, 비행장·항구), 전략 개관 지도(DO_OVERVIEW), 전체 한글화, 새 그래픽/사운드
 - 컴퓨터 진영을 고르면 AI가 없어 그 진영 단계가 그냥 지나감 (기본은 두 사람 대전)
 
 ## 3. 폴더 구조
@@ -122,6 +136,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/supply.md                 보급 (보급망, 재보급, 비축, 보충·재편성)
     docs/rules/air.md                    항공 (약화, 기지, 임무, 공산 요격 수준, 1995 제공권, 차단, 공습)
     docs/rules/naval.md                  해상·공수 이동 (자격, 수송 수요, 상륙, 상륙 공격, 일본 철수, 공수 낙하)
+    docs/rules/intel.md                  정보(안개) (정찰 단계, 누가 무엇을 보는가, 정찰 갱신, 되돌리기 제한, 거짓 전력 보고)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -133,6 +148,8 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         supply.ts                        보급망·재보급·턴 시작 이동력
         air.ts                           항공 작전 (기지·임무·예상치·DO_AIR_COMBAT·공습)
         naval.ts                         해상·공수 이동 명령 (자격·범위·상륙·상륙 공격·공수 낙하)
+        intel.ts                         정보: 보는 쪽, 부대별 정찰 단계, 전력 보고, 아는 상태(perceivedState)
+        spotting.ts                      이동·전투의 정찰 갱신 (CHEK_HEX, NEAR_THE_FRONT, 12점 규칙, 후퇴 주변)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
@@ -181,7 +198,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   `__app.game`, `__app.orders`, `__app.click(x, y)`, `__app.hover(x, y)`, `__app.cancel()`, `__app.undo()` (마우스 조작 흉내),
   `__app.endPhase()` (확인 없이 단계 종료, 전투 단계에서는 남은 공습을 프로그램에 맡기고 지상전), `__app.banner`, `__app.closeBanner()`,
   `__app.bannerAction('end-game' | 'override')`, `__app.toggleAir()` (항공 작전 패널), `__app.airOpen`. 전투 단계 공습 중에는 `__app.click(x, y)`가 공습.
-  `__app.setMode('tactical' | 'rail' | 'sea' | 'air')` (선택한 부대의 이동 모드). 해상 모드에서는 적 해안 `click` 두 번이 상륙 공격
+  `__app.setMode('tactical' | 'rail' | 'sea' | 'air')` (선택한 부대의 이동 모드). 해상 모드에서는 적 해안 `click` 두 번이 상륙 공격.
+  정보: 기본이 "정보 제한"이라 적 부대 일부가 안 보임. `__app.setIntel(false)` 뒤 `__app.load(id)`면 완전 정보 새 게임, `__app.viewer`(지금 보는 쪽).
+  두 사람 대전 + 정보 제한에서는 단계 알림 창이 떠 있는 동안 지도에 부대가 없음(`view.hideForces`)
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
   (어기면 standalone.html 전체가 구문 오류로 아무것도 안 뜨고 오류도 안 보임)
@@ -222,32 +241,38 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 | 항공 | OPSSUBS.AIR_OPERATIONS, EFFECTIVE_STRENGTH, DETERMINE_INTERDICTION, DETERMINE_INTERCEPTION, CHOOSE_BASES / AIRCMBT.DO_AIR_COMBAT |
 | 해상·공수 | MOVEUNIT.AMPHIBIOUS, UNIT_COCKED, MOVE_UNIT(`46fd`, 중첩 `2536`·`23f2`·`22e3`·`2645`·`274d`), MOVE_COST `1588`~`1717` / GRCMBT `0105`·`1e11`·`2458` |
 | 보급 | SUPPLY.DETERMINE_SUPPLY, REST_UP |
+| 정보(안개) | EURSUBS1.SHOW_HEX, CHEK_HEX, IDENTIFY_UNIT, DO_OVERVIEW / HEXSTUFF.UNIT_INFORMATION / MOVEUNIT.NEAR_THE_FRONT / KOREA.FORCE_SPOTTING / ENDTURN.DO_INTEL |
+| 옵션·새 게임 | TACSUBS.S_DATA `446a`(시작 메뉴, 문자열은 그 앞 중첩 구간 `4385`~), LOAD_NEW_GAME `4b62`, SCENARIO_DISPLAY `4153` / KOREA.NEW_GAME `0990`, INIT_GAME `0389` |
+| 저장 | TACSUBS.SAVE_GAME `1ee0`, LOAD_OLD_GAME `3bf4` / KOREA.GAME_SAVE `0a3a` |
 | 턴 진행 | KOREA.PHASE_PULSE, PLAYER_PHASE / ENDTURN.NEXT_TURN, GROUND_REINFORCEMENTS, DO_INTEL, DO_PATROLS, MINE_WARFARE, CHECK_CHINA, GAME_OVER |
 | AI | WARRIORS.KIM (공산), WALTON (유엔) / AISUBS.* |
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 정보(안개) 화면
+## 7. 다음 작업: 옵션 화면 (새 게임 설정)
 
-목표: 정보 제한 옵션(REALITY[4], 바이트 0x8A77)일 때 원작처럼 적 부대를 정찰 단계(TERRAIN 바이트 2, 0/1/2)에 따라 감추거나
-대략만 보여주기. 엔진은 정찰 단계를 이미 계산한다(FORCE_SPOTTING, DO_INTEL, UNSPOT_EVERYTHING, 이동·전투·공습의 정찰 갱신). 지금 UI는 완전 정보.
+목표: 원작 시작 메뉴(매뉴얼 2.1·2.11)의 선택을 모두 고를 수 있는 "새 게임" 화면. 지금은 시나리오 선택과 상단 "정보 제한/완전 정보"만 있고
+나머지는 고정값(`startNewGame` 기본: 역량 3, 두 사람, 중공군 개입 역사적, Air Campaign Player Control).
 
-1. 규칙 확정 → `docs/rules/intel.md`
-   - 표시: EURSUBS1.SHOW_HEX `1db8:0713`(2397바이트, 부대 그리기), IDENTIFY_UNIT `2ab4`, LOCATE_UNIT `27fd`, HEXSTUFF `0db1`·`1085`(헥스 화면의 REALITY[4] 분기)
-   - 정찰 갱신: KOREA.FORCE_SPOTTING, ENDTURN.DO_INTEL·UNSPOT_EVERYTHING(`1482`의 REALITY[4]), MOVE_UNIT `3a26`(공산군 12점 초과 이동 시 정찰 +1),
-     상륙 공격 목표 정찰(`22e3`), 공수 낙하 헥스(정찰 1)
-   - 되돌리기 제한(movement.md 4: 정찰 0인 적 점령 헥스 인접 이동은 되돌릴 수 없음), LOSS_INFLATOR(ENDTURN `1339` 근처, 공습·전투 피해 보고 과장)
-   - 매뉴얼의 정보 절(Limited Intelligence)과 대조
-2. 엔진: "보이는 상태"를 구하는 순수 함수(진영별), 되돌리기 제한 연결, 테스트
-3. UI: 지도 말·헥스 패널·공격 미리보기·상륙 공격 미리보기·공수 낙하 경고가 보이는 정보만 쓰도록. 두 사람 대전은 단계 알림 창이 이미 교대를 막음
-   (공수 낙하의 "적 부대 있음 → 전멸" 경고는 정보 제한이면 원작처럼 "적 점령지: 전멸할 수 있음"으로만)
-4. 이어서: 옵션 화면(역량·개입·플레이 모드·Air Campaign·정보: REALITY[1..4]) → 저장/불러오기 → AI(WARRIORS.KIM/WALTON,
-   해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀) → 보고서 화면
-   (항공은 이미 컴퓨터 진영이면 자동 임무·자동 목표로 동작)
+1. 규칙 확정 → `docs/rules/options.md`
+   - 메뉴: TACSUBS.S_DATA `446a`(선택 항목·순서, 문자열 "Pushover"~"Hideous!", "Red/UN Solitaire", "Program Control", "Limited/Complete" 등은 `4385`~ 중첩 구간),
+     SCENARIO_DISPLAY `4153`, LOAD_NEW_GAME `4b62`(메뉴 값을 SCENARIO[2]·[3]·[6], REALITY[1..4]에 씀. air.md 7장에 "4 Play Mode, 5 Air Campaign, 6 Intelligence" 순서까지 확인됨)
+   - 확인할 것: 역량 "Random"의 처리, REALITY[1]·[3]의 정체(아직 쓰는 코드 없음), S_DATA가 `koreaNs.dat`를 고르는 조건(플레이 모드 1 또는 TEST_BOTH_PLAYERS),
+     컴퓨터 진영이 있을 때의 차이(INIT_GAME 0턴 뉴스, 소리반 교대 창, 항공 자동 임무, 정보는 컴퓨터가 항상 제한)
+2. 엔진: `StartOptions` 정리(무작위 역량 등), 테스트
+3. UI: 새 게임 화면(시나리오 카드 + 선택 항목, 마우스 중심). 상단의 시나리오·정보 select는 이 화면으로 옮기고,
+   상단에는 "새 게임" 버튼만(1440px에서 한 줄 유지 확인). 컴퓨터 진영 선택 시 "AI 없음: 그 진영은 움직이지 않음" 안내
+4. 이어서: 저장/불러오기(SAVE_GAME `1ee0`, LOAD_OLD_GAME `3bf4`, GameState 직렬화, 브라우저 저장소) → AI(WARRIORS.KIM/WALTON,
+   해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀. AI도 정찰 바이트를 씀: AISUBS `0818`·`0e2c`, WARRIORS `04ec`) → 보고서 화면
+   (항공은 이미 컴퓨터 진영이면 자동 임무·자동 목표로 동작). 전략 개관 지도(DO_OVERVIEW)는 보고서와 함께
 
 ## 8. 미해결 질문
 
-- STATUS 0x10의 정확한 의미 (지상전이 해제하고 0x20을 설정). 나머지는 확정: 0x01 재보급, 0x02 후퇴, 0x04 이동, 0x08 제거, 0x40 준비도 75+, 0x80 공중 보급
+- (해결) STATUS 0x10 = 이번 턴 전력 보고 거짓, 0x20 = 전력 보고 정해짐(intel.md 2.4). 이제 모든 비트 확정
+- 정보: 원작은 헥스 정보를 볼 때 GET_STRENGTH 모드 3이 RND(1,3)을 소비해 난수 순서가 화면 조작에 따라 달라짐. 리메이크는 시드 해시로 대신했으므로
+  같은 시드라도 원작과 난수 순서가 일치하지 않음(원작도 조작마다 달라 비교 불가능). 모드 3을 부르는 다른 곳(보고서, AI)도 0x20을 세우는지 보고서·AI 작업 때 확인
+- 정보: 공산군 12점 규칙이 철도 이동에도 걸리는지(걸음 코드는 공통이지만 철도 중 MOVE는 출발 값 그대로라 사실상 안 걸림). 지금은 일반 이동만 적용
+- 정보: 원작은 적 점령 바다 헥스(점령값이 남은 곳)의 아군 함대도 정찰 0이면 숨김. 리메이크는 아군을 항상 표시(원본 게임에서 실제로 보이는지 확인해 볼 것)
 - SCENARIO[1], [4], [7], REALITY[1]·[3], 점령값 3 (쓰는 코드 없음). UTILITY_SPACE[9]는 확정: 턴당 상륙 공격 명령 수(naval.md 3)
 - 해상: 바다 헥스에도 점령값(0/1/2)이 들어 있음(예: 11,41은 유엔). 해상 이동은 바꾸지 않지만 ENEMY_ADJACENT·순찰이 이 값을 읽음(원작 그대로 둠)
 - 해상: 바다에서 턴을 시작한 부대는 정리 단계가 미리 1점 청구해 두고, 항구에 상륙하면 1점이 돌아옴(원작 그대로). 항구→항구는 턴당 3개(매뉴얼은 4개).

@@ -3,13 +3,14 @@
 
 import type { EquipmentType, Force, Hex, MapData, Scenario } from '../data/types.ts';
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
-import type { GameState, UnitState } from '../engine/state.ts';
-import { forceUnits, sideOf, unit, activeSide } from '../engine/state.ts';
+import type { GameState, Side, UnitState } from '../engine/state.ts';
+import { forceUnits, sideOf, unit, activeSide, POSSESSION_CODE } from '../engine/state.ts';
+import { fogActive, forceIntel, hexIntel, strengthReport, dropRisk } from '../engine/intel.ts';
 import { allowance, canEntrain, canBugOut, inPort, isDeepOcean } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
 import { assaultTarget, atSea } from '../engine/combat.ts';
 import type { AssaultPreview, CombatReport } from '../engine/combat.ts';
-import { seaMoveBlock, airMoveBlock, seaStartCost, airdropLossParts, dropOnEnemy, MAX_SEALIFT } from '../engine/naval.ts';
+import { seaMoveBlock, airMoveBlock, seaStartCost, airdropLossParts, MAX_SEALIFT } from '../engine/naval.ts';
 import type { SeaAssaultPreview } from '../engine/naval.ts';
 import type { ResolutionReport } from '../engine/turn.ts';
 import {
@@ -25,7 +26,7 @@ import {
   TERRAIN_KO, NATION_KO, KIND_KO, EXPERIENCE_KO, EQUIPMENT_KO, POSSESSION_KO, SIDE_OF, SIDE_KO,
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
-  AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo,
+  AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
@@ -40,9 +41,30 @@ export interface PanelContext {
   hexes: Hex[];
   scenario: Scenario;
   game: GameState;
+  /** Forces of a hex that the viewer knows about (limited intelligence hides the others). */
   forcesAt: (x: number, y: number) => Force[];
   /** Supply net of the current possession (SUPPLY.DETERMINE_SUPPLY), computed on demand. */
   supplyNet: () => Uint8Array;
+  /** Side whose knowledge the screen shows (intel.ts viewerSide). */
+  viewer: () => Side;
+}
+
+/** The viewer only knows part of this force: an enemy force under limited intelligence. */
+function fogged(ctx: PanelContext, leader: number): boolean {
+  return fogActive(ctx.game) && sideOf(unit(ctx.game, leader)) !== ctx.viewer();
+}
+
+/**
+ * What the viewer may read about a force (UNIT_INFORMATION): level 1 "enemy infantry", level 2 the name and the
+ * strength report; the full name otherwise.
+ */
+function knownTitle(ctx: PanelContext, leader: number): string {
+  const g = ctx.game;
+  if (!fogged(ctx, leader)) return forceTitle(g, leader);
+  const lead = unit(g, leader);
+  const level = forceIntel(g, ctx.viewer(), leader);
+  if (level >= 2) return `${forceTitle(g, leader)} · ${strengthReport(g, leader) === 'under' ? INTEL_UI_KO.under : INTEL_UI_KO.full}`;
+  return `${INTEL_UI_KO.enemyType(KIND_KO[lead.kind] ?? lead.kind)} (${NATION_KO[lead.nation]})`;
 }
 
 /** What the panel shows when no hex is selected after the turn moved on. */
@@ -111,7 +133,9 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
   const s = ctx.scenario;
   const g = ctx.game;
   const onMap = g.stacks.flat().flatMap((l) => forceUnits(g, l));
-  const side = (k: 'un' | 'communist') => onMap.filter((u) => SIDE_OF[u.nation] === k).length;
+  // limited intelligence: the enemy's strength on the map is not known
+  const fog = fogActive(g);
+  const side = (k: 'un' | 'communist') => (fog && k !== ctx.viewer() ? INTEL_UI_KO.enemyUnits : onMap.filter((u) => SIDE_OF[u.nation] === k).length);
   const waiting = [...g.units.values()].filter((u) => u.x < -1).length;
   const news = newsItems(ctx).slice(0, 12);
   const lvl = territoryBalance(g);
@@ -155,7 +179,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
         <li>드래그 또는 방향키: 지도 이동 (Shift+방향키: 빠르게) · 휠: 확대·축소</li>
       </ul>
-      <p class="muted small">두 사람이 번갈아 하는 방식입니다 (컴퓨터 AI는 아직 없음). 안개·정찰은 아직 "완전 정보"로 표시합니다.</p>
+      <p class="muted small">두 사람이 번갈아 하는 방식입니다 (컴퓨터 AI는 아직 없음). ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
     </section>`;
 }
 
@@ -460,8 +484,20 @@ function plotLine(ctx: PanelContext, leader: number): string {
     ${sea ? `<span class="muted small">${esc(NAVAL_UI_KO.noCancelAtSea)}</span>` : `<button class="btn small" data-action="cancel-plot">${esc(COMBAT_UI_KO.cancelPlot)}</button>`}</div>`;
 }
 
-function versusBlock(g: GameState, est: NonNullable<AssaultPreview['estimate']>): string {
-  const rows = (ids: number[]) => ids.map((l) => `<li>${esc(forceTitle(g, l))}</li>`).join('');
+function versusBlock(ctx: PanelContext, est: NonNullable<AssaultPreview['estimate']>): string {
+  const g = ctx.game;
+  const rows = (ids: number[]) => ids.map((l) => `<li>${esc(knownTitle(ctx, l))}</li>`).join('');
+  if (fogActive(g)) {
+    // limited intelligence: own strength only, the defenders as far as they are spotted (docs/rules/intel.md 5)
+    return `
+      <div class="versus">
+        <div><span class="label">${esc(COMBAT_UI_KO.attackerSide)}</span><b>${est.aL}</b><span class="muted"> / ${est.aS}</span><ul>${rows(est.attackers)}</ul></div>
+        <div><span class="label">${esc(COMBAT_UI_KO.defenderSide)}</span><b>?</b><span class="muted"> / ?</span><ul>${rows(est.defenders)}</ul></div>
+      </div>
+      <p class="muted small">${esc(COMBAT_UI_KO.lethality)} / ${esc(COMBAT_UI_KO.survivability)} (원작 전투 합산 단위: 살상÷5, 생존÷50)${est.artillery.attacker ? ` · ${esc(COMBAT_UI_KO.artillery)} ${est.artillery.attacker}` : ''}</p>
+      <p class="note">${esc(INTEL_UI_KO.hiddenEstimate)}</p>
+      ${est.attackers.length > 1 ? `<p class="muted small">${esc(COMBAT_UI_KO.joined)}</p>` : ''}`;
+  }
   return `
       <div class="versus">
         <div><span class="label">${esc(COMBAT_UI_KO.attackerSide)}</span><b>${est.aL}</b><span class="muted"> / ${est.aS}</span><ul>${rows(est.attackers)}</ul></div>
@@ -479,23 +515,25 @@ function versusBlock(g: GameState, est: NonNullable<AssaultPreview['estimate']>)
 /** Assault from the sea (docs/rules/naval.md 3). */
 function seaAssaultCard(ctx: PanelContext, a: NonNullable<OrdersView['assault']>): string {
   const p = a.sea!;
-  const g = ctx.game;
-  const overrun = p.overrun?.possible;
+  const fog = fogActive(ctx.game);
+  // limited intelligence: whether an overrun is possible depends on the hidden enemy strength
+  const overrun = !fog && p.overrun?.possible;
   const notes: string[] = [];
   if (p.allowed) {
     notes.push(`<p class="muted small">${esc(NAVAL_UI_KO.seaAssaultNote)}</p>`);
     if (overrun) notes.push(`<p class="note">${esc(NAVAL_UI_KO.seaOverrun)}</p>`);
+    if (fog) notes.push(`<p class="muted small">${esc(INTEL_UI_KO.overrunUnknown)}</p>`);
     if (!p.canPlot) notes.push(`<p class="note warn">${esc(NAVAL_UI_KO.seaAssaultLast)}</p>`);
     if (p.beachLoss) notes.push(`<p class="note warn">${esc(NAVAL_UI_KO.beachWarn)}</p>`);
   } else notes.push(`<p class="note warn">${esc(BLOCK_KO[p.error ?? ''] ?? p.error ?? '')}</p>`);
   const from = p.from >= 0 ? `<p class="muted small">${esc(NAVAL_UI_KO.atSeaStep)}: ${esc(placeName(ctx, p.from))} · ${esc(NAVAL_UI_KO.startCost(p.sealift))} · ${esc(NAVAL_UI_KO.seaAssaults(p.assaultsUsed))}</p>` : '';
-  const label = overrun ? NAVAL_UI_KO.seaTry : NAVAL_UI_KO.seaPlot;
+  const label = fog ? INTEL_UI_KO.seaPlotOrTry : overrun ? NAVAL_UI_KO.seaTry : NAVAL_UI_KO.seaPlot;
   return `
     <section class="card preview assault ${a.pinned ? 'pinned' : ''}">
       <p class="eyebrow">${esc(NAVAL_UI_KO.seaAssaultPreview)}</p>
       <h3>${esc(placeName(ctx, a.hex))}</h3>
       ${from}
-      ${p.estimate ? versusBlock(g, p.estimate) : ''}
+      ${p.estimate ? versusBlock(ctx, p.estimate) : ''}
       ${notes.join('')}
       ${a.pinned && p.allowed ? `<div class="actions"><button class="btn primary danger-fill" data-action="confirm-assault">${esc(label)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
     </section>`;
@@ -505,23 +543,13 @@ function assaultCard(ctx: PanelContext, o: OrdersView): string {
   const a = o.assault!;
   if (a.sea) return seaAssaultCard(ctx, a);
   const p = a.preview!;
-  const g = ctx.game;
   const est = p.estimate;
-  const overrun = p.overrun?.possible;
-  const rows = (ids: number[]) => ids.map((l) => `<li>${esc(forceTitle(g, l))}</li>`).join('');
-  const body = est ? `
-      <div class="versus">
-        <div><span class="label">${esc(COMBAT_UI_KO.attackerSide)}</span><b>${est.aL}</b><span class="muted"> / ${est.aS}</span><ul>${rows(est.attackers)}</ul></div>
-        <div><span class="label">${esc(COMBAT_UI_KO.defenderSide)}</span><b>${est.dL}</b><span class="muted"> / ${est.dS}</span><ul>${rows(est.defenders)}</ul></div>
-      </div>
-      <p class="muted small">${esc(COMBAT_UI_KO.lethality)} / ${esc(COMBAT_UI_KO.survivability)} (원작 전투 합산 단위: 살상÷5, 생존÷50)${est.artillery.attacker || est.artillery.defender ? ` · ${esc(COMBAT_UI_KO.artillery)} ${est.artillery.attacker}/${est.artillery.defender}` : ''}${est.naval ? ` · ${esc(COMBAT_UI_KO.naval)} ${est.naval}` : ''}</p>
-      <div class="stats compact">
-        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.attackerSide)})</span><span class="value small">${est.attackerLoss}%</span></div>
-        <div><span class="label">${esc(COMBAT_UI_KO.lossRatio)} (${esc(COMBAT_UI_KO.defenderSide)})</span><span class="value small">${est.defenderLoss}%</span></div>
-        <div><span class="label">${esc(COMBAT_UI_KO.retreatChance)}</span><span class="value small">${est.retreatChance}%</span></div>
-      </div>
-      ${est.attackers.length > 1 ? `<p class="muted small">${esc(COMBAT_UI_KO.joined)}</p>` : ''}` : '';
-  const mode = overrun ? COMBAT_UI_KO.overrunChance : p.overrunRollPossible ? COMBAT_UI_KO.overrunNo : '';
+  const fog = fogActive(ctx.game);
+  // limited intelligence: whether an overrun is possible depends on the hidden enemy strength
+  const overrun = !fog && p.overrun?.possible;
+  const body = est ? versusBlock(ctx, est) : '';
+  const mode = fog ? (p.overrunRollPossible ? INTEL_UI_KO.overrunUnknown : '')
+    : overrun ? COMBAT_UI_KO.overrunChance : p.overrunRollPossible ? COMBAT_UI_KO.overrunNo : '';
   return `
     <section class="card preview assault ${a.pinned ? 'pinned' : ''}">
       <p class="eyebrow">${esc(COMBAT_UI_KO.assaultPreview)}</p>
@@ -529,7 +557,7 @@ function assaultCard(ctx: PanelContext, o: OrdersView): string {
       ${body}
       ${mode ? `<p class="note">${esc(mode)}</p>` : ''}
       ${p.allowed ? `<p class="muted small">${esc(COMBAT_UI_KO.plotNote)}</p>` : `<p class="note warn">${esc(BLOCK_KO[p.error ?? ''] ?? p.error ?? '')}</p>`}
-      ${a.pinned && p.allowed ? `<div class="actions"><button class="btn primary danger-fill" data-action="confirm-assault">${esc(overrun ? COMBAT_UI_KO.tryOverrun : COMBAT_UI_KO.plot)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
+      ${a.pinned && p.allowed ? `<div class="actions"><button class="btn primary danger-fill" data-action="confirm-assault">${esc(fog ? INTEL_UI_KO.plotOrTry : overrun ? COMBAT_UI_KO.tryOverrun : COMBAT_UI_KO.plot)} <span class="kbd">Enter</span></button><button class="btn ghost" data-action="cancel">${esc(MOVE_UI_KO.cancel)}</button></div>` : ''}
     </section>`;
 }
 
@@ -606,11 +634,16 @@ function airPreviewCard(ctx: PanelContext, o: OrdersView): string {
   if (!n) return '';
   const x = dest % g.width, y = Math.floor(dest / g.width);
   const parts = airdropLossParts(g, x, y);
-  const enemy = dropOnEnemy(g, dest);
+  // what the player knows of the drop hex (the drop itself is decided on the real forces there)
+  const risk = dropRisk(g, ctx.viewer(), dest);
+  const enemy = risk === 'enemy';
   const warn: { kind: string; text: string }[] = [];
   if (!n.canStop) warn.push({ kind: 'warn', text: BLOCK_KO.cannotStop });
   if (enemy) warn.push({ kind: 'warn danger', text: NAVAL_UI_KO.dropOnEnemy });
-  else if (g.possession[dest] !== 1) warn.push({ kind: 'warn', text: NAVAL_UI_KO.enemyTerritory });
+  else {
+    if (g.possession[dest] !== 1) warn.push({ kind: 'warn', text: NAVAL_UI_KO.enemyTerritory });
+    if (risk === 'unknown') warn.push({ kind: 'warn', text: INTEL_UI_KO.dropUnknown });
+  }
   return `
     <section class="card preview ${o.pinned ? 'pinned' : ''}">
       <p class="eyebrow">${esc(MOVE_UI_KO.preview)} · ${esc(MOVE_MODE_KO.air)}</p>
@@ -686,6 +719,10 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   if (hex.rail) features.push(`철도 (${dirsKo(hex.rail)})`);
   const forces = ctx.forcesAt(x, y);
   const unitCount = forces.reduce((a, f) => a + f.units.length, 0);
+  // limited intelligence: how much the viewer knows of an enemy hex, and of the forces in it
+  const anyFog = forces.some((f) => fogged(ctx, f.leader));
+  const viewer = ctx.viewer();
+  const scout = fogActive(g) && owner && owner !== POSSESSION_CODE[viewer] ? hexIntel(g, viewer, y * map.width + x) : null;
 
   return `
     <section class="card">
@@ -699,6 +736,7 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         <dt>지형</dt><dd>${esc(TERRAIN_KO[hex.terrain])}${hex.closed ? ' <span class="tag">험한 지형</span>' : ''}</dd>
         <dt>지형 요소</dt><dd>${features.length ? esc(features.join(', ')) : '없음'}</dd>
         <dt>점령</dt><dd>${owner ? `<span class="${owner === 1 ? 'un' : 'red'}">${POSSESSION_KO[owner]}</span>` : '-'}</dd>
+        ${scout !== null ? `<dt>${esc(INTEL_UI_KO.scouting)}</dt><dd><span class="tag scout l${scout}">${esc(INTEL_UI_KO.level(scout))}</span> <span class="muted small">${esc(INTEL_UI_KO.levelNote[scout])}</span></dd>` : ''}
         ${port ? `<dt>항구</dt><dd>${esc(port.ko)}${portState?.mined ? ' <span class="tag warn">기뢰 부설</span>' : ''}</dd>` : ''}
         ${airfield ? `<dt>비행장</dt><dd>${esc(airfield.ko)}${airfield.code ? ` (${airfield.code})` : ''} · 등급 ${afState?.current ?? 0}/${afState?.best ?? airfield.best}</dd>` : ''}
         ${supply ? '<dt>보급 거점</dt><dd>공산군 보급 거점</dd>' : ''}
@@ -706,8 +744,25 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         <dt>원본 코드</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(hex.label)}</dd>
       </dl>
     </section>
-    ${forces.length ? `<section class="card"><h3>부대 <span class="muted">${forces.length}개 편성 · ${unitCount}개 유닛</span></h3>
-      ${forces.map((f) => forceCard(g, f, f.leader === activeLeader)).join('')}</section>` : ''}`;
+    ${forces.length ? `<section class="card"><h3>부대 <span class="muted">${forces.length}개 편성${anyFog ? '' : ` · ${unitCount}개 유닛`}</span></h3>
+      ${forces.map((f) => (fogged(ctx, f.leader) ? fogForceCard(ctx, f) : forceCard(g, f, f.leader === activeLeader))).join('')}</section>` : ''}`;
+}
+
+/** An enemy force under limited intelligence: type (level 1), name and strength report (level 2). */
+function fogForceCard(ctx: PanelContext, f: Force): string {
+  const g = ctx.game;
+  const lead = unit(g, f.leader);
+  const level = forceIntel(g, ctx.viewer(), f.leader);
+  const title = level >= 2 ? forceTitle(g, f.leader) : INTEL_UI_KO.enemyType(KIND_KO[lead.kind] ?? lead.kind);
+  const report = level >= 2 ? (strengthReport(g, f.leader) === 'under' ? INTEL_UI_KO.under : INTEL_UI_KO.full) : '';
+  return `
+    <article class="force fog">
+      <header><span class="chip" style="background:${NATION_COLOR[lead.nation]}"></span>
+        <div><b>${esc(title)}</b><span class="muted">${esc(NATION_KO[lead.nation])} · ${esc(SIDE_KO[sideOf(lead)])}${report ? ` · ${esc(report)}` : ''}</span></div>
+        <span class="tag scout">${esc(INTEL_UI_KO.level(level))}</span>
+      </header>
+      <p class="intel-line">${esc(INTEL_UI_KO.unitsUnknown)}${level >= 2 ? ` · ${esc(INTEL_UI_KO.reportHint)}` : ''}</p>
+    </article>`;
 }
 
 function forceCard(g: GameState, f: Force, active: boolean): string {

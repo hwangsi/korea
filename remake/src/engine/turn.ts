@@ -329,7 +329,8 @@ export function nextTurn(g: GameState) {
   g.unHexes = unPoints;
   g.utility[7] = 0;
   g.utility[9] = 0;
-  // LOSS_INFLATOR: inflated enemy loss claims with limited intelligence (reports only)
+  // LOSS_INFLATOR[1..2] := RND(0,3) with limited intelligence. Nothing in KOREA.EXE ever reads it (docs/rules/intel.md 3.2):
+  // only the two draws are kept so the random sequence matches the original.
   if (g.limitedIntel) { rnd(g, 0, 3); rnd(g, 0, 3); }
   g.player = 1;
   g.phase = 0;
