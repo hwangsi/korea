@@ -4,15 +4,19 @@
 import type { EquipmentType, Force, Hex, MapData, Scenario } from '../data/types.ts';
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import type { GameState, UnitState } from '../engine/state.ts';
-import { forceUnits, sideOf, unit } from '../engine/state.ts';
+import { forceUnits, sideOf, unit, activeSide } from '../engine/state.ts';
 import { allowance, canEntrain, canBugOut } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
 import { assaultTarget } from '../engine/combat.ts';
 import type { AssaultPreview, CombatReport } from '../engine/combat.ts';
+import type { ResolutionReport } from '../engine/turn.ts';
+import { territoryBalance, BIG_CITIES } from '../engine/endturn.ts';
+import type { GameResult } from '../engine/endturn.ts';
+import { gameDate } from '../engine/weather.ts';
 import {
   TERRAIN_KO, NATION_KO, KIND_KO, EXPERIENCE_KO, EQUIPMENT_KO, POSSESSION_KO, SIDE_OF, SIDE_KO,
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
-  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo,
+  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { placeAt, hexToLatLon } from '../data/places.ts';
@@ -28,6 +32,31 @@ export interface PanelContext {
   scenario: Scenario;
   game: GameState;
   forcesAt: (x: number, y: number) => Force[];
+  /** Supply net of the current possession (SUPPLY.DETERMINE_SUPPLY), computed on demand. */
+  supplyNet: () => Uint8Array;
+}
+
+/** What the panel shows when no hex is selected after the turn moved on. */
+export interface TurnView {
+  combat: CombatReport[] | null;
+  resolution: ResolutionReport | null;
+  result: GameResult | null;
+}
+
+const weatherKo = (w: number) => {
+  const t = TEMPERATURE_KO[Math.trunc(w / 10)], s = SKY_KO[((w % 10) + 10) % 10];
+  return t && s ? `${t} · ${s}` : '-';
+};
+
+function dateOfTurn(g: GameState, turn: number): string {
+  const d = gameDate(g, turn);
+  return dateKo(d.year, d.month, d.day);
+}
+
+function newsItems(ctx: PanelContext): { date: string; text: string }[] {
+  const g = ctx.game;
+  const own = g.news.map((n) => ({ date: dateOfTurn(g, n.turn), text: newsKo(n.text).text }));
+  return [...own.reverse(), ...ctx.scenario.news.map(newsKo).reverse()];
 }
 
 export interface OrdersView {
@@ -72,38 +101,109 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
   const g = ctx.game;
   const onMap = g.stacks.flat().flatMap((l) => forceUnits(g, l));
   const side = (k: 'un' | 'communist') => onMap.filter((u) => SIDE_OF[u.nation] === k).length;
-  const waiting = s.units.length - onMap.length;
-  const news = s.news.map(newsKo);
+  const waiting = [...g.units.values()].filter((u) => u.x < -1).length;
+  const news = newsItems(ctx).slice(0, 12);
+  const lvl = territoryBalance(g);
   el.innerHTML = `
     ${messageCard(message)}
     <section class="card">
       <p class="eyebrow">시나리오 ${s.scenario}${s.variant === 'S' ? ' · 편성 배치' : ''}</p>
       <h2>${esc(s.title.ko)}</h2>
-      <p class="muted">${esc(s.title.en)} · ${dateKo(s.date.year, s.date.month, s.date.day)} · ${s.turn}턴</p>
+      <p class="muted">${esc(s.title.en)} · ${dateOfTurn(g, g.turn)} · ${g.turn}턴</p>
+      <p class="phase-line"><span class="chip ${g.player === 2 ? 'un-bg' : 'red-bg'}"></span><b>${esc(PHASE_KO[g.phase] ?? '')}</b> · ${esc(PLAYER_KO[g.player])}${g.gameOver ? ` · <span class="tag warn">${esc(TURN_UI_KO.gameOver)}</span>` : ''}</p>
       <div class="stats">
         <div><span class="label">유엔군 유닛</span><span class="value un">${side('un')}</span></div>
         <div><span class="label">공산군 유닛</span><span class="value red">${side('communist')}</span></div>
-        <div><span class="label">지도 밖·대기</span><span class="value">${waiting}</span></div>
+        <div><span class="label">증원 대기</span><span class="value">${waiting}</span></div>
       </div>
       <div class="stats">
-        <div><span class="label">날씨</span><span class="value small">${TEMPERATURE_KO[s.weatherNow.temperature] ? `${TEMPERATURE_KO[s.weatherNow.temperature]} · ${SKY_KO[s.weatherNow.sky] ?? '-'}` : '시작 시 결정'}</span></div>
-        <div><span class="label">보급 비축 (유엔/공산)</span><span class="value small">${s.stockpile.un} / ${s.stockpile.communist}</span></div>
+        <div><span class="label">${esc(TURN_UI_KO.weather)}</span><span class="value small">${esc(weatherKo(g.weather[0][0]))}${g.freezeLine > 0 ? ` · ${esc(TURN_UI_KO.freezeLine)} ${g.freezeLine}행` : ''}</span></div>
+        <div><span class="label">${esc(TURN_UI_KO.stockpile)} (유엔/공산)</span><span class="value small">${g.stockpile[1]} / ${g.stockpile[0]}</span></div>
+        <div><span class="label">${esc(TURN_UI_KO.victory)}</span><span class="value small ${lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}">${g.victoryVoid ? '-' : esc(victoryKo(lvl))}</span></div>
       </div>
+      ${forecastLine(g)}
+      ${g.refugees ? `<p class="note warn">${esc(TURN_UI_KO.refugees)}</p>` : ''}
     </section>
     ${news.length ? `<section class="card"><h3>최근 소식</h3><ul class="news">${news.map((n) => `<li><span class="muted">${esc(n.date)}</span>${esc(n.text)}</li>`).join('')}</ul></section>` : ''}
     <section class="card help">
       <h3>조작</h3>
       <ul>
-        <li>부대가 있는 헥스 클릭: 부대 선택, 갈 수 있는 범위 표시</li>
+        <li>자기 진영 부대가 있는 헥스 클릭: 부대 선택, 갈 수 있는 범위 표시</li>
         <li>범위 안 헥스에 마우스: 경로·비용 미리보기</li>
         <li>목적지 클릭: 경로 고정 → 한 번 더 클릭: 이동</li>
         <li>같은 헥스 다시 클릭: 겹친 다른 부대 선택</li>
         <li>옆의 적 부대 클릭: 공격 미리보기 → 한 번 더: 공격 명령(또는 돌파)</li>
-        <li>상단 ⚔ 전투 해결: 모든 공격 명령 실행</li>
+        <li>상단 ▶ ${esc(TURN_UI_KO.endPhase)}: 다음 진영·단계로 (1차 명령 → 전투 → 2차 명령 → 정리)</li>
         <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
         <li>드래그: 지도 이동 · 휠: 확대·축소</li>
       </ul>
-      <p class="muted small">${esc(MOVE_UI_KO.sandbox)}</p>
+      <p class="muted small">두 사람이 번갈아 하는 방식입니다 (컴퓨터 AI는 아직 없음). 안개·정찰은 아직 "완전 정보"로 표시합니다.</p>
+    </section>`;
+}
+
+/** Weather forecast of the active player (WEATHER rows 1 and 2), as the original Weather Report. */
+function forecastLine(g: GameState): string {
+  const row = g.weather[g.player === 1 ? 1 : 2];
+  if (!row) return '';
+  const items = [1, 2, 3].map((k) => `<span><b>${k}주 뒤</b> ${esc(weatherKo(row[k]))}</span>`).join('');
+  return `<p class="forecast muted small">${esc(TURN_UI_KO.forecast)} (${esc(PLAYER_KO[g.player])}) ${items}</p>`;
+}
+
+/** Combat results and/or the General Resolution report of the turn that just ended. */
+export function renderTurnView(el: HTMLElement, ctx: PanelContext, view: TurnView, message: PanelMessage | null) {
+  const parts: string[] = [messageCard(message)];
+  if (view.result) parts.push(resultCard(ctx, view.result));
+  if (view.resolution) parts.push(resolutionCard(ctx, view.resolution));
+  if (view.combat) parts.push(combatCard(ctx, view.combat));
+  el.innerHTML = parts.join('');
+}
+
+function resultCard(ctx: PanelContext, r: GameResult): string {
+  const g = ctx.game;
+  const head = r.winner === 'un' ? '유엔군 승리' : r.winner === 'communist' ? '공산군 승리' : '교착 (무승부)';
+  return `<section class="card result"><p class="eyebrow">${esc(TURN_UI_KO.result)}</p><h2>${esc(head)}</h2>
+    <p>${esc(TURN_UI_KO.victory)}: <b>${esc(victoryKo(r.level))}</b> · ${dateOfTurn(g, g.turn)}</p>
+    <p class="muted small">승리 수준: 1950년 6월 25일(1995년은 개전 시점)보다 더 가진 점령 점수 200점마다 1 (도시 100점, 그 외 헥스 1점)</p></section>`;
+}
+
+function resolutionCard(ctx: PanelContext, r: ResolutionReport): string {
+  const g = ctx.game;
+  const s = r.supply;
+  const rows: string[] = [];
+  const row = (label: string, value: string) => rows.push(`<div><span class="label">${esc(label)}</span><span class="value small">${value}</span></div>`);
+  row(`${TURN_UI_KO.resupplied} (유엔/공산)`, `${s.resupplied.un} / ${s.resupplied.communist}`);
+  row(`${TURN_UI_KO.unsupplied} (유엔/공산)`, `${s.unsupplied.un} / ${s.unsupplied.communist}`);
+  if (s.airSupplied) row(TURN_UI_KO.airSupplied, String(s.airSupplied));
+  row(TURN_UI_KO.interdiction, String(s.unil));
+  row(`${TURN_UI_KO.stockpile} (유엔/공산)`, `${r.stockpileBefore[1]}→${r.stockpileAfter[1]} / ${r.stockpileBefore[0]}→${r.stockpileAfter[0]}`);
+  row(`${TURN_UI_KO.replaced}`, `${r.reinforcements.replaced}개`);
+  const lines: string[] = [];
+  const forceList = (ids: number[]) => ids.slice(0, 8).map((id) => esc(forceTitle(g, id))).join(', ') + (ids.length > 8 ? ` 외 ${ids.length - 8}` : '');
+  if (r.reinforcements.arrived.length) lines.push(`<li><b>${esc(TURN_UI_KO.reinforcementsArrived)}</b> ${r.reinforcements.arrived.length}개: ${forceList(r.reinforcements.arrived)}</li>`);
+  if (r.reinforcements.held.length) lines.push(`<li>${esc(TURN_UI_KO.heldOff)}: ${r.reinforcements.held.length}개</li>`);
+  if (r.reinforcements.rebuilt.length) lines.push(`<li>${esc(TURN_UI_KO.rebuilt)}: ${r.reinforcements.rebuilt.map((id) => esc(unitNameKo(unit(g, id).name))).join(', ')}</li>`);
+  if (s.attrition.length) lines.push(`<li>${esc(TURN_UI_KO.attrition)}: ${s.attrition.length}개 유닛</li>`);
+  const p = r.patrols;
+  if (p.patrols.un || p.patrols.communist) lines.push(`<li>${esc(TURN_UI_KO.patrols)}: 유엔 ${p.patrols.un} · 공산 ${p.patrols.communist}</li>`);
+  if (p.guerrillas.un || p.guerrillas.communist) lines.push(`<li>${esc(TURN_UI_KO.guerrillas)}: 공산군에 넘어간 헥스 ${p.guerrillas.communist} · 소탕으로 되찾은 헥스 ${p.guerrillas.un}</li>`);
+  const cityKo = (x: number, y: number) => {
+    const c = BIG_CITIES.find((b) => b.x === x && b.y === y);
+    return c ? PLACE_KO[c.name] ?? c.name : `${x},${y}`;
+  };
+  if (p.reverted.length) lines.push(`<li>${esc(TURN_UI_KO.reverted)}: ${p.reverted.map(([x, y]) => esc(cityKo(x, y))).join(', ')}</li>`);
+  const portName = (id: number) => ctx.map.ports.find((q) => q.id === id)?.ko ?? `#${id}`;
+  if (r.mines.mined.length) lines.push(`<li>${esc(TURN_UI_KO.mined)}: ${r.mines.mined.map((id) => esc(portName(id))).join(', ')}</li>`);
+  if (r.mines.swept.length) lines.push(`<li>${esc(TURN_UI_KO.swept)}: ${r.mines.swept.map((id) => esc(portName(id))).join(', ')}</li>`);
+  if (r.refugees) lines.push(`<li class="warn">${esc(TURN_UI_KO.refugees)}</li>`);
+  const news = r.news.map((n) => `<li><span class="muted">${dateOfTurn(g, n.turn)}</span>${esc(newsKo(n.text).text)}</li>`).join('');
+  return `
+    <section class="card">
+      <p class="eyebrow">${esc(TURN_UI_KO.turnReport)} · ${dateOfTurn(g, r.turn)} (${r.turn}턴)</p>
+      <h2>${esc(TURN_UI_KO.beginPhase(PLAYER_KO[g.player], PHASE_KO[g.phase] ?? ''))}</h2>
+      <p class="muted small">${dateOfTurn(g, g.turn)} · ${esc(TURN_UI_KO.weather)} ${esc(weatherKo(g.weather[0][0]))}${g.freezeLine > 0 ? ` · ${esc(TURN_UI_KO.freezeLine)} ${g.freezeLine}행` : ''}</p>
+      <div class="stats compact two">${rows.join('')}</div>
+      ${lines.length ? `<ul class="events">${lines.join('')}</ul>` : ''}
+      ${news ? `<h3>${esc(TURN_UI_KO.news)}</h3><ul class="news">${news}</ul>` : ''}
     </section>`;
 }
 
@@ -200,6 +300,10 @@ function assaultCard(ctx: PanelContext, o: OrdersView): string {
 
 /** Results of the ground combat phase. */
 export function renderCombatReports(el: HTMLElement, ctx: PanelContext, reports: CombatReport[], message: PanelMessage | null) {
+  el.innerHTML = messageCard(message) + combatCard(ctx, reports);
+}
+
+function combatCard(ctx: PanelContext, reports: CombatReport[]): string {
   const g = ctx.game;
   const name = (id: number) => forceTitle(g, id);
   const cards = reports.map((r) => {
@@ -217,7 +321,7 @@ export function renderCombatReports(el: HTMLElement, ctx: PanelContext, reports:
         ${events ? `<ul class="events">${events}</ul>` : ''}
       </article>`;
   }).join('');
-  el.innerHTML = `${messageCard(message)}<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><h2>${reports.length}건</h2>${cards || `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>`}</section>`;
+  return `<section class="card"><p class="eyebrow">${esc(COMBAT_UI_KO.results)}</p><h2>${reports.length}건</h2>${cards || `<p class="muted">${esc(COMBAT_UI_KO.noAssaults)}</p>`}</section>`;
 }
 
 function previewCard(ctx: PanelContext, o: OrdersView): string {
@@ -264,7 +368,8 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   const is1995 = g.scenarioNo === 4;
   const place = placeAt(x, y, is1995);
   const port = map.ports.find((p) => p.x === x && p.y === y);
-  const portState = port ? s.ports.find((p) => p.id === port.id) : undefined;
+  const portState = port ? g.ports.find((p) => p.id === port.id) : undefined;
+  const net = ctx.supplyNet()[y * map.width + x];
   const airfield = map.airfields.find((a) => a.x === x && a.y === y);
   const afState = airfield ? g.airfields.find((a) => a.id === airfield.id) : undefined;
   const supply = !is1995 && map.supplyPoints.some((p) => p.x === x && p.y === y);
@@ -289,7 +394,8 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         <dt>점령</dt><dd>${owner ? `<span class="${owner === 1 ? 'un' : 'red'}">${POSSESSION_KO[owner]}</span>` : '-'}</dd>
         ${port ? `<dt>항구</dt><dd>${esc(port.ko)}${portState?.mined ? ' <span class="tag warn">기뢰 부설</span>' : ''}</dd>` : ''}
         ${airfield ? `<dt>비행장</dt><dd>${esc(airfield.ko)}${airfield.code ? ` (${airfield.code})` : ''} · 등급 ${afState?.current ?? 0}/${afState?.best ?? airfield.best}</dd>` : ''}
-        ${supply ? '<dt>보급</dt><dd>공산군 보급 거점</dd>' : ''}
+        ${supply ? '<dt>보급 거점</dt><dd>공산군 보급 거점</dd>' : ''}
+        ${owner && hex.code < 0xa5 ? `<dt>보급망</dt><dd>${net ? `<span class="${net === 1 ? 'un' : 'red'}">${esc(TURN_UI_KO.inNet(net === 1 ? '유엔군' : '공산군'))}</span>` : `<span class="tag warn">${esc(TURN_UI_KO.outOfNet)}</span>`}</dd>` : ''}
         <dt>원본 코드</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(hex.label)}</dd>
       </dl>
     </section>
@@ -302,11 +408,15 @@ function forceCard(g: GameState, f: Force, active: boolean): string {
   const lead = members[0];
   if (!lead) return '';
   const a = allowance(g, f.leader);
+  const mine = sideOf(lead) === activeSide(g) && (g.phase === 1 || g.phase === 3) && !g.gameOver;
+  const action = active ? `<span class="tag on">${esc(MOVE_UI_KO.selected)}</span>`
+    : mine ? `<button class="btn small" data-action="select-force" data-leader="${f.leader}">${esc(MOVE_UI_KO.select)}</button>`
+      : `<span class="tag">${esc(TURN_UI_KO.enemyForce)}</span>`;
   return `
     <article class="force ${active ? 'active' : ''}">
       <header><span class="chip" style="background:${NATION_COLOR[lead.nation]}"></span>
         <div><b>${esc(forceTitle(g, f.leader))}</b><span class="muted">${esc(NATION_KO[lead.nation])} · ${esc(SIDE_KO[SIDE_OF[lead.nation]])} · 이동력 ${a.remaining}/${a.rate}</span></div>
-        ${active ? `<span class="tag on">${esc(MOVE_UI_KO.selected)}</span>` : `<button class="btn small" data-action="select-force" data-leader="${f.leader}">${esc(MOVE_UI_KO.select)}</button>`}
+        ${action}
       </header>
       <ul class="units">${members.map((u) => unitRow(u, g.equipmentTypes)).join('')}</ul>
     </article>`;

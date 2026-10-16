@@ -171,13 +171,99 @@ const NEWS_RULES: Rule[] = [
   [/^United Nations units enter North Korea\.$/, () => '유엔군, 38선 넘어 북한 진입'],
   [/^China pledges to halt imperialist aggression in Korea\.$/, () => "중국, '조선에서의 제국주의 침략 저지' 천명"],
   [/^North Korean commandos attack South Korean supply dumps\.$/, () => '북한 특수부대, 한국군 보급 기지 습격'],
+  [/^United Nations forces occupy (.+)\.$/, (m) => `유엔군, ${PLACE_KO[m[1]] ?? m[1]} 점령`],
+  [/^U\.N\. forces discover bodies of POW's executed by NKPA\.$/, () => '유엔군, 북한군이 처형한 포로 시신 발견'],
+  [/^U\.N\. forces uncover mass graves of executed civilians\.$/, () => '유엔군, 민간인 집단 학살 매장지 발견'],
+  [/^Additional U\.S\. reinforcements due next week\.$/, () => '다음 주 미군 증원 병력 추가 도착 예정'],
+  [/^Communist guerrillas active behind U\.N\. lines\.$/, () => '유엔군 후방에서 공산 게릴라 활동'],
+  [/^U\.N\. forces engaged in counter guerrilla operations\.$/, () => '유엔군, 게릴라 소탕 작전 전개'],
+  [/^Stalemate in Korea\.$/, () => '한국전쟁, 교착 상태로 종전'],
+  [/^(Marginal|Significant|Decisive) United Nations victory in Korea\.$/, (m) => `유엔군 ${VICTORY_ADJ_KO[m[1]]} 승리`],
+  [/^(Marginal|Significant|Decisive) Communist victory in Korea\.$/, (m) => `공산군 ${VICTORY_ADJ_KO[m[1]]} 승리`],
+  [/^Korea to be unified under United Nations supervision\.$/, () => '유엔 감독 아래 한반도 통일 결정'],
+  [/^American press demands President's resignation\.$/, () => '미국 언론, 대통령 사임 요구'],
+  [/^Peace groups insist on withdrawal of U\.S\. forces from overseas\.$/, () => '평화 단체들, 해외 미군 철수 요구'],
+  [/^Seoul is to be renamed "Kim Il-Sung City"\.$/, () => "서울, '김일성시'로 개명 예정"],
+  [/^\*+Player has elected to continue past end of game\*+$/, () => '플레이어가 종전 이후에도 전쟁을 계속하기로 함'],
+  [/^\*+Victory conditions are no longer valid\*+$/, () => '이제부터 승리 조건은 적용되지 않음'],
 ];
+
+const VICTORY_ADJ_KO: Record<string, string> = { Marginal: '근소한', Significant: '뚜렷한', Decisive: '결정적' };
 
 export function newsKo(line: string): { date: string; text: string } {
   const m = line.match(/^(\d+)-([A-Za-z]+)-(\d{4}):(.*)$/);
   if (!m) return { date: '', text: applyRules(NEWS_RULES, line) ?? line };
   const month = MONTH_NUM[m[2]] ?? 0;
   return { date: dateKo(Number(m[3]), month, Number(m[1])), text: applyRules(NEWS_RULES, m[4].trim()) ?? m[4].trim() };
+}
+
+// ---------- turn sequence (docs/rules/turn.md) ----------
+
+export const PLAYER_KO: Record<number, string> = { 1: '공산군', 2: '유엔군' };
+export const PHASE_KO: Record<number, string> = { 0: '턴 준비', 1: '1차 명령 단계', 2: '전투 단계', 3: '2차 명령 단계', 4: '정리 단계' };
+
+export const END_REASON_KO: Record<string, string> = {
+  lastTurn: '1951년 5월 22일, 정해진 마지막 턴이 끝났습니다.',
+  noIntervention: '중국이 개입하지 않은 채 1951년 1월 8일이 되었습니다. 미국 여론은 "크리스마스 전 귀국"을 기대합니다.',
+  lastTurn1995: '1995년 10월 15일, 정해진 마지막 턴이 끝났습니다.',
+  unHoldsAll: '유엔군이 지도 전체를 장악했습니다.',
+  communistHoldsCities: '공산군이 한국의 모든 도시를 장악했습니다.',
+};
+
+export const TURN_UI_KO = {
+  endPhase: '단계 종료',
+  endPhaseTitle: '이 단계의 명령을 마치고 다음 단계로',
+  endPhaseConfirm: (side: string, phase: string) => `${side} ${phase}를 끝낼까요?`,
+  begin: '시작',
+  beginPhase: (side: string, phase: string) => `${side} ${phase}`,
+  handover: '두 사람이 번갈아 할 때는 상대가 화면을 보지 않도록 자리를 바꾸세요.',
+  noFirstPhase: '이번 턴에는 유엔군의 1차 명령 단계가 없습니다 (기습).',
+  computerPhase: '컴퓨터 진영은 아직 AI가 없어 움직이지 않습니다.',
+  reinforcements: '증원 부대가 도착했습니다.',
+  notYourForce: '지금은 상대 진영의 명령 단계입니다',
+  enemyForce: '상대 진영',
+  turnReport: '턴 정리 결과',
+  combatReport: '전투 결과',
+  supply: '보급',
+  resupplied: '재보급',
+  airSupplied: '공중 보급',
+  unsupplied: '보급 실패',
+  attrition: '보급 두절로 장비 손실',
+  interdiction: '유엔 항공 차단 수준',
+  stockpile: '보급 비축',
+  shipments: '이번 턴 수송량',
+  reinforcementsArrived: '증원 도착',
+  heldOff: '도착 지연 (진입 헥스 없음)',
+  rebuilt: '재편성 (다음 턴 이후 복귀)',
+  replaced: '보충 장비',
+  patrols: '정찰대가 확보한 헥스',
+  guerrillas: '게릴라',
+  reverted: '공산군에 반환된 도시',
+  mined: '기뢰 부설',
+  swept: '기뢰 제거',
+  refugees: '피란민이 도로를 막습니다 (다음 턴 유엔군 도로 이동 불가)',
+  news: '소식',
+  weather: '날씨',
+  forecast: '예보',
+  freezeLine: '결빙선',
+  victory: '승리 수준',
+  victoryNone: '무승부 수준',
+  peaceTalks: '평화 회담이 시작되었습니다',
+  endGame: '게임 끝내기',
+  override: '계속 싸우기',
+  overrideNote: '계속하면 승리 조건은 더 이상 적용되지 않습니다.',
+  gameOver: '게임 종료',
+  result: '최종 결과',
+  supplyLayer: '보급망',
+  inNet: (side: string) => `${side} 보급망 안`,
+  outOfNet: '보급망 밖 (보급 끊김)',
+  phaseLabel: (turn: number, phase: string, side: string) => `${turn}턴 · ${phase} · ${side}`,
+} as const;
+
+export function victoryKo(level: number): string {
+  if (level > 0) return `유엔군 ${level}`;
+  if (level < 0) return `공산군 ${-level}`;
+  return '균형';
 }
 
 // ---------- movement (docs/rules/movement.md) ----------
@@ -237,7 +323,7 @@ export const MOVE_UI_KO = {
   failed: '이동할 수 없음',
   interdicted: '철도 수송 중 적 항공 차단으로 선두 유닛 장비 손실',
   bugOutDone: '버그아웃: 장비를 버리고 후퇴합니다 (6점 이동 가능)',
-  sandbox: '턴 진행이 아직 없어 양쪽 부대를 모두 움직일 수 있어요.',
+  bugOutMoving: '전선을 따라 이동하던 신병 유닛이 버그아웃 (후퇴했던 부대, 장비 손실)',
   points: '점',
   unlimited: '무제한',
   cannotStopHere: '멈출 수 없음 (통과만)',
@@ -268,9 +354,7 @@ export const COMBAT_UI_KO = {
   cancelPlot: '공격 취소 (1점은 소모됨)',
   cancelled: '공격 명령을 취소했습니다',
   overran: '돌파 성공! 방어 부대를 격멸하고 헥스를 점령했습니다',
-  plottedDone: '공격 명령을 내렸습니다. 전투 해결 때 실행됩니다',
-  resolve: '전투 해결',
-  resolveConfirm: '모든 공격 명령을 실행할까요? (턴 진행이 아직 없어 지금 바로 전투 단계만 실행합니다)',
+  plottedDone: '공격 명령을 내렸습니다. 1차 명령 단계가 끝나면 전투 단계에서 실행됩니다',
   noAssaults: '실행할 공격 명령이 없습니다',
   results: '전투 결과',
   attacks: '공격',

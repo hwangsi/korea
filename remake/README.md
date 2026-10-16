@@ -47,7 +47,7 @@ node tools/disasm/strings.cjs             # 코드 안의 UI 문자열 707개 ->
 ```
 remake/
   index.html, src/          웹 클라이언트 (TypeScript, 의존성 없음, Canvas 2D)
-    engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, strength, hex)
+    engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, combat, supply, turn, endturn, weather, hex)
     i18n/ko.ts              한글 용어집과 번역 규칙
     ui/                     지도 렌더러, 정보 패널
   tools/
@@ -57,7 +57,7 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement.md)
+  docs/rules/               규칙 명세 (movement.md, combat.md, supply.md, turn.md)
   tests/                    단위 테스트 (node:test)
 ```
 
@@ -72,7 +72,9 @@ remake/
 - [x] 마우스 이동 UI (도달 범위, 경로·비용 미리보기, 클릭 확정, 우클릭 취소)
 - [x] 지상전 (돌파, 공격 명령, 전투 해결, 후퇴·제거) + 공격 예상치 UI → [`docs/rules/combat.md`](docs/rules/combat.md)
 - [x] 아이콘 헥스 전체에 현재 지명 → [`docs/places.md`](docs/places.md)
-- [ ] 턴 진행 → 보급 → 항공 → 해상·공수 이동
+- [x] 턴 진행 (1차 명령 → 전투 → 2차 명령 → 정리, 선공, 두 사람 교대) + 보급망·재보급·턴 시작 이동력, 비축, 보충·재편성,
+      증원 도착, 날씨·결빙선·예보, 순찰·게릴라, 기뢰, 중공군 개입, 피란민, 종료·승리 수준 → [`docs/rules/turn.md`](docs/rules/turn.md), [`docs/rules/supply.md`](docs/rules/supply.md)
+- [ ] 항공 → 해상·공수 이동 → 정보(안개) → 옵션 화면
 - [ ] AI (원본 Kim/Walton 분석 후 재설계)
 - [ ] 전체 한글화 (UI 문자열, 이벤트 뉴스), 새 그래픽과 사운드
 
@@ -80,9 +82,9 @@ remake/
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **턴 루프**: 1차 명령 → 전투 → 2차 명령 → 정리(보급, 증원, 날씨)
-2. **보급**: DETERMINE_SUPPLY, 턴 시작 이동력(이미 구현된 `turnStartMove`)과 연결
-3. **항공·해상·공수**, 정보(정찰), AI
+1. **항공 작전**: AIR_OPERATIONS, 차단·요격, DO_AIR_COMBAT, 공습 (전투 단계에 연결)
+2. **해상·공수 이동**, 상륙 공격
+3. **정보(안개)**, 옵션 화면, AI
 
 ## 저작권 주의
 

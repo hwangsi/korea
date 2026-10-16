@@ -44,18 +44,21 @@
 | 0x4B82 | AIR_NAMES | array[15] of string[13] (기종명) |
 | 0x4C54 | EQ_STRINGS | array[15] of string[16] (장비명) |
 | 0x4D54 | EQ_VALS | array[15] of (lethality, survivability: int16) |
-| 0x4D90 | REPLACEMENTS | array[7 군] of array[15 장비] of 2 bytes |
+| 0x4D90 | REPLACEMENTS | array[7 국적] of array[15 장비] of [턴당 보충량, 풀] (rules/supply.md 4) |
 | 0x4E62 | TERRAIN | array[0..33] of array[0..65] of array[0..4] of byte |
 | 0x7A36 | CORPS | array[5] of (첫 유닛, 끝 유닛) — 북한 1-86, 중공 87-155, 국군 156-186, 유엔 187-250 |
-| 0x7A4A | STOCKPILE | [유엔, 공산] (PHASE_PULSE의 선공 공식으로 확인) |
-| 0x7A4E | WEATHER | 3×4 int16, 값 = 기온×10 + 하늘 (기온 1 추위/2 온화/3 더위, 하늘 1 맑음/2 흐림/3 폭풍) |
+| 0x7A4A | STOCKPILE | DUAL: **[0] 공산, [1] 유엔** (REST_UP `02f2`, GROUND_REINFORCEMENTS `0721`/`0793`, TERRITORY_BALANCE로 확인) |
+| 0x7A4E | WEATHER | 3×4 int16, 값 = 기온×10 + 하늘 (기온 1 추위/2 온화/3 더위, 하늘 1 맑음/2 흐림/3 폭풍). 0행 실제(이번 턴~+3), 1·2행 공산·유엔 예보 |
 | 0x7A66 | NOTES | array[8] of string[255] (뉴스) |
-| 0x8266 | SCENARIO | 8 bytes [시나리오, ?, 공산군 역량(1~5, 재보급률 +7), 컴퓨터 진영(0 두 사람, 1 공산, 2 유엔), ...] |
+| 0x8266 | SCENARIO | 8 bytes [시나리오, ?, 공산군 역량(1~5, 재보급률 +7), 컴퓨터 진영(0 두 사람, 1 공산, 2 유엔), ?, 99 = 게임 종료, 중공군 개입(0 역사적, 1 고정), ?]. 새 게임은 시작 메뉴 값으로 덮어씁 |
+| 0x826E | REALITY | array[1..4] of boolean. [4] 정보 제한(거짓이면 모든 헥스 정찰 2), [2] 항공 작전 관련(메뉴), [1]·[3] 미확정 |
 | 0x8272 | ROADS | 114 bytes: 타일 코드 0x0B~0x7C의 도로 방향 마스크 |
 | 0x82E4 | RAILS | 129 bytes: 타일 코드 0x1E~0x9E의 철도 방향 마스크 |
 | 0x8366 | PORTS | array[18] of (MINED, X, Y) — 한국 12 + 일본 6 |
 | 0x839C | AIRFIELDS | array[9] of (CURRENT_STATUS, BEST_STATUS, X, Y) |
-| 0x83C0~ | INTERCEPTION, INTERDICTION, RAIL_DEMAND, RED_AIR, SEALIFT/AIRLIFT_DEMAND, UN_HEXES, CCF_INTERVENTION, FREEZE_LINE, TURN, ... VICTORY | |
+| 0x83C0~ | INTERCEPTION, INTERDICTION, RAIL_DEMAND, RED_AIR, SEALIFT/AIRLIFT_DEMAND, UN_HEXES, CCF_INTERVENTION, FREEZE_LINE, TURN, ... VICTORY | UN_HEXES = 100×유엔 도시 + 유엔 기타 헥스(지난 턴), CCF_INTERVENTION 99 미정 / 88 허세 / 그 외 개입 턴. VICTORY는 코드에서 쓰지 않음 |
+| 0x83DE | UTILITY_SPACE | 20 bytes, 사건 플래그·카운터 (rules/turn.md 7) |
+| 0x83F2 | FIRSTUNUNIT, LASTUNUNIT | 유엔 쪽 유닛 번호 범위: 1950년대 156~250, 1995 124~202 |
 
 ### UNIT_TYPE (71바이트, 필드 이름은 원본 소스 그대로)
 
@@ -65,11 +68,11 @@
 | 2 | NAME1: string[20] | 부대(Force) 이름. 부대 선두 유닛에서만 의미 있음 |
 | 23 | NAME: string[20] | 유닛 이름 |
 | 44 | EXPERIENCE: byte | 1 신병, 2 숙련(×1.25), 3 정예(×1.5) |
-| 45 | STATUS: byte | 상태 비트: 0x01 재보급됨, 0x04 이번 턴 이동함, 0x40 준비도 75+ 미이동 (나머지 미해독). REST_UP이 턴마다 0으로 초기화 |
+| 45 | STATUS: byte | 상태 비트: 0x01 재보급됨(증원 도착·재편성도 1), 0x02 이번 턴 후퇴, 0x04 이번 턴 이동함, 0x08 제거됨(BURY), 0x20 지상전 참가(0x10 해제), 0x40 준비도 75+ 미이동, 0x80 공중 보급. REST_UP이 턴마다 0으로 초기화 |
 | 46 | READINESS: int16 | 준비도 % |
 | 48 | MOVE: int16 | **이번 턴에 쓴** 이동력. 남은 이동력 = 국가 이동력 − (MOVE mod 100). 100의 자리 = 공격 계획 방향(3·dy+dx+5) |
 | 50 | ATTACHED: int16 | 같은 부대의 다음 유닛 번호 (연결 리스트, 0 = 끝) |
-| 52 | MAP_X, MAP_Y: int16 | 위치. 음수면 지도 밖(증원 대기 등) |
+| 52 | MAP_X, MAP_Y: int16 | 위치. 증원 대기는 `MAP_X = −(도착 턴×100 + x 코드)`, x 코드 99/88/77 = 일반 진입 목록(공산 / 남한 도시 / 일본). 중공군 도착 턴은 50 + 개입 턴 기준 오프셋. 제거된 유닛은 (1, 0) |
 | 56 | EQUIPMENT | array[5] of (EQUIP_TYPE, ASSIGNED, AUTHORIZED) |
 
 검증: `NKPA 50/15 Inf Rgt`의 장비로 계산한 생존력 234, 살상력 418이 매뉴얼 부록 F 예시와 일치.
@@ -125,10 +128,11 @@ S 파일은 유닛이 사단·군 단위로 편성돼 있고 날씨 예보가 �
 ## 4. 코드에서 확인한 규칙
 
 - 날짜(CALENDAR): 0턴 = 6월 25일, 이후 매달 1·8·15·22일 4턴. 크로마이트 시나리오 11턴 = 1950년 9월 15일.
-- 선공 결정(PHASE_PULSE): `RND(1,200)`과 `STOCKPILE[유엔] + 100 - STOCKPILE[공산]` 비교 (매뉴얼 부록 F와 일치).
+- 선공 결정(PHASE_PULSE): `RND(1,200)`과 `STOCKPILE[공산] + 100 - STOCKPILE[유엔]` 비교, 1차 명령 단계는 뒤집음 (매뉴얼 부록 F와 확률 일치, rules/turn.md 2).
 - 결빙(FROZEN): `y ≤ FREEZE_LINE`이고, 결빙선 5행 이내라면 바다에 인접하지 않을 때만 결빙.
 - 공산 항공력: 8턴 이후 매 턴 RED_AIR +10, 24턴 이후 +5 추가.
-- 턴 정리 순서(PHASE_PULSE): UNSPOT_EVERYTHING → REST_UP → GROUND_REINFORCEMENTS → RED_AIR 증가 → CHECK_CHINA → MINE_WARFARE → DO_PATROLS → DO_INTEL → CHECK_BIGHEXES → END_TEST → NEXT_TURN.
+- 턴 정리 순서(KOREA 주 루프): UNSPOT_EVERYTHING → REST_UP → GROUND_REINFORCEMENTS → RED_AIR 증가 → CHECK_CHINA → MINE_WARFARE → DO_PATROLS → DO_INTEL → CHECK_BIGHEXES → END_TEST → NEXT_TURN. 자세한 내용은 `docs/rules/turn.md`, `docs/rules/supply.md`.
+- 많은 프로시저의 TDInfo 길이에 다음 프로시저의 중첩 함수가 섞여 있음: CHECK_BIGHEXES 길이 안에 GROUND_REINFORCEMENTS의 중첩 5개(`0228` `0283` `02ff` `03ed` `056f`), DO_INTEL 길이 안에 DO_PATROLS의 중첩 4개, GROUND_REINFORCEMENTS 뒤 `1002`~는 NEXT_TURN의 중첩.
 
 - 이동 규칙 전체는 `docs/rules/movement.md`.
 - 중첩 프로시저: TDInfo는 최상위 프로시저만 기록한다. 중첩 함수는 부모 앞에 놓여 바로 앞 프로시저의 길이에 포함되어 보인다
@@ -136,7 +140,7 @@ S 파일은 유닛이 사단·군 단위로 편성돼 있고 날씨 예보가 �
 
 ## 5. 아직 모르는 것
 
-- UNIT_TYPE.STATUS 0x08, 0x10, 0x20, 0x80 비트
-- 증원 유닛의 도착 턴/위치 인코딩 (MAP_X 음수 값)
+- STATUS 0x10의 정확한 의미 (지상전이 해제하고 0x20을 설정, 정찰 표시로 추정)
 - 38선과 미그 앨리 표시 데이터 위치 (그리기 코드 안에 있을 것으로 추정)
-- REPLACEMENTS 2바이트의 정확한 의미, AIR_UNIT_TYPE.MISSION/BASE 값의 의미
+- AIR_UNIT_TYPE.BASE 값의 의미 (0 = 일본으로 추정, EFFECTIVE_STRENGTH가 장거리가 아니면 ×2 약화). MISSION은 0 제공권, 1 지상 공격, 2 차단
+- SCENARIO[1], [4], [7], REALITY[1], [3]

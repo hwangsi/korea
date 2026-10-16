@@ -219,7 +219,12 @@ export function parseScenario(buf: Buffer, layout: Layout, file: string) {
     date,
     settingsRaw: scenarioBytes,
     realityRaw: [...buf.subarray(v('REALITY').off, v('REALITY').off + 4)],
-    stockpile: { un: int('STOCKPILE', 0), communist: int('STOCKPILE', 1) },
+    // STOCKPILE is a DUAL array: [0] Communist (PLAYER 1), [1] United Nations (REST_UP 02F2, PHASE_PULSE 1E8B)
+    stockpile: { communist: int('STOCKPILE', 0), un: int('STOCKPILE', 1) },
+    /** FIRSTUNUNIT..LASTUNUNIT: unit ids of the United Nations side (156-250, 1995: 124-202) */
+    firstUnUnit: int('FIRSTUNUNIT'),
+    lastUnUnit: int('LASTUNUNIT'),
+    utilitySpace: [...buf.subarray(v('UTILITY_SPACE').off, v('UTILITY_SPACE').off + 20)],
     weatherRaw,
     weatherNow: { temperature: Math.floor(weatherRaw[0] / 10), sky: weatherRaw[0] % 10 },
     freezeLine: int('FREEZE_LINE'),

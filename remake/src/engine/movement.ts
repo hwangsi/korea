@@ -520,6 +520,8 @@ export interface MoveResult {
   undoable: boolean;
   /** Rail movement: interdiction loss suffered by the leader unit (percent), 0 if none. */
   interdictionLoss?: number;
+  /** Second Orders Phase: green UN units that bugged out while moving between enemy-adjacent hexes. */
+  bugOuts?: number[];
 }
 
 function fail(error: MoveResult['error'], usedBefore = 0): MoveResult {
@@ -570,6 +572,7 @@ export function moveForce(g: GameState, leader: number, path: number[]): MoveRes
   const steps: StepRecord[] = [];
   let at = forceHex(g, leader);
   let captured = false;
+  const bugOuts: number[] = [];
   for (const to of path) {
     const fx = at % g.width, fy = Math.floor(at / g.width);
     const tx = to % g.width, ty = Math.floor(to / g.width);
@@ -594,6 +597,16 @@ export function moveForce(g: GameState, leader: number, path: number[]): MoveRes
       if (sc.cost < rate + 1) u.readiness -= sc.cost;
       u.status = (u.status | STATUS_MOVED) & ~STATUS_READY;
     }
+    // MOVE_UNIT 3A57 -> 3070 (manual 5.21): UN forces in the Second Orders Phase moving from an
+    // enemy-adjacent hex to another; green units that retreated this turn bug out with (100 - readiness)%
+    if (side === 'un' && g.phase === 3 && enemyAdjacent(g, fx, fy) && enemyAdjacent(g, tx, ty)) {
+      for (const u of members) {
+        if (u.status & 0x02 && u.experience === 1 && rnd(g, 1, 100) > u.readiness) {
+          bugOutUnit(g, u);
+          bugOuts.push(u.id);
+        }
+      }
+    }
     steps.push({ hex: to, cost: sc.cost, items: sc.items, captured: sc.captures });
     at = to;
   }
@@ -601,11 +614,12 @@ export function moveForce(g: GameState, leader: number, path: number[]): MoveRes
     restore(g, before);
     return fail('cannotStop', usedBefore);
   }
-  const undoable = !captured;
+  const undoable = !captured && bugOuts.length === 0;
   g.undo = undoable ? { leader, snapshot: before } : null;
   g.version++;
   return {
     ok: true, steps, usedBefore, usedAfter: usedMove(lead.move), readinessLoss: readinessBefore - lead.readiness, undoable,
+    bugOuts,
   };
 }
 

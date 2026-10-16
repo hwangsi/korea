@@ -17,10 +17,12 @@
       <select id="scenario"></select>
     </label>
     <div class="info"><span id="date">-</span><span id="weather" class="muted">-</span></div>
+    <div id="phase" class="phase-pill">-</div>
     <div class="spacer"></div>
-    <button id="resolve" class="btn primary" type="button" title="모든 공격 명령 실행">⚔ 전투 해결</button>
+    <button id="end-phase" class="btn primary" type="button" title="이 단계의 명령을 마치고 다음 단계로">단계 종료 ▶</button>
     <div class="group" role="group" aria-label="표시 레이어">
       <button data-layer="possession" type="button">점령지</button>
+      <button data-layer="supply" type="button">보급망</button>
       <button data-layer="units" type="button">부대</button>
       <button data-layer="names" type="button">지명</button>
       <button data-layer="grid" type="button">격자</button>
@@ -36,6 +38,7 @@
     <div class="map-wrap">
       <canvas id="map"></canvas>
       <div id="status" class="status">지도 위에 마우스를 올려 보세요</div>
+      <div id="banner" class="banner" hidden></div>
     </div>
     <aside id="panel" class="panel"><section class="card"><p class="muted">불러오는 중...</p></section></aside>
   </main>

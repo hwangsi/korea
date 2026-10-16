@@ -124,8 +124,14 @@ export function overrunCheck(
   return { r1, r2, strongEnough, enoughMove, possible: strongEnough && enoughMove };
 }
 
-/** EURSUBS1.BURY: remove a unit from play; half its equipment goes to the recovered-equipment pool. */
+/** UTILITY_SPACE[7]: UN units eliminated or UN forces retreated this turn (refugee check in NEXT_TURN). */
+function countUnLoss(g: GameState, id: number) {
+  if (id >= g.firstUnUnit) g.utility[7] = Math.min(255, g.utility[7] + 1);
+}
+
+/** EURSUBS1.BURY: remove a unit from play; half its equipment goes to the replacement pool. */
 export function bury(g: GameState, v: UnitState) {
+  countUnLoss(g, v.id);
   for (const other of g.units.values()) if (other.attached === v.id) other.attached = v.attached;
   const pool = g.replacements[v.nation];
   for (const e of v.equipment) {
@@ -545,6 +551,7 @@ export function retreatHexes(g: GameState, leader: number): [number, number][] {
 
 /** GRCMBT 15D7: retreat one defending force, or take a second round of losses if it cannot. */
 function retreat(g: GameState, leader: number, ratio: number, events: CombatEvent[]) {
+  countUnLoss(g, leader); // GRCMBT 1641
   const lead = unit(g, leader);
   const side = sideOf(lead);
   const cands = retreatHexes(g, leader);

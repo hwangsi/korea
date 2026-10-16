@@ -9,13 +9,14 @@ import { forceUnits, sideOf } from '../engine/state.ts';
 import { plottedAssaults } from '../engine/combat.ts';
 import type { GameState, UnitState } from '../engine/state.ts';
 import { allowance, frozen } from '../engine/movement.ts';
+import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
 import { echelonOf, MOVE_MODE_KO, pathLabelKo } from '../i18n/ko.ts';
 import { placesFor } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
 
-export interface Layers { possession: boolean; units: boolean; names: boolean; grid: boolean; coords: boolean; }
+export interface Layers { possession: boolean; units: boolean; names: boolean; grid: boolean; coords: boolean; supply: boolean; }
 
 const FONT = '"Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
@@ -56,7 +57,7 @@ export class MapView {
   hexes: Hex[] = [];
   scenario: Scenario | null = null;
   game: GameState | null = null;
-  layers: Layers = { possession: true, units: true, names: true, grid: false, coords: false };
+  layers: Layers = { possession: true, units: true, names: true, grid: false, coords: false, supply: false };
   cam = { x: 0, y: 0, zoom: 0.5 };
   selected: [number, number] | null = null;
   hover: [number, number] | null = null;
@@ -72,6 +73,14 @@ export class MapView {
   private forcesByHex = new Map<number, Force[]>();
   private forcesVersion = -1;
   private drag: { sx: number; sy: number; cx: number; cy: number; moved: boolean } | null = null;
+  private netCache: { version: number; net: Uint8Array } | null = null;
+
+  /** Supply net of the current possession (recomputed when the game state changes). */
+  supplyNet(): Uint8Array {
+    const g = this.game!;
+    if (!this.netCache || this.netCache.version !== g.version) this.netCache = { version: g.version, net: supplyNet(g) };
+    return this.netCache.net;
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -88,6 +97,7 @@ export class MapView {
     this.scenario = scenario;
     this.game = game;
     this.forcesVersion = -1;
+    this.netCache = null;
     this.movement = null;
     this.selectedLeader = null;
     this.invalidate();
@@ -296,6 +306,7 @@ export class MapView {
     this.strokeNetwork(vis, 'road', [{ color: '#6f603f', width: HEX * 0.17 }, { color: '#f1e3b5', width: HEX * 0.09 }]);
     this.strokeNetwork(vis, 'rail', [{ color: '#2b2b2b', width: HEX * 0.1 }, { color: '#f4f4f4', width: HEX * 0.05, dash: [HEX * 0.2, HEX * 0.2] }]);
 
+    if (this.layers.supply && sc) this.drawSupply(vis);
     if (this.layers.possession && sc) this.drawFrontLine(vis);
 
     // north of the freeze line rivers are ignored (original: snowflake marker)
@@ -333,6 +344,43 @@ export class MapView {
       for (const h of vis) {
         const s = this.toScreen(hexCenter(h.x, h.y, HEX));
         ctx.fillText(`${h.x},${h.y}`, s.x, s.y - HEX * 0.62 * z);
+      }
+    }
+  }
+
+  /** Supply Net Map (manual 3.13): supplied hexes tinted, cut-off friendly hexes hatched. */
+  private drawSupply(vis: Hex[]) {
+    const ctx = this.ctx;
+    const g = this.game!;
+    const net = this.supplyNet();
+    const supplied: Record<number, Hex[]> = { 1: [], 2: [] };
+    const cut: Record<number, Hex[]> = { 1: [], 2: [] };
+    for (const h of vis) {
+      if (!isLand(h.terrain)) continue;
+      const i = h.y * g.width + h.x;
+      const owner = g.possession[i];
+      if (owner !== 1 && owner !== 2) continue;
+      (net[i] === owner ? supplied : cut)[owner].push(h);
+    }
+    for (const side of [1, 2]) {
+      ctx.beginPath();
+      for (const h of supplied[side]) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+      ctx.fillStyle = side === 1 ? 'rgba(40, 110, 210, 0.16)' : 'rgba(210, 45, 40, 0.16)';
+      ctx.fill();
+      for (const h of cut[side]) {
+        const c = hexCenter(h.x, h.y, HEX);
+        ctx.save();
+        this.hexPath(c);
+        ctx.clip();
+        ctx.beginPath();
+        for (let k = -2; k <= 2; k++) {
+          ctx.moveTo(c.x - HEX + k * HEX * 0.45, c.y + HEX);
+          ctx.lineTo(c.x + HEX + k * HEX * 0.45, c.y - HEX);
+        }
+        ctx.strokeStyle = side === 1 ? 'rgba(30, 70, 150, 0.55)' : 'rgba(150, 30, 30, 0.55)';
+        ctx.lineWidth = HEX * 0.07;
+        ctx.stroke();
+        ctx.restore();
       }
     }
   }
@@ -468,7 +516,7 @@ export class MapView {
     const sc = this.scenario;
     const is1995 = sc?.scenario === 4;
     // icons in world space
-    for (const p of map.ports) this.icon(hexCenter(p.x, p.y, HEX), 'port', sc?.ports.find((q) => q.id === p.id)?.mined ?? false);
+    for (const p of map.ports) this.icon(hexCenter(p.x, p.y, HEX), 'port', this.game?.ports.find((q) => q.id === p.id)?.mined ?? false);
     for (const a of map.airfields) this.icon(hexCenter(a.x, a.y, HEX), 'airfield', false);
     if (!is1995) for (const sp of map.supplyPoints) this.icon(hexCenter(sp.x, sp.y, HEX), 'supply', false);
   }

@@ -1,7 +1,7 @@
 // Mutable game state built from an extracted scenario. Pure logic (no DOM) so it can run in Node for
 // tests and AI self-play. Mirrors the original globals: UNITS[], TERRAIN[x][y][1..4], AIRFIELDS[], ...
 
-import type { Equipment, EquipmentType, Hex, MapData, Nation, Scenario, Unit, UnitKind } from '../data/types.ts';
+import type { AirUnit, Equipment, EquipmentType, Hex, MapData, Nation, Scenario, Unit, UnitKind } from '../data/types.ts';
 
 export type Side = 'un' | 'communist';
 
@@ -39,6 +39,15 @@ export interface UnitState {
 }
 
 export interface AirfieldState { id: number; x: number; y: number; current: number; best: number; }
+export interface PortState { id: number; x: number; y: number; mined: boolean; }
+export type AirUnitState = AirUnit;
+/** NEWS_FLASH entry: original English text (translated in the UI) and the turn it happened. */
+export interface NewsItem { turn: number; text: string; }
+
+/** PLAYER values of the original: 1 = Communist, 2 = United Nations. */
+export type Player = 1 | 2;
+export const PLAYER_SIDE: Record<Player, Side> = { 1: 'communist', 2: 'un' };
+export const SIDE_PLAYER: Record<Side, Player> = { communist: 1, un: 2 };
 
 export interface GameState {
   scenarioId: string;
@@ -66,14 +75,46 @@ export interface GameState {
   turn: number;
   /** SCENARIO[2]: Communist competence 1 Pushover .. 5 Hideous (3 = x1.0). */
   competence: number;
-  /** REPLACEMENTS[nation][equipment type - 1] = [new equipment, recovered from eliminated units]. */
+  /** REPLACEMENTS[nation][equipment type - 1] = [per-turn rate, pool] (GROUND_REINFORCEMENTS; BURY adds to the pool). */
   replacements: Record<Nation, [number, number][]>;
   freezeLine: number;
   refugees: boolean;
   /** SCENARIO[3]: 0 two players, 1 computer plays Communist, 2 computer plays UN. */
   computerSide: number;
-  /** 1 = First Orders Phase, 3 = Second Orders Phase (PHASE global). */
+  /** PHASE global: 1 First Orders, 2 Combat Resolution, 3 Second Orders, 4 General Resolution (docs/rules/turn.md). */
   phase: number;
+  /** PLAYER global: whose orders phase it is (1 Communist, 2 UN). */
+  player: Player;
+  /** SAVEORDER: players of the current orders phase in order, and the index of the one playing now. */
+  order: [Player, Player];
+  orderStep: number;
+  /** STOCKPILE DUAL array: [0] Communist, [1] United Nations. */
+  stockpile: [number, number];
+  /** WEATHER[3][4] (temperature*10 + sky): row 0 the real weather of this turn and the next three,
+   *  rows 1 and 2 the forecasts shown to the Communist and the UN player. */
+  weather: number[][];
+  /** FIRSTUNUNIT..LASTUNUNIT: unit id range of the United Nations side. */
+  firstUnUnit: number;
+  lastUnUnit: number;
+  ports: PortState[];
+  airUnits: AirUnitState[];
+  redAir: number;
+  /** UN_HEXES: 100 * UN cities + other UN hexes at the end of the previous turn (refugee check). */
+  unHexes: number;
+  ccfIntervention: number;
+  sealiftDemand: number;
+  airliftDemand: number;
+  /** UTILITY_SPACE (event flags and counters; meanings in docs/rules/turn.md). */
+  utility: number[];
+  /** REALITY[4] (1-based): limited intelligence (false = complete, every hex spotted to level 2). */
+  limitedIntel: boolean;
+  /** SCENARIO[6]: CCF intervention option, false = Historical (1/3 bluff), true = Fixed. */
+  ccfFixed: boolean;
+  /** The players continued past the end of the game: victory levels no longer count. */
+  victoryVoid: boolean;
+  news: NewsItem[];
+  /** End of game reason once END_TEST fired. */
+  gameOver: string | null;
   interdiction: [number, number];
   railDemand: [number, number];
   /** mulberry32 state */
@@ -142,6 +183,26 @@ export function createGameState(map: MapData, scenario: Scenario, seed = 1950): 
     refugees: scenario.refugees ?? false,
     computerSide: 0,
     phase: 1,
+    player: 1,
+    order: [1, 2],
+    orderStep: 0,
+    stockpile: [scenario.stockpile?.communist ?? 0, scenario.stockpile?.un ?? 0],
+    weather: [0, 1, 2].map((r) => [0, 1, 2, 3].map((c) => scenario.weatherRaw?.[r * 4 + c] ?? 0)),
+    firstUnUnit: scenario.firstUnUnit ?? (scenario.scenario === 4 ? 124 : 156),
+    lastUnUnit: scenario.lastUnUnit ?? (scenario.scenario === 4 ? 202 : 250),
+    ports: (scenario.ports ?? []).map((p) => ({ id: p.id, x: p.x, y: p.y, mined: p.mined })),
+    airUnits: (scenario.airUnits ?? []).map((a) => ({ ...a })),
+    redAir: scenario.redAir ?? 0,
+    unHexes: scenario.unHexes ?? 0,
+    ccfIntervention: scenario.ccfIntervention ?? 99,
+    sealiftDemand: scenario.sealiftDemand ?? 0,
+    airliftDemand: scenario.airliftDemand ?? 0,
+    utility: (scenario.utilitySpace ?? new Array(20).fill(0)).slice(),
+    limitedIntel: false,
+    ccfFixed: false,
+    victoryVoid: false,
+    news: [],
+    gameOver: null,
     interdiction: [scenario.interdiction?.[0] ?? 0, scenario.interdiction?.[1] ?? 0],
     railDemand: [scenario.railDemand?.[0] ?? 0, scenario.railDemand?.[1] ?? 0],
     rng: seed >>> 0,
@@ -218,6 +279,28 @@ export function isStorm(g: GameState): boolean {
   return g.sky === 3;
 }
 
+/** Side of a unit id by the original's rule (id >= FIRSTUNUNIT is United Nations). */
+export function sideOfId(g: GameState, id: number): Side {
+  return id >= g.firstUnUnit ? 'un' : 'communist';
+}
+
+/** Side whose orders phase it is. */
+export function activeSide(g: GameState): Side {
+  return PLAYER_SIDE[g.player];
+}
+
+/** Copy WEATHER[0][0] into the cached sky / temperature fields. */
+export function syncWeather(g: GameState) {
+  const w = g.weather[0][0];
+  g.sky = ((w % 10) + 10) % 10;
+  g.temperature = Math.trunc(w / 10);
+}
+
+/** EURSUBS1.NEWS_FLASH (the original keeps the last eight lines; the remake keeps all). */
+export function newsFlash(g: GameState, text: string, turn = g.turn) {
+  g.news.push({ turn, text });
+}
+
 // ---------- randomness (TACSUBS.RND equivalent, but seeded and reproducible) ----------
 
 export function random(g: GameState): number {
@@ -242,6 +325,7 @@ export interface Snapshot {
   airfields: AirfieldState[];
   railDemand: [number, number];
   replacements: Record<string, [number, number][]>;
+  utility: number[];
   rng: number;
 }
 
@@ -258,6 +342,7 @@ export function snapshot(g: GameState, unitIds?: Iterable<number>): Snapshot {
     airfields: g.airfields.map((a) => ({ ...a })),
     railDemand: [g.railDemand[0], g.railDemand[1]],
     replacements: Object.fromEntries(Object.entries(g.replacements).map(([n, rows]) => [n, rows.map((r) => [r[0], r[1]] as [number, number])])),
+    utility: g.utility.slice(),
     rng: g.rng,
   };
 }
@@ -270,6 +355,7 @@ export function restore(g: GameState, s: Snapshot) {
   g.airfields = s.airfields.map((a) => ({ ...a }));
   g.railDemand = [s.railDemand[0], s.railDemand[1]];
   g.replacements = Object.fromEntries(Object.entries(s.replacements).map(([n, rows]) => [n, rows.map((r) => [r[0], r[1]] as [number, number])])) as Record<Nation, [number, number][]>;
+  g.utility = s.utility.slice();
   g.rng = s.rng;
   g.version++;
 }

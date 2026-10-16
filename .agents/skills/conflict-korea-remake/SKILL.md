@@ -52,6 +52,9 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - `write_file`은 기존 파일을 덮어쓰지 못한다. 수정은 `edit_file`, 전체 교체는 REPL `fs.rm` 후 새로 쓴다.
 - PowerShell `Remove-Item`은 F:\ 루트 권한 문제로 실패할 수 있다. REPL `fs.rm`을 쓴다.
 - git 명령은 샌드박스에서 실패할 수 있다. 커밋은 사용자에게 안내한다.
+- `cd`가 막히면 스크립트는 절대경로로 실행하고, 테스트 glob은 작업 폴더 기준 상대경로(`"korea/remake/tests/**/*.test.ts"`)를 쓴다.
+- standalone 번들러는 `export { a }`, `export default`, `export *`를 모른다. 쓰면 standalone.html이 조용히 아무것도 띄우지 않는다.
+- 화면 검증은 `window.confirm = () => true`를 먼저 넣고, 단계 알림 창은 `__app.closeBanner()`, 단계 종료는 `__app.endPhase()`.
 
 ## 마무리
 

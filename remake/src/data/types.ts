@@ -58,6 +58,23 @@ export interface Unit {
 export interface Force { leader: number; name: string; x: number; y: number; units: number[]; }
 export interface EquipmentType { id: number; name: string; lethality: number; survivability: number; }
 
+export interface AirUnit {
+  id: number;
+  name: string;
+  entryTurn: number;
+  exitTurn: number;
+  aircraft1: number;
+  aircraft2: number;
+  airToAir: number;
+  airToGround: number;
+  /** 0 air superiority, 1 ground attack, 2 interdiction */
+  mission: number;
+  base: number;
+  allWeather: boolean;
+  longRange: boolean;
+  poorRunways: boolean;
+}
+
 export interface Scenario {
   id: string;
   file: string;
@@ -66,7 +83,21 @@ export interface Scenario {
   variant: 'S' | 'base';
   turn: number;
   date: { year: number; month: number; day: number; label: string };
+  /** STOCKPILE DUAL array: [0] Communist, [1] United Nations */
   stockpile: { un: number; communist: number };
+  /** FIRSTUNUNIT..LASTUNUNIT: unit ids of the United Nations side */
+  firstUnUnit: number;
+  lastUnUnit: number;
+  /** UTILITY_SPACE: 20 bytes of event flags and counters (docs/rules/turn.md) */
+  utilitySpace: number[];
+  realityRaw: number[];
+  redAir: number;
+  unHexes: number;
+  victory: number;
+  sealiftDemand: number;
+  airliftDemand: number;
+  interception: number[];
+  airUnits: AirUnit[];
   /** SCENARIO bytes: [scenario, ?, communist competence, computer side (0 none, 1 communist, 2 UN), ...] */
   settingsRaw: number[];
   /** WEATHER 3x4 int16; [0] is the current turn (temperature*10 + sky) */
