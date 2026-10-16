@@ -18,7 +18,7 @@ html, body { margin: 0; height: 100%; }
 body { display: flex; flex-direction: column; overflow: hidden; }
 
 .topbar {
-  display: flex; align-items: center; gap: 16px; padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px; padding: 10px 16px;
   background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap;
 }
 .brand { display: flex; flex-direction: column; line-height: 1.2; }

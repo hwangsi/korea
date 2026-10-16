@@ -141,7 +141,8 @@ async function main() {
     $('#date').textContent = `${dateKo(d.year, d.month, d.day)} · ${game.turn}턴`;
     const t = TEMPERATURE_KO[game.temperature];
     const freeze = game.freezeLine > 0 ? ` · 결빙선 ${game.freezeLine}행` : '';
-    $('#weather').textContent = (t ? `${t} · ${SKY_KO[game.sky] ?? '-'}` : '-') + freeze + ` · 승리 ${game.victoryVoid ? '-' : victoryKo(territoryBalance(game))}`;
+    $('#weather').textContent = (t ? `${t} · ${SKY_KO[game.sky] ?? '-'}` : '-') + freeze;
+    $('#weather').title = `승리 수준 ${game.victoryVoid ? '-' : victoryKo(territoryBalance(game))}`;
     const pill = $('#phase');
     const ordersPhase = game.phase === 1 || game.phase === 3;
     pill.className = `phase-pill ${ordersPhase ? (game.player === 2 ? 'un' : 'red') : ''}`;
@@ -439,7 +440,8 @@ async function main() {
     render();
   }
 
-  select.addEventListener('change', () => load(select.value));
+  // give the keyboard back to the map (arrow keys would otherwise switch the scenario)
+  select.addEventListener('change', () => { select.blur(); load(select.value); });
 
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;

@@ -135,7 +135,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
         <li>옆의 적 부대 클릭: 공격 미리보기 → 한 번 더: 공격 명령(또는 돌파)</li>
         <li>상단 ▶ ${esc(TURN_UI_KO.endPhase)}: 다음 진영·단계로 (1차 명령 → 전투 → 2차 명령 → 정리)</li>
         <li>오른쪽 클릭 또는 Esc: 취소 · Ctrl+Z: 되돌리기</li>
-        <li>드래그: 지도 이동 · 휠: 확대·축소</li>
+        <li>드래그 또는 방향키: 지도 이동 (Shift+방향키: 빠르게) · 휠: 확대·축소</li>
       </ul>
       <p class="muted small">두 사람이 번갈아 하는 방식입니다 (컴퓨터 AI는 아직 없음). 안개·정찰은 아직 "완전 정보"로 표시합니다.</p>
     </section>`;

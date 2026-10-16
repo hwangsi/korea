@@ -30,6 +30,12 @@ export const NATION_COLOR: Record<Nation, string> = {
 };
 
 const isWater = (t: string) => t === 'ocean' || t === 'estuary' || t === 'reservoir';
+
+/** Keyboard panning: direction per arrow key, speed in screen pixels per second, first step of a tap. */
+const PAN_DIRS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+const PAN_SPEED = 700;
+const PAN_SPEED_FAST = 1600;
+const PAN_TAP = 40;
 const isLand = (t: string) => !isWater(t) && t !== 'offmap';
 
 /** Forces in a hex, in TERRAIN byte order (first force, second force). */
@@ -74,6 +80,10 @@ export class MapView {
   private forcesVersion = -1;
   private drag: { sx: number; sy: number; cx: number; cy: number; moved: boolean } | null = null;
   private netCache: { version: number; net: Uint8Array } | null = null;
+  /** Arrow keys held down (smooth keyboard panning). */
+  private panKeys = new Set<string>();
+  private panFast = false;
+  private panLast = 0;
 
   /** Supply net of the current possession (recomputed when the game state changes). */
   supplyNet(): Uint8Array {
@@ -89,6 +99,7 @@ export class MapView {
     this.ctx = ctx;
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.bindInput();
+    this.bindKeys();
   }
 
   setData(map: MapData, scenario: Scenario, game: GameState) {
@@ -224,7 +235,13 @@ export class MapView {
     c.addEventListener('wheel', (e) => {
       e.preventDefault();
       const p = local(e);
-      this.zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y);
+      // Zoom by the scrolled amount, not per event: high-resolution wheels and touchpads send many small
+      // events for one notch. A standard notch (100 px) is about 12%; one event never exceeds about 20%.
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16; // lines
+      else if (e.deltaMode === 2) dy *= this.viewSize().h; // pages
+      dy = Math.max(-150, Math.min(150, dy));
+      if (dy) this.zoomAt(Math.exp(-dy * 0.0012), p.x, p.y);
     }, { passive: false });
     c.addEventListener('dblclick', (e) => { const p = local(e); this.zoomAt(1.6, p.x, p.y); });
     c.addEventListener('contextmenu', (e) => {
@@ -233,6 +250,47 @@ export class MapView {
       this.invalidate();
     });
   }
+
+  /** Arrow keys pan the map while held (Shift = faster). Ignored while typing in a form field. */
+  private bindKeys() {
+    const typing = (e: KeyboardEvent) => !!(e.target as HTMLElement | null)?.closest?.('input, select, textarea, [contenteditable="true"]');
+    window.addEventListener('keydown', (e) => {
+      if (!(e.key in PAN_DIRS) || typing(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      e.preventDefault();
+      this.panFast = e.shiftKey;
+      if (this.panKeys.has(e.key)) return; // key repeat: the animation is already running
+      this.panKeys.add(e.key);
+      if (this.panKeys.size === 1) {
+        this.panLast = performance.now();
+        this.panBy(PAN_TAP, e.key); // a short tap still moves the map a little
+        requestAnimationFrame(this.panStep);
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      this.panKeys.delete(e.key);
+      if (e.key === 'Shift') this.panFast = false;
+    });
+    window.addEventListener('blur', () => this.panKeys.clear());
+  }
+
+  /** Move the camera `px` screen pixels in the direction(s) of the given keys. */
+  private panBy(px: number, ...keys: string[]) {
+    let dx = 0, dy = 0;
+    for (const k of keys) { const d = PAN_DIRS[k]; if (d) { dx += d[0]; dy += d[1]; } }
+    if (!dx && !dy) return;
+    this.cam.x += (dx * px) / this.cam.zoom;
+    this.cam.y += (dy * px) / this.cam.zoom;
+    this.invalidate();
+  }
+
+  private panStep = (t: number) => {
+    if (!this.panKeys.size) return;
+    // speed follows real time even at a low frame rate (capped so a stalled tab does not jump far)
+    const dt = Math.min(0.25, Math.max(0, (t - this.panLast) / 1000));
+    this.panLast = t;
+    this.panBy((this.panFast ? PAN_SPEED_FAST : PAN_SPEED) * dt, ...this.panKeys);
+    requestAnimationFrame(this.panStep);
+  };
 
   invalidate() {
     if (this.pending) return;
