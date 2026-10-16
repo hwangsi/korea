@@ -15,7 +15,10 @@ node tools/extract/extract.ts      # 원본 → data/extracted (처음 한 번)
 node tools/disasm/dis.cjs <PROC>   # 심볼 주석 디스어셈블
 node tools/dev-server.mjs          # http://localhost:5173
 node tools/build.mjs               # dist/standalone.html
+node --test --test-isolation=none "tests/**/*.test.ts"   # 단위 테스트
 ```
+
+규칙 명세는 `remake/docs/rules/*.md` (예: movement.md). 규칙을 구현·변경하면 해당 문서와 테스트를 함께 갱신.
 
 ## 규칙
 

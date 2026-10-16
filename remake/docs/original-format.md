@@ -50,7 +50,7 @@
 | 0x7A4A | STOCKPILE | [유엔, 공산] (PHASE_PULSE의 선공 공식으로 확인) |
 | 0x7A4E | WEATHER | 3×4 int16, 값 = 기온×10 + 하늘 (기온 1 추위/2 온화/3 더위, 하늘 1 맑음/2 흐림/3 폭풍) |
 | 0x7A66 | NOTES | array[8] of string[255] (뉴스) |
-| 0x8266 | SCENARIO | 8 bytes [시나리오, 중공군 개입, 공산군 역량, 플레이 모드, 항공, 정보, ...] |
+| 0x8266 | SCENARIO | 8 bytes [시나리오, ?, 공산군 역량(1~5, 재보급률 +7), 컴퓨터 진영(0 두 사람, 1 공산, 2 유엔), ...] |
 | 0x8272 | ROADS | 114 bytes: 타일 코드 0x0B~0x7C의 도로 방향 마스크 |
 | 0x82E4 | RAILS | 129 bytes: 타일 코드 0x1E~0x9E의 철도 방향 마스크 |
 | 0x8366 | PORTS | array[18] of (MINED, X, Y) — 한국 12 + 일본 6 |
@@ -65,9 +65,9 @@
 | 2 | NAME1: string[20] | 부대(Force) 이름. 부대 선두 유닛에서만 의미 있음 |
 | 23 | NAME: string[20] | 유닛 이름 |
 | 44 | EXPERIENCE: byte | 1 신병, 2 숙련(×1.25), 3 정예(×1.5) |
-| 45 | STATUS: byte | 상태 비트 (일부 미해독) |
+| 45 | STATUS: byte | 상태 비트: 0x01 재보급됨, 0x04 이번 턴 이동함, 0x40 준비도 75+ 미이동 (나머지 미해독). REST_UP이 턴마다 0으로 초기화 |
 | 46 | READINESS: int16 | 준비도 % |
-| 48 | MOVE: int16 | 남은 이동력 |
+| 48 | MOVE: int16 | **이번 턴에 쓴** 이동력. 남은 이동력 = 국가 이동력 − (MOVE mod 100). 100의 자리 = 공격 계획 방향(3·dy+dx+5) |
 | 50 | ATTACHED: int16 | 같은 부대의 다음 유닛 번호 (연결 리스트, 0 = 끝) |
 | 52 | MAP_X, MAP_Y: int16 | 위치. 음수면 지도 밖(증원 대기 등) |
 | 56 | EQUIPMENT | array[5] of (EQUIP_TYPE, ASSIGNED, AUTHORIZED) |
@@ -83,7 +83,9 @@ S 파일은 유닛이 사단·군 단위로 편성돼 있고 날씨 예보가 �
 
 - 34열 × 66행, 위아래가 평평한(flat-top) 헥스, **짝수 열이 반 칸 아래** (even-q). 헥스 한 칸 15km.
 - 6방향 비트: N=1, NE=2, SE=4, S=8, SW=16, NW=32 (디버그 정보의 상수 이름 그대로).
-- 헥스당 5바이트: [0] 지형 코드(= 타일 번호), [1] 점령(1 유엔, 2 공산), [2-4] 동적 상태(미해독).
+- 헥스당 5바이트: [0] 지형 코드(= 타일 번호), [1] 점령(1 유엔, 2 공산), [2] 정찰 단계(REST_UP 중에는 보급 상태로 쓰임),
+  [3] 첫째 부대 선두 유닛 번호, [4] 둘째 부대 선두 유닛 번호 (스택 최대 2, 모든 시나리오에서 부대 위치와 일치).
+- DUAL 배열(INTERDICTION, RAIL_DEMAND 등)의 인덱스 0 = 공산 플레이어(PLAYER 1), 1 = 유엔 플레이어(PLAYER 2). 철도 차단 판정에서 공산군은 INTERDICTION[1]을 받음.
 
 ### 지형 코드 (EURSUBS1.GET_TERRAIN)
 
@@ -128,9 +130,13 @@ S 파일은 유닛이 사단·군 단위로 편성돼 있고 날씨 예보가 �
 - 공산 항공력: 8턴 이후 매 턴 RED_AIR +10, 24턴 이후 +5 추가.
 - 턴 정리 순서(PHASE_PULSE): UNSPOT_EVERYTHING → REST_UP → GROUND_REINFORCEMENTS → RED_AIR 증가 → CHECK_CHINA → MINE_WARFARE → DO_PATROLS → DO_INTEL → CHECK_BIGHEXES → END_TEST → NEXT_TURN.
 
+- 이동 규칙 전체는 `docs/rules/movement.md`.
+- 중첩 프로시저: TDInfo는 최상위 프로시저만 기록한다. 중첩 함수는 부모 앞에 놓여 바로 앞 프로시저의 길이에 포함되어 보인다
+  (OVERRUN 길이에 MOVE_COST의 도로/철도/강 함수, CAN_ENTRAIN 길이에 MOVE_UNIT의 이동 루프, SUPPLY 첫 프로시저 앞 3.7KB에 REST_UP의 본체).
+
 ## 5. 아직 모르는 것
 
-- UNIT_TYPE.STATUS 비트 전체, TERRAIN 바이트 2-4의 의미
+- UNIT_TYPE.STATUS 0x08, 0x10, 0x20, 0x80 비트
 - 증원 유닛의 도착 턴/위치 인코딩 (MAP_X 음수 값)
 - 38선과 미그 앨리 표시 데이터 위치 (그리기 코드 안에 있을 것으로 추정)
 - REPLACEMENTS 2바이트의 정확한 의미, AIR_UNIT_TYPE.MISSION/BASE 값의 의미

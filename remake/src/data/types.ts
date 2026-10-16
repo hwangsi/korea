@@ -67,9 +67,20 @@ export interface Scenario {
   turn: number;
   date: { year: number; month: number; day: number; label: string };
   stockpile: { un: number; communist: number };
+  /** SCENARIO bytes: [scenario, ?, communist competence, computer side (0 none, 1 communist, 2 UN), ...] */
+  settingsRaw: number[];
+  /** WEATHER 3x4 int16; [0] is the current turn (temperature*10 + sky) */
+  weatherRaw: number[];
   weatherNow: { temperature: number; sky: number };
   freezeLine: number;
   ccfIntervention: number;
+  /** REFUGEES: United Nations units cannot use roads */
+  refugees: boolean;
+  /** CORPS: unit id ranges per army (NKPA, CPLA, ROK, UN) */
+  corps: { army: string; from: number; to: number }[];
+  /** DUAL arrays, index 0 = Communist player, 1 = United Nations player */
+  interdiction: number[];
+  railDemand: number[];
   units: Unit[];
   forces: Force[];
   equipmentTypes: EquipmentType[];
@@ -79,4 +90,6 @@ export interface Scenario {
   news: string[];
   /** Row-major (y * width + x): 0 = none, 1 = United Nations, 2 = Communist */
   possession: number[];
+  /** Row-major TERRAIN bytes 2-4: [spotting, first force leader, second force leader] */
+  hexExtra?: number[][];
 }

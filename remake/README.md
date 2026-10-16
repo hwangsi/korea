@@ -29,6 +29,9 @@ node tools/dev-server.mjs
 
 # 2-b) 또는 정적 빌드 후 단일 파일로 실행 (서버 불필요, 더블클릭으로 열림)
 node tools/build.mjs                      # dist/standalone.html
+
+# 3) 단위 테스트 (추출 데이터 필요)
+node --test --test-isolation=none "tests/**/*.test.ts"
 ```
 
 리버스 엔지니어링 보조 도구:
@@ -44,7 +47,7 @@ node tools/disasm/strings.cjs             # 코드 안의 UI 문자열 707개 ->
 ```
 remake/
   index.html, src/          웹 클라이언트 (TypeScript, 의존성 없음, Canvas 2D)
-    engine/                 규칙 엔진 (UI와 분리된 순수 로직)
+    engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, strength, hex)
     i18n/ko.ts              한글 용어집과 번역 규칙
     ui/                     지도 렌더러, 정보 패널
   tools/
@@ -54,6 +57,8 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
+  docs/rules/               규칙 명세 (movement.md)
+  tests/                    단위 테스트 (node:test)
 ```
 
 ## 진행 상황
@@ -63,17 +68,20 @@ remake/
 - [x] 지도 의미 데이터: 34×66 헥스, 지형, 강/도로/철도 6방향 연결, 도시, 항구, 비행장
 - [x] 유닛 250개(1995년 202개), 장비, 항공대, 보충, 뉴스 추출 및 매뉴얼 수치 검증
 - [x] 한글 지도 뷰어 프로토타입 (시나리오 8종, 점령지/전선, 부대 정보, 장비표)
-- [ ] 규칙 엔진: 이동 → 전투 → 보급 → 턴 진행
-- [ ] 마우스 중심 명령 UI (부대 선택, 이동 경로 미리보기, 공격 예상치)
+- [x] 이동 규칙 엔진 (원본 MOVE_COST 그대로, 철도 이동, 버그아웃, 되돌리기) + 단위 테스트 → [`docs/rules/movement.md`](docs/rules/movement.md)
+- [x] 마우스 이동 UI (도달 범위, 경로·비용 미리보기, 클릭 확정, 우클릭 취소)
+- [ ] 규칙 엔진: 전투 → 보급 → 턴 진행
+- [ ] 공격 예상치 UI, 해상·공수 이동
 - [ ] AI (원본 Kim/Walton 분석 후 재설계)
 - [ ] 전체 한글화 (UI 문자열, 이벤트 뉴스), 새 그래픽과 사운드
 
 ## 다음 단계 제안
 
-1. **규칙 명세 작성**: 매뉴얼(부록 F 공식) + 디스어셈블 결과로 이동/전투/보급 규칙을 `docs/rules.md`로 정리
-2. **이동 시스템**: 이동 비용, 도로/철도 이동, 적 인접 이탈 비용을 엔진에 구현하고 지도에서 이동 가능 범위 표시
-3. **전투 시스템**: 공격 지정 → 손실비 계산 → 후퇴/붕괴 처리, 전투 예상치 UI
-4. **턴 루프**: 1차 명령 → 전투 → 2차 명령 → 정리(보급, 증원, 날씨)
+자세한 순서는 `docs/HANDOFF.md` 7장.
+
+1. **전투 시스템**: 공격 계획(원작의 MOVE 방향 코드) → 돌파(OVERRUN) → 손실비 계산 → 후퇴/붕괴, 전투 예상치 UI
+2. **턴 루프**: 1차 명령 → 전투 → 2차 명령 → 정리(보급, 증원, 날씨)
+3. **보급**: DETERMINE_SUPPLY, 턴 시작 이동력(이미 구현된 `turnStartMove`)과 연결
 
 ## 저작권 주의
 

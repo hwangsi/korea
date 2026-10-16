@@ -10,7 +10,10 @@ export const EXPERIENCE_MULTIPLIER: Record<number, number> = { 1: 1, 2: 1.25, 3:
 
 export interface Strength { lethality: number; survivability: number; }
 
-export function rawStrength(unit: Unit, types: Map<number, EquipmentType>): Strength {
+/** Anything that carries equipment, readiness and experience (scenario Unit or mutable UnitState). */
+export type StrengthSource = Pick<Unit, 'equipment' | 'readiness' | 'experience'>;
+
+export function rawStrength(unit: StrengthSource, types: Map<number, EquipmentType>): Strength {
   let lethality = 0;
   let survivability = 0;
   for (const e of unit.equipment) {
@@ -22,7 +25,7 @@ export function rawStrength(unit: Unit, types: Map<number, EquipmentType>): Stre
   return { lethality, survivability };
 }
 
-export function effectiveStrength(unit: Unit, types: Map<number, EquipmentType>): Strength {
+export function effectiveStrength(unit: StrengthSource, types: Map<number, EquipmentType>): Strength {
   const raw = rawStrength(unit, types);
   const r = Math.max(0, unit.readiness) / 100;
   const m = EXPERIENCE_MULTIPLIER[unit.experience] ?? 1;

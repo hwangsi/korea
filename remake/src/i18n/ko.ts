@@ -180,6 +180,90 @@ export function newsKo(line: string): { date: string; text: string } {
   return { date: dateKo(Number(m[3]), month, Number(m[1])), text: applyRules(NEWS_RULES, m[4].trim()) ?? m[4].trim() };
 }
 
+// ---------- movement (docs/rules/movement.md) ----------
+
+export const MOVE_MODE_KO = { tactical: '일반 이동', rail: '철도 이동' } as const;
+
+export const BLOCK_KO: Record<string, string> = {
+  offMap: '지도 밖',
+  notAdjacent: '인접하지 않은 헥스',
+  impassable: '통행할 수 없는 지형',
+  water: '바다·하구 (해상 이동 필요)',
+  noRail: '연결된 아군 철도 없음',
+  stackFull: '아군 부대 2개로 꽉 참',
+  enemy: '적 부대 (공격은 전투 시스템에서)',
+  allowance: '이동력 부족',
+  notOnMap: '지도에 배치되지 않은 부대',
+  noAllowance: '이번 턴 이동력을 모두 씀',
+  cannotEntrain: '철도 이동 조건이 맞지 않음',
+  cannotStop: '그 헥스에서는 멈출 수 없음',
+  emptyPath: '경로 없음',
+};
+
+export const MOVE_UI_KO = {
+  orders: '이동 명령',
+  remaining: '남은 이동력',
+  readiness: '준비도',
+  moved: '이번 턴 이동함',
+  notMoved: '아직 이동 안 함',
+  assaultPlotted: '공격 계획 있음 (이동하면 취소, 예약 5점 반환)',
+  confirm: '이동 확정',
+  cancel: '취소',
+  undo: '되돌리기',
+  bugOut: '버그아웃 (장비 손실, 6점 이동)',
+  bugOutConfirm: '버그아웃을 명령할까요? 장비 일부를 잃고 준비도가 50 이하로 떨어집니다.',
+  select: '이동',
+  selected: '선택됨',
+  preview: '경로 미리보기',
+  destination: '목적지',
+  steps: '이동 칸',
+  cost: '소모',
+  after: '이동 후 남음',
+  readinessLoss: '준비도 감소',
+  capturesWarn: '적 점령지에 들어갑니다. 이 이동은 되돌릴 수 없어요.',
+  railWarn: '철도 이동 후에는 이번 턴에 더 움직일 수 없고, 되돌릴 수도 없어요. 적 항공 차단에 걸리면 선두 유닛이 손실을 입습니다.',
+  minMoveNote: '아직 움직이지 않은 부대는 이동력이 모자라도 한 칸은 들어갈 수 있어요 (원작 규칙).',
+  hint: '목적지를 클릭하면 경로가 고정되고, 같은 헥스를 한 번 더 클릭하면 이동합니다. 오른쪽 클릭으로 취소.',
+  cycleHint: '같은 헥스를 다시 클릭하면 다른 부대를 고릅니다.',
+  railStops: '철도로 갈 수 있는 헥스',
+  reachable: '갈 수 있는 헥스',
+  breakdown: '비용 내역',
+  done: '이동 완료',
+  undone: '이동을 되돌렸습니다',
+  failed: '이동할 수 없음',
+  interdicted: '철도 수송 중 적 항공 차단으로 선두 유닛 장비 손실',
+  bugOutDone: '버그아웃: 장비를 버리고 후퇴합니다 (6점 이동 가능)',
+  sandbox: '턴 진행이 아직 없어 양쪽 부대를 모두 움직일 수 있어요.',
+  points: '점',
+  unlimited: '무제한',
+  cannotStopHere: '멈출 수 없음 (통과만)',
+} as const;
+
+/** Bubble over the destination of a previewed path. */
+export function pathLabelKo(spent: number, remaining: number): string {
+  return `−${spent}점 · 남음 ${remaining}`;
+}
+
+export function costItemKo(item: { kind: string; points: number; terrain?: string; road?: boolean; river?: boolean }): string {
+  switch (item.kind) {
+    case 'terrain': {
+      const t = TERRAIN_KO[item.terrain as TerrainKind] ?? item.terrain ?? '';
+      if (item.road && item.river) return `${t} · 다리(도로)`;
+      if (item.road) return `${t} · 도로`;
+      if (item.river) return `${t} · 강 (도로 밖)`;
+      return t;
+    }
+    case 'river': return item.points === 0 ? '강 (결빙)' : item.points === 6 ? '강 도하 (폭풍)' : '강 도하';
+    case 'cpla': return '중공군 험지 감면';
+    case 'congestion': return '혼잡 (아군 부대)';
+    case 'enemyTerritory': return '적 점령지 진입';
+    case 'disengage': return '적 인접 이탈';
+    case 'rail': return '철도';
+    case 'amphibious': return '해병 상륙 (하구·저수지)';
+    default: return item.kind;
+  }
+}
+
 /** NATO-style echelon marker from a unit or force name. */
 export function echelonOf(name: string): string {
   if (/\bArmy\b|\bCorps\b|Mnvr Grp/.test(name)) return 'XXX';

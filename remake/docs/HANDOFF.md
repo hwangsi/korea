@@ -3,7 +3,7 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16, 데스크톱(F:\korea)에서 노트북으로 옮기는 시점
+- 마지막 갱신: 2026-10-16 오후, 노트북(C:\Users\hwang\AIprojects\korea). 이동 시스템 완료
 
 ## 1. 프로젝트와 확정된 방향
 
@@ -26,14 +26,23 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - 추출기: 지도(지형, 강/도로/철도 6방향), 시나리오 8종(유닛, 부대 편성, 항공대, 장비, 보충, 뉴스, 점령), 그래픽 PNG
 - 디스어셈블러(심볼/문자열 주석), UI 문자열 707개 추출
 - 한글 지도 뷰어 프로토타입: 시나리오 전환, 점령지·전선, NATO식 부대 마커, 헥스/부대/장비 정보 패널
+- **이동 시스템** (`docs/rules/movement.md`)
+  - 규칙: MOVE_COST·NATIONAL_MOVEMENT_RATE·MOVE_UNIT 단계 루프·CAN_ENTRAIN·BUGOUT·REST_UP(턴 시작 이동력)을 디스어셈블로 확정, 매뉴얼과 다른 점 기록
+  - 엔진: `src/engine/state.ts` (변경 가능한 GameState, 스택 = TERRAIN 바이트 3·4, 시드 RNG, 스냅샷), `src/engine/movement.ts` (헥스 비용과 내역, 다익스트라 도달 범위·경로, 한 칸씩 원작 규칙 적용, 되돌리기 1단계, 철도 이동, 버그아웃, 미 해병 하구 상륙 예외, 턴 시작 이동력 함수)
+  - UI: 부대 클릭 → 도달 범위(남는 이동력 숫자) → 마우스 오버 경로 미리보기 → 클릭 고정(비용 내역) → 다시 클릭/Enter 이동. 오른쪽 클릭·Esc 취소, Ctrl+Z 되돌리기, 같은 헥스 재클릭으로 겹친 부대 전환, 철도 모드, 버그아웃 버튼, 적 부대 빨간 점선, 결빙 지역 표시, 이동력 다 쓴 부대는 흐리게
+  - 테스트: `tests/movement.test.ts` 13개 (원본 DIST와 인접 일치, 지형별 비용, 폭풍·피란민·결빙, 혼잡·스택·적 점령지·이탈, 최소 1칸 이동, 되돌리기, 철도, 버그아웃, 상륙 예외)
+- 디스어셈블러: TDInfo에 없는 중첩 프로시저 구간도 출력 (`--all`의 `(unnamed before X)`, `--at <모듈> <시작> <끝>`)
 
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
 - 시나리오 날짜: 1950-06-25 / 1950-09-15 / 1950-11-22 / 1995-06-25
 - 도로 연결 604/611, 철도 460/480 일치 (나머지는 도시·항구·지도 밖 연결)
+- 턴 시작 이동력 공식이 korea2·3·4의 모든 부대 MOVE 값과 일치 (korea1은 전방 국군 6개 연대만 제작자가 수동으로 전량 이동력 부여)
+- TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- 규칙 엔진(이동, 전투, 보급, 턴 진행), 명령 UI, AI, 전체 한글화, 새 그래픽/사운드
+- 전투(공격 계획·OVERRUN 포함), 보급, 턴 진행, 해상·공수 이동, 정보(정찰), AI, 전체 한글화, 새 그래픽/사운드
+- 지금은 턴 구분이 없어 양쪽 부대를 모두 움직일 수 있음 (샌드박스)
 
 ## 3. 폴더 구조
 
@@ -49,11 +58,17 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     README.md                            실행 방법
     docs/HANDOFF.md                      이 문서
     docs/original-format.md              원본 포맷/역공학 결과
+    docs/rules/movement.md               이동 규칙 (근거 주소, 매뉴얼과 다른 점, 리메이크 결정)
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
       engine/                            규칙 엔진 (DOM 금지, 헤드리스)
+        state.ts                         GameState (유닛, 스택, 점령, RNG, 스냅샷/되돌리기)
+        movement.ts                      이동 규칙·도달 범위·명령 실행
+        hex.ts, strength.ts              헥스 수학, 전투력(부록 F)
       i18n/ko.ts                         한글 용어집·번역 규칙
-      ui/                                지도 렌더러(Canvas 2D), 정보 패널
+      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널
+      main.ts                            화면 연결, 이동 명령 컨트롤러
+    tests/                               node:test 단위 테스트 (data/extracted 필요)
     tools/
       extract/                           원본 → data/extracted (JSON, PNG)
       disasm/                            dis.cjs (디스어셈블), strings.cjs (문자열)
@@ -74,6 +89,7 @@ node tools/disasm/strings.cjs      # UI 문자열 → data/extracted/ui_strings.
 node tools/disasm/dis.cjs --all    # 모듈별 어셈블리 → data/extracted/asm/
 node tools/dev-server.mjs          # http://localhost:5173
 node tools/build.mjs               # dist/ + dist/standalone.html
+node --test --test-isolation=none "tests/**/*.test.ts"   # 단위 테스트 (npm test와 같음)
 ```
 
 추출이 정상이면 다음 줄이 보여야 합니다.
@@ -89,7 +105,10 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 - Node는 드라이브 루트 접근이 막혀 있어서 반드시 `node --preserve-symlinks --preserve-symlinks-main <스크립트>` 형태로 실행
 - 루프백 네트워크가 막혀 개발 서버에 브라우저가 접속하지 못함 → `node tools/build.mjs`로 만든 `dist/standalone.html`을
   `openTab('about:blank')` 후 `document.open(); document.write(html); document.close()`로 띄워 검증
-- 디버그 훅: 페이지에서 `window.__app.view` (지도 뷰), `window.__app.load(id)` (시나리오 로드)
+- 디버그 훅: 페이지에서 `window.__app.view` (지도 뷰), `window.__app.load(id)` (시나리오 로드),
+  `__app.game`, `__app.orders`, `__app.click(x, y)`, `__app.hover(x, y)`, `__app.cancel()`, `__app.undo()` (마우스 조작 흉내)
+- `node --test`는 기본(프로세스 격리)으로 돌리면 샌드박스에서 멈춤 → `--test-isolation=none` 필수
+- 루트는 `AsideWorkspace:\` PowerShell 드라이브로 보일 수 있고 `cd`는 권한 오류가 날 수 있음. 작업 폴더가 이미 remake면 그대로 실행
 
 ## 5. 코드 규칙
 
@@ -107,6 +126,10 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 1. 기능과 관련된 원본 프로시저를 찾는다: `data/extracted/symbols.json`의 `procedures` (모듈, 이름, 주소, 길이)
 2. 디스어셈블을 읽는다: `node tools/disasm/dis.cjs MOVE_COST` 또는 `data/extracted/asm/<모듈>.asm`
    - 전역변수 접근은 `[FREEZE_LINE]`, `[TERRAIN + reg]`처럼, 호출은 `EURSUBS1.OCEAN_ADJACENT`처럼, 문자열은 `"..."`로 주석이 붙음
+   - **중첩 프로시저는 심볼이 없다.** Turbo Pascal은 중첩 함수를 부모 앞에 두므로 바로 앞 프로시저의 길이에 섞여 보인다
+     (예: CAN_ENTRAIN 11222바이트 안에 MOVE_UNIT의 이동 루프 전부). `push bp; call XXXXh`로 부르고 `[bp+4]`로 부모 프레임을 읽음.
+     모듈 첫 프로시저 앞 구간은 `(unnamed before X)`로 나오며 `--at <모듈> <시작hex> <끝hex>`로 임의 구간을 볼 수 있다
+   - 유닛 i의 필드 주소 = 0x7BF + 0x47·i + 필드 오프셋 (주석이 `ROUTE+471h`, `R+dh`처럼 엉뚱하게 붙음: 7BF SYMBOL, 7EC STATUS, 7ED READINESS, 7EF MOVE, 7F1 ATTACHED, 7F3 MAP_X, 7F5 MAP_Y)
 3. 매뉴얼의 해당 절(부록 F 공식 포함)과 대조한다
 4. 결론을 `docs/rules/<주제>.md`에 공식·조건·근거(프로시저 주소, 매뉴얼 절)와 함께 기록한다
 5. 엔진에 구현하고, 매뉴얼 예시나 원본 데이터로 단위 테스트를 만든다
@@ -124,26 +147,27 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 이동 시스템
+## 7. 다음 작업: 지상전 (공격 계획 → 전투 해결)
 
-목표: 부대를 클릭하면 이동 가능 범위가 보이고, 목적지를 클릭하면 경로와 비용을 미리 본 뒤 확정하는 마우스 이동.
+목표: 이동 중 적 부대 헥스(지금 빨간 점선)를 클릭하면 돌파(OVERRUN)를 판정하거나 공격 계획을 세우고,
+예상 손실비를 보여주며, 전투 단계에서 원작 공식대로 해결.
 
-1. 규칙 확정 → `docs/rules/movement.md`
-   - 매뉴얼 기준 값 (코드로 재확인 필요)
-     - 지형 비용: 개활지·도시 2, 험지 3 (중공군 2), 산악 4 (중공군 3), 도로 1 (험지 도로 2, 1995년 1)
-     - 강: 결빙 시 무시, 다리(도로+강) +1, 다리 없음 +4 (폭풍 6)
-     - 추가 비용: 적 인접 헥스 이탈 +4, 아군 점유 헥스 진입 +1, 적 점령지 진입 +1, 공격 전개 +1
-     - 한 헥스 최대 2개 부대, 이동력 1 사용마다 준비도 1 감소
-     - 이동력: 준비도 0-50 / 51-74 / 75-100 기준 미군·유엔 0/12/24, 국군·북한 0/9/18, 중공군 9/9/12, 1995년 전원 0/12/24
-   - MOVE_COST, NATIONAL_MOVEMENT_RATE 디스어셈블로 위 값과 예외(철도, 해상, 공수, 상륙)를 확인
-2. 엔진: `src/engine/movement.ts` (부대 이동력, 헥스 진입 비용, 다익스트라 도달 범위, 경로)
-3. 게임 상태: 시나리오 JSON → 변경 가능한 GameState (부대 위치, 남은 이동력, 준비도), 되돌리기 1단계
-4. UI: 부대 선택 → 도달 가능 헥스 강조(남은 이동력 표시) → 마우스 오버 경로 미리보기 → 클릭 이동, 우클릭 취소
-5. 이어서: 전투(공격 지정, 손실비, 후퇴/붕괴, 예상치 UI) → 턴 루프 → 보급 → 항공 → AI
+1. 규칙 확정 → `docs/rules/combat.md`
+   - 공격 계획: MOVE_COST가 돌려주는 100 → MOVE_UNIT 중첩 코드 `1915:40c6` 이후 (최소 6점, `MOVE += 방향코드×100 + 5`, 공격 비용 1,
+     방향코드 함수 `1915:2075`, 보고 문구 "Force will attack to ..." `1915:2170`). CLEAR_PLOTS와 이미 맞물림 (`movement.ts`의 `clearPlots`)
+   - OVERRUN `1915:0733`(실제 본문은 `0b57` 앞까지, 뒤는 MOVE_COST 중첩 함수), 매뉴얼 부록 F "OVERRUNS"
+   - GRCMBT.DO_GROUND_COMBAT, CHECK_ELIM, NAVAL_GUNS, ELIMINATE_UNIT / EURSUBS1.GET_STRENGTH, GET_FORCE_STRENGTH (지형 효과 4.24, 참호 4.23, 후퇴·붕괴, 버그아웃 5.2)
+   - STATUS 0x10/0x20 (GET_STRENGTH가 설정), 0x08, 0x80의 의미도 이때 확정
+2. 엔진: `src/engine/combat.ts` (전투력 합산, 손실 계산, 후퇴 경로는 `movement.ts`의 `stepCost`/`enemyAdjacent` 재사용), 난수는 `state.ts`의 `rnd`
+3. UI: 도달 범위 옆 적 헥스 클릭 → 공격 계획 화살표(원작처럼), 패널에 예상치, 계획 취소
+4. 이어서: 턴 루프(PHASE_PULSE: 1차 명령 → 전투 → 2차 명령 → 정리, 선공 공식) → 보급(DETERMINE_SUPPLY + `turnStartMove` 연결)
+   → 항공 → 해상·공수 이동(규칙은 movement.md 3.5에 이미 정리) → 정보(정찰 단계, 되돌리기 제한) → AI
 
 ## 8. 미해결 질문
 
-- UNIT_TYPE.STATUS 비트 전체, TERRAIN 바이트 2-4의 의미
+- UNIT_TYPE.STATUS: 0x01 재보급됨, 0x04 이번 턴 이동함, 0x40 준비도 75 이상(미이동)은 확인. 0x08, 0x10, 0x20, 0x80은 미확정
+- TERRAIN 바이트 2: 정찰 단계(0~2)로 보이며 REST_UP 중에는 보급 상태(진영 코드)로 잠시 쓰이는 것으로 추정 (정보·보급 작업 때 확정)
+- SCENARIO[1], [4]~[7], 점령값 3의 의미 (ENEMY_ADJACENT가 예외 처리하지만 데이터에는 없음)
 - 증원부대 도착 시점·위치 인코딩 (MAP_X 음수)
 - 38선과 미그 앨리 표시 데이터의 위치
 - REPLACEMENTS 2바이트, AIR_UNIT_TYPE.MISSION/BASE 값의 의미

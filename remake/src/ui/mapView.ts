@@ -1,11 +1,15 @@
-// Canvas 2D hex map: terrain, rivers, roads, rails, possession, units. Mouse-only interaction:
-// drag = pan, wheel = zoom, click = select hex, right click = clear selection.
+// Canvas 2D hex map: terrain, rivers, roads, rails, possession, units, movement overlay.
+// Mouse-only interaction: drag = pan, wheel = zoom, click / right click are reported to the controller.
 
-import type { EquipmentType, Force, Hex, MapData, Nation, Scenario, Unit } from '../data/types.ts';
+import type { Force, Hex, MapData, Nation, Scenario } from '../data/types.ts';
 import { hexCenter, hexCorners, sideMidpoint, neighbor, pixelToHex, directionsOf, SQRT3 } from '../engine/hex.ts';
 import type { Pt } from '../engine/hex.ts';
 import { effectiveStrength, displayStrength } from '../engine/strength.ts';
-import { echelonOf } from '../i18n/ko.ts';
+import { forceUnits } from '../engine/state.ts';
+import type { GameState, UnitState } from '../engine/state.ts';
+import { allowance, frozen } from '../engine/movement.ts';
+import type { Reach } from '../engine/movement.ts';
+import { echelonOf, MOVE_MODE_KO, pathLabelKo } from '../i18n/ko.ts';
 
 export const HEX = 32; // hex radius in world units
 
@@ -25,25 +29,44 @@ export const NATION_COLOR: Record<Nation, string> = {
 const isWater = (t: string) => t === 'ocean' || t === 'estuary' || t === 'reservoir';
 const isLand = (t: string) => !isWater(t) && t !== 'offmap';
 
+/** Forces in a hex, in TERRAIN byte order (first force, second force). */
+export function forcesInHex(g: GameState, x: number, y: number): Force[] {
+  const s = g.stacks[y * g.width + x] ?? [];
+  return s.map((leader) => {
+    const units = forceUnits(g, leader);
+    return { leader, name: units[0].forceName.replace(/\+$/, '').trim(), x, y, units: units.map((u) => u.id) };
+  });
+}
+
+/** Movement overlay: reachable hexes and the previewed path (hex indices, origin excluded). */
+export interface MoveOverlay {
+  reach: Reach;
+  path: number[] | null;
+  pinned: boolean;
+}
+
 export class MapView {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   map: MapData | null = null;
   hexes: Hex[] = [];
   scenario: Scenario | null = null;
+  game: GameState | null = null;
   layers: Layers = { possession: true, units: true, grid: false, coords: false };
   cam = { x: 0, y: 0, zoom: 0.5 };
   selected: [number, number] | null = null;
   hover: [number, number] | null = null;
-  onSelect: (x: number, y: number) => void = () => {};
-  onClear: () => void = () => {};
+  /** Force chosen for orders (highlighted counter). */
+  selectedLeader: number | null = null;
+  movement: MoveOverlay | null = null;
+  onClick: (x: number, y: number) => void = () => {};
+  onContext: () => void = () => {};
   onHover: (x: number, y: number) => void = () => {};
 
   private dpr = 1;
   private pending = false;
   private forcesByHex = new Map<number, Force[]>();
-  private unitById = new Map<number, Unit>();
-  private eqTypes = new Map<number, EquipmentType>();
+  private forcesVersion = -1;
   private drag: { sx: number; sy: number; cx: number; cy: number; moved: boolean } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -55,24 +78,32 @@ export class MapView {
     this.bindInput();
   }
 
-  setData(map: MapData, hexes: Hex[], scenario: Scenario) {
+  setData(map: MapData, scenario: Scenario, game: GameState) {
     this.map = map;
-    this.hexes = hexes;
+    this.hexes = game.hexes;
     this.scenario = scenario;
-    this.unitById = new Map(scenario.units.map((u) => [u.id, u]));
-    this.eqTypes = new Map(scenario.equipmentTypes.map((e) => [e.id, e]));
-    this.forcesByHex.clear();
-    for (const f of scenario.forces) {
-      const k = f.y * map.width + f.x;
-      const list = this.forcesByHex.get(k) ?? [];
-      list.push(f);
-      this.forcesByHex.set(k, list);
-    }
+    this.game = game;
+    this.forcesVersion = -1;
+    this.movement = null;
+    this.selectedLeader = null;
     this.invalidate();
   }
 
+  /** Rebuild force lists when the game state changed (moves, undo). */
+  private syncForces() {
+    const g = this.game;
+    if (!g || this.forcesVersion === g.version) return;
+    this.forcesVersion = g.version;
+    this.forcesByHex.clear();
+    g.stacks.forEach((s, i) => {
+      if (s.length) this.forcesByHex.set(i, forcesInHex(g, i % g.width, Math.floor(i / g.width)));
+    });
+  }
+
   forcesAt(x: number, y: number): Force[] {
-    return this.map ? this.forcesByHex.get(y * this.map.width + x) ?? [] : [];
+    if (!this.map) return [];
+    this.syncForces();
+    return this.forcesByHex.get(y * this.map.width + x) ?? [];
   }
 
   // ---------- camera ----------
@@ -171,8 +202,7 @@ export class MapView {
       const p = local(e);
       const h = this.screenToHex(p.x, p.y);
       if (h) {
-        this.selected = h;
-        this.onSelect(h[0], h[1]);
+        this.onClick(h[0], h[1]);
         this.invalidate();
       }
     });
@@ -185,8 +215,7 @@ export class MapView {
     c.addEventListener('dblclick', (e) => { const p = local(e); this.zoomAt(1.6, p.x, p.y); });
     c.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.selected = null;
-      this.onClear();
+      this.onContext();
       this.invalidate();
     });
   }
@@ -213,6 +242,7 @@ export class MapView {
   }
 
   draw() {
+    this.syncForces();
     const ctx = this.ctx;
     const z = this.cam.zoom;
     const map = this.map;
@@ -237,7 +267,7 @@ export class MapView {
     if (z > 0.32) for (const h of vis) this.decorate(h, hexCenter(h.x, h.y, HEX));
 
     // possession tint + front line
-    const sc = this.scenario;
+    const sc = this.game;
     if (this.layers.possession && sc) {
       for (const h of vis) {
         if (!isLand(h.terrain)) continue;
@@ -264,8 +294,18 @@ export class MapView {
 
     if (this.layers.possession && sc) this.drawFrontLine(vis);
 
+    // north of the freeze line rivers are ignored (original: snowflake marker)
+    if (sc && sc.freezeLine > 0) {
+      ctx.beginPath();
+      for (const h of vis) if (isLand(h.terrain) && frozen(sc, h.x, h.y)) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      ctx.fill();
+    }
+
+    if (this.movement) this.drawReach(vis, this.movement);
     this.drawPlaces();
     if (this.layers.units && sc) this.drawUnits(vis);
+    if (this.movement) this.drawMoveLabels(vis, this.movement);
 
     // hover / selection
     const outline = (hx: [number, number] | null, color: string, width: number) => {
@@ -387,7 +427,7 @@ export class MapView {
   private drawFrontLine(vis: Hex[]) {
     const ctx = this.ctx;
     const map = this.map!;
-    const sc = this.scenario!;
+    const sc = this.game!;
     ctx.beginPath();
     for (const h of vis) {
       if (!isLand(h.terrain)) continue;
@@ -516,13 +556,31 @@ export class MapView {
     }
   }
 
+  private unit(id: number): UnitState | undefined {
+    return this.game?.units.get(id);
+  }
+
   private counter(f: Force, c: Pt, z: number) {
     const ctx = this.ctx;
-    const lead = this.unitById.get(f.leader);
+    const lead = this.unit(f.leader);
     if (!lead) return;
     const color = NATION_COLOR[lead.nation] ?? '#555';
     const w = HEX * 1.08, h = HEX * 0.82;
     const x = c.x - w / 2, y = c.y - h / 2;
+    const selected = this.selectedLeader === f.leader;
+    // forces with no movement left are drawn faded (wargame convention)
+    const spent = this.game ? allowance(this.game, f.leader).remaining === 0 : false;
+    ctx.save();
+    if (spent && !selected) ctx.globalAlpha = 0.62;
+    if (selected) {
+      ctx.beginPath();
+      ctx.roundRect(x - HEX * 0.12, y - HEX * 0.12, w + HEX * 0.24, h + HEX * 0.24, HEX * 0.18);
+      ctx.fillStyle = '#ffd400';
+      ctx.fill();
+      ctx.strokeStyle = '#1f2328';
+      ctx.lineWidth = HEX * 0.05;
+      ctx.stroke();
+    }
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, HEX * 0.1);
     ctx.fillStyle = color;
@@ -530,7 +588,7 @@ export class MapView {
     ctx.strokeStyle = 'rgba(0,0,0,0.55)';
     ctx.lineWidth = HEX * 0.04;
     ctx.stroke();
-    if (z < 0.4) return;
+    if (z < 0.4) { ctx.restore(); return; }
 
     // NATO frame
     const fw = w * 0.6, fh = h * 0.42;
@@ -555,11 +613,11 @@ export class MapView {
     }
 
     // echelon + strength + stack size in screen space for crisp text
-    if (z < 0.55) return;
+    if (z < 0.55) { ctx.restore(); return; }
     const total = f.units.reduce((acc, id) => {
-      const u = this.unitById.get(id);
-      if (!u) return acc;
-      const s = displayStrength(effectiveStrength(u, this.eqTypes));
+      const u = this.unit(id);
+      if (!u || !this.game) return acc;
+      const s = displayStrength(effectiveStrength(u, this.game.equipmentTypes));
       return { l: acc.l + s.lethality, s: acc.s + s.survivability };
     }, { l: 0, s: 0 });
     const ctxS = (p: Pt) => this.toScreen(p);
@@ -587,6 +645,171 @@ export class MapView {
       ctx.fillStyle = '#fff';
       ctx.font = `700 ${Math.max(8, 7 * z)}px ${FONT}`;
       ctx.fillText(String(f.units.length), b.x, b.y + 0.5);
+    }
+    ctx.restore();
+    ctx.restore();
+  }
+
+  // ---------- movement overlay ----------
+
+  /** Dim everything the force cannot reach, tint and outline the reachable area. */
+  private drawReach(vis: Hex[], m: MoveOverlay) {
+    const ctx = this.ctx;
+    const map = this.map!;
+    const px = 1 / this.cam.zoom;
+    const nodes = m.reach.nodes;
+    const rail = m.reach.mode === 'rail';
+    const inReach = (i: number) => nodes.has(i);
+    ctx.beginPath();
+    for (const h of vis) if (!inReach(h.y * map.width + h.x)) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+    ctx.fillStyle = 'rgba(24, 28, 40, 0.30)';
+    ctx.fill();
+    ctx.beginPath();
+    for (const h of vis) {
+      const n = nodes.get(h.y * map.width + h.x);
+      if (n && n.hex !== m.reach.origin && n.canStop) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+    }
+    ctx.fillStyle = rail ? 'rgba(60, 150, 255, 0.24)' : 'rgba(255, 210, 40, 0.26)';
+    ctx.fill();
+    // pass-through only (estuary under the amphibious rule, full stacks during rail moves)
+    ctx.beginPath();
+    for (const h of vis) {
+      const n = nodes.get(h.y * map.width + h.x);
+      if (n && n.hex !== m.reach.origin && !n.canStop) this.hexPath(hexCenter(h.x, h.y, HEX), false);
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.20)';
+    ctx.fill();
+    // outline of the reachable area
+    ctx.beginPath();
+    for (const h of vis) {
+      const i = h.y * map.width + h.x;
+      if (!inReach(i)) continue;
+      const pts = hexCorners(hexCenter(h.x, h.y, HEX), HEX);
+      for (let d = 0; d < 6; d++) {
+        const [nx, ny] = neighbor(h.x, h.y, d);
+        const out = nx < 0 || ny < 0 || nx >= map.width || ny >= map.height || !inReach(ny * map.width + nx);
+        if (!out) continue;
+        const a = pts[(4 + d) % 6], b = pts[(5 + d) % 6];
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+    }
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 5 * px;
+    ctx.stroke();
+    ctx.strokeStyle = rail ? '#1f6fd1' : '#e09a00';
+    ctx.lineWidth = 2.5 * px;
+    ctx.stroke();
+    // enemy forces next to the reachable area (assault targets once combat exists)
+    ctx.save();
+    ctx.setLineDash([6 * px, 4 * px]);
+    ctx.strokeStyle = '#d0312d';
+    ctx.lineWidth = 2.5 * px;
+    for (const [i, why] of m.reach.blocked) {
+      if (why !== 'enemy') continue;
+      this.hexPath(hexCenter(i % map.width, Math.floor(i / map.width), HEX));
+      ctx.stroke();
+    }
+    ctx.restore();
+    // origin ring
+    const o = m.reach.origin;
+    this.hexPath(hexCenter(o % map.width, Math.floor(o / map.width), HEX));
+    ctx.strokeStyle = '#ffd400';
+    ctx.lineWidth = 3.5 * px;
+    ctx.stroke();
+  }
+
+  /** Remaining movement points per reachable hex and the previewed path, above the counters. */
+  private drawMoveLabels(vis: Hex[], m: MoveOverlay) {
+    const ctx = this.ctx;
+    const map = this.map!;
+    const z = this.cam.zoom;
+    const r = m.reach;
+    const rail = r.mode === 'rail';
+    const onPath = new Set(m.path ?? []);
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (z >= 0.45 && !rail) {
+      ctx.font = `600 ${Math.max(9, Math.min(13, 10 * z))}px ${FONT}`;
+      for (const h of vis) {
+        const i = h.y * map.width + h.x;
+        const n = r.nodes.get(i);
+        if (!n || i === r.origin || onPath.has(i)) continue;
+        const hasForce = (this.forcesByHex.get(i)?.length ?? 0) > 0;
+        const s = this.toScreen(hexCenter(h.x, h.y, HEX));
+        const sy = s.y + (hasForce ? HEX * 0.62 * z : 0);
+        const text = String(r.rate - n.used);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.strokeText(text, s.x, sy);
+        ctx.fillStyle = n.canStop ? '#6b4a00' : '#5c6470';
+        ctx.fillText(text, s.x, sy);
+      }
+    }
+    // path
+    if (m.path && m.path.length) {
+      const pts = [r.origin, ...m.path].map((i) => this.toScreen(hexCenter(i % map.width, Math.floor(i / map.width), HEX)));
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      pts.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = m.pinned ? 9 : 7;
+      ctx.stroke();
+      ctx.strokeStyle = rail ? '#1f5fbf' : '#14325c';
+      ctx.lineWidth = m.pinned ? 5 : 3.5;
+      if (!m.pinned) ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // arrow head
+      const a = pts[pts.length - 2], b = pts[pts.length - 1];
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const ah = Math.max(9, 12 * z);
+      ctx.beginPath();
+      ctx.moveTo(b.x + Math.cos(ang) * ah * 0.2, b.y + Math.sin(ang) * ah * 0.2);
+      ctx.lineTo(b.x - Math.cos(ang - 0.5) * ah, b.y - Math.sin(ang - 0.5) * ah);
+      ctx.lineTo(b.x - Math.cos(ang + 0.5) * ah, b.y - Math.sin(ang + 0.5) * ah);
+      ctx.closePath();
+      ctx.fillStyle = rail ? '#1f5fbf' : '#14325c';
+      ctx.fill();
+      // step markers with remaining points
+      if (!rail) {
+        ctx.font = `700 ${Math.max(9, Math.min(12, 9 * z))}px ${FONT}`;
+        m.path.forEach((i, k) => {
+          if (k === m.path!.length - 1) return;
+          const n = r.nodes.get(i);
+          const p = pts[k + 1];
+          const rad = Math.max(8, 9 * z);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+          ctx.strokeStyle = '#14325c';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = '#14325c';
+          ctx.fillText(String(n ? r.rate - n.used : ''), p.x, p.y + 0.5);
+        });
+      }
+      // destination bubble
+      const end = r.nodes.get(m.path[m.path.length - 1]);
+      if (end) {
+        const spent = end.used - r.usedStart;
+        const label = rail ? MOVE_MODE_KO.rail : pathLabelKo(spent, r.rate - end.used);
+        ctx.font = `700 ${Math.max(11, Math.min(14, 11 * z + 2))}px ${FONT}`;
+        const tw = ctx.measureText(label).width + 16;
+        const th = 22;
+        const bx = b.x - tw / 2, by = b.y - HEX * z * 0.9 - th;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, tw, th, 11);
+        ctx.fillStyle = m.pinned ? (rail ? '#1f5fbf' : '#14325c') : 'rgba(20, 50, 92, 0.85)';
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, b.x, by + th / 2 + 0.5);
+      }
     }
     ctx.restore();
   }

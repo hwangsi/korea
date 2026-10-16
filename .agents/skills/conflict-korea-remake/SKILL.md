@@ -19,7 +19,13 @@ node --preserve-symlinks --preserve-symlinks-main tools/extract/extract.ts
 node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs MOVE_COST
 node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --all
 node --preserve-symlinks --preserve-symlinks-main tools/build.mjs
+node --preserve-symlinks --preserve-symlinks-main --test --test-isolation=none "tests/**/*.test.ts"
+node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVEUNIT 32dc 3700   # 중첩 함수 등 임의 구간
 ```
+
+- `node --test`를 격리 모드(기본)로 돌리면 샌드박스에서 멈춘다. `--test-isolation=none` 필수.
+- 작업 폴더가 이미 `remake`인 경우가 많다(`AsideWorkspace:\`). `cd`가 권한 오류를 내면 그대로 실행한다.
+- REPL에서 `import` 문자열이 들어간 코드를 파일로 쓰면 "External modules" 오류가 난다. 임시 스크립트는 `write_file`로 만든다.
 
 추출 출력에 `check: NKPA 50/15 ... -> OK`가 있어야 정상이다.
 
@@ -30,6 +36,8 @@ node --preserve-symlinks --preserve-symlinks-main tools/build.mjs
 1. `tools/build.mjs`로 `dist/standalone.html`을 만든다.
 2. REPL에서 `openTab('about:blank')` 후 `document.open(); document.write(html); document.close()`로 띄운다.
 3. `window.__app.view` (centerOn, zoomAt, selected, invalidate), `window.__app.load(id)`로 상태를 바꾸고 전체 페이지 스크린샷으로 확인한다. 캔버스 요소만 찍으면 비어 보일 수 있다.
+   마우스 조작은 `__app.click(x, y)`, `__app.hover(x, y)`, `__app.cancel()`, `__app.undo()`, 상태는 `__app.game`, `__app.orders`.
+   `locator.screenshot`과 `clip`은 document.write 페이지에서 엉뚱한 영역을 찍는다. 전체 스크린샷을 쓴다.
 4. 같은 탭에 다시 쓰지 말고 새 탭을 연다.
 
 ## 역공학 절차

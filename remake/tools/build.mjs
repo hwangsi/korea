@@ -80,8 +80,7 @@ if (hasData) {
   embedded['data/extracted/map.json'] = JSON.parse(readFileSync(join(DATA, 'map.json'), 'utf8'));
   for (const f of readdirSync(join(DATA, 'scenarios'))) {
     const s = JSON.parse(readFileSync(join(DATA, 'scenarios', f), 'utf8'));
-    delete s.hexExtra; // not used by the viewer
-    delete s.terrainCodes;
+    delete s.terrainCodes; // not used by the client (hexExtra is: force stacks in TERRAIN bytes 3-4)
     embedded[`data/extracted/scenarios/${f}`] = s;
   }
 }

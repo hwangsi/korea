@@ -73,20 +73,47 @@ function disasmProc(p) {
   return lines.join('\n');
 }
 
+// TDInfo only lists top-level procedures. Turbo Pascal emits nested procedures (and some code the
+// debug info does not cover) in front of their parent, so a module listing must also include the
+// gaps between symbols or those helpers are lost. Gaps are emitted as pseudo procedures named
+// `(unnamed before NEXT_PROC)`.
+function moduleProcs(name) {
+  const mod = sym.modules.find((m) => m.name === name);
+  const ps = sym.procedures.filter((x) => x.module === name).sort((a, b) => a.offset - b.offset);
+  if (!mod || !ps.length) return ps;
+  const seg = ps[0].segment;
+  const end = mod.codeLength ?? ps[ps.length - 1].offset + ps[ps.length - 1].length;
+  const out = [];
+  let cursor = 0;
+  for (const p of ps) {
+    if (p.offset > cursor) out.push({ module: name, name: `(unnamed before ${p.name})`, segment: seg, offset: cursor, length: p.offset - cursor });
+    out.push(p);
+    cursor = Math.max(cursor, p.offset + p.length);
+  }
+  if (end > cursor) out.push({ module: name, name: '(unnamed tail)', segment: seg, offset: cursor, length: end - cursor });
+  return out;
+}
+
 const args = process.argv.slice(2);
 if (!args.length) {
-  console.log('usage: node tools/disasm/dis.cjs <PROC> [PROC...] | --module <NAME> | --all <outDir>');
+  console.log('usage: node tools/disasm/dis.cjs <PROC> [PROC...] | --module <NAME> | --all <outDir> | --at <MODULE> <startHex> <endHex>');
   process.exit(0);
 }
 if (args[0] === '--all') {
   const dir = path.resolve(args[1] || path.join(ROOT, 'data', 'extracted', 'asm'));
   fs.mkdirSync(dir, { recursive: true });
-  const byModule = new Map();
-  for (const p of sym.procedures) if (!RUNTIME.has(p.module)) (byModule.get(p.module) || byModule.set(p.module, []).get(p.module)).push(p);
-  for (const [m, ps] of byModule) fs.writeFileSync(path.join(dir, `${m}.asm`), ps.map(disasmProc).join('\n\n') + '\n');
-  console.log(`wrote ${byModule.size} module listings to ${dir}`);
+  const names = [...new Set(sym.procedures.map((p) => p.module))].filter((m) => !RUNTIME.has(m));
+  for (const m of names) fs.writeFileSync(path.join(dir, `${m}.asm`), moduleProcs(m).map(disasmProc).join('\n\n') + '\n');
+  console.log(`wrote ${names.length} module listings to ${dir}`);
 } else if (args[0] === '--module') {
-  for (const p of sym.procedures.filter((x) => x.module === args[1])) console.log(disasmProc(p) + '\n');
+  for (const p of moduleProcs(args[1])) console.log(disasmProc(p) + '\n');
+} else if (args[0] === '--at') {
+  // raw range inside a module's code segment, e.g. --at SUPPLY 0 e96
+  const ps = sym.procedures.filter((x) => x.module === args[1]);
+  if (!ps.length) { console.error(`unknown module ${args[1]}`); process.exit(1); }
+  const start = parseInt(args[2], 16);
+  const end = parseInt(args[3], 16);
+  console.log(disasmProc({ module: args[1], name: `range ${args[2]}-${args[3]}`, segment: ps[0].segment, offset: start, length: end - start }));
 } else {
   for (const n of args) {
     const p = sym.procedures.find((x) => x.name === n.toUpperCase());

@@ -13,6 +13,7 @@
     "asm": "node tools/disasm/dis.cjs --all",
     "dev": "node tools/dev-server.mjs",
     "build": "node tools/build.mjs",
+    "test": "node --test --test-isolation=none \"tests/**/*.test.ts\"",
     "typecheck": "tsc -p ."
   }
 }
