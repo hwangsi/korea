@@ -197,6 +197,19 @@ export function newsKo(line: string): { date: string; text: string } {
   return { date: dateKo(Number(m[3]), month, Number(m[1])), text: applyRules(NEWS_RULES, m[4].trim()) ?? m[4].trim() };
 }
 
+// ---------- mountains and lakes (src/data/places.ts NATURAL_FEATURES) ----------
+
+export const NATURE_KO = {
+  peak: '산',
+  lake: '호수',
+  range: '산맥·고원',
+  elevation: (m: number) => `해발 ${m.toLocaleString('ko-KR')}m`,
+  built: (year: number) => `${year}년 완공`,
+  historic: (name: string) => `전쟁 당시 ${name}`,
+  estimated: '추정',
+  source: '산 정상·호수 위치는 GeoNames, 헥스 대응은 위치 보정 추정',
+} as const;
+
 // ---------- turn sequence (docs/rules/turn.md) ----------
 
 export const PLAYER_KO: Record<number, string> = { 1: '공산군', 2: '유엔군' };

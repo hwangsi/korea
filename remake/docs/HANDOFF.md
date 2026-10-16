@@ -3,7 +3,8 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16 17시, 노트북(C:\Users\hwang\AIprojects\korea). 턴 진행과 보급(정리 단계 전체) 완료 (테스트 36개 통과, standalone 브라우저 검증)
+- 마지막 갱신: 2026-10-16 저녁, 노트북(C:\Users\hwang\AIprojects\korea). 턴 진행과 보급(정리 단계 전체), 지도 조작(휠·방향키),
+  산·호수 이름 완료 (테스트 38개 통과, standalone 브라우저 검증, 사용자 확인). 다음은 7장 항공 작전
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -35,6 +36,8 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
   - 테스트: `tests/movement.test.ts` 13개 (원본 DIST와 인접 일치, 지형별 비용, 폭풍·피란민·결빙, 혼잡·스택·적 점령지·이탈, 최소 1칸 이동, 되돌리기, 철도, 버그아웃, 상륙 예외)
 - **지상전** (`docs/rules/combat.md`, `src/engine/combat.ts`): GET_STRENGTH 5개 모드, 돌파(OVERRUN), 공격 명령(MOVE 방향 코드)·취소,
   DO_GROUND_COMBAT(군별 실행, 중포병·함포 지원, 손실률, 장비 손실, 제거·회수 풀, 후퇴·버그아웃·막힘). UI: 인접 적 헥스 클릭 → 공격 미리보기(예상 손실률·후퇴 확률·돌파 가능) → 다시 클릭 명령, 지도에 공격 화살표, 상단 "전투 해결" → 결과 보고. 테스트 6개 (총 22개)
+- **산·호수** (`docs/places.md` "산과 호수", `places.ts`의 `NATURAL_FEATURES`): 원작 산악 헥스 43개·저수지 5개 전부에 실제 산·호수 이름과 해발(GeoNames),
+  백두산, 전체 보기용 산맥·고원 이름 5개. "산·호수" 레이어, 헥스 패널. `hexToLatLon`에 북부 국소 보정 추가
 - **지명** (`docs/places.md`, `src/data/places.ts`): 아이콘이 있는 모든 헥스(도시·항구·비행장·공산군 보급 거점)에 현재 지명.
   헥스→위경도 아핀 보정(RMS 약 10km)과 전사 자료(K-site, 중공군 도하 지점)로 판정. 지도 "지명" 레이어, 헥스 패널에 옛 이름·원작 표기·추정 위경도
 - 디스어셈블러: TDInfo에 없는 중첩 프로시저 구간도 출력 (`--all`의 `(unnamed before X)`, `--at <모듈> <시작> <끝>`)

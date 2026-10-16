@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { MapData } from '../src/data/types.ts';
-import { PLACE_NAMES, GEO_CONTROL, placesFor, placeAt, hexToLatLon, distanceKm } from '../src/data/places.ts';
+import { PLACE_NAMES, GEO_CONTROL, NATURAL_FEATURES, placesFor, placeAt, featureAt, hexToLatLon, distanceKm } from '../src/data/places.ts';
 import { hexesForScenario } from '../src/engine/state.ts';
 
 const DATA = join(import.meta.dirname, '..', 'data', 'extracted');
@@ -38,6 +38,34 @@ test('one name per hex per era', () => {
     }
   }
   assert.ok(PLACE_NAMES.every((p) => p.label && p.ko));
+});
+
+test('every mountain and reservoir hex has a real mountain / lake name', opts, () => {
+  const map: MapData = JSON.parse(readFileSync(join(DATA, 'map.json'), 'utf8'));
+  for (const h of map.hexes) {
+    if (h.terrain !== 'mountain' && h.terrain !== 'reservoir') continue;
+    const f = featureAt(h.x, h.y);
+    assert.ok(f, `${h.terrain} hex ${h.x},${h.y} has no name`);
+    assert.equal(f.kind, h.terrain === 'mountain' ? 'peak' : 'lake', `${h.x},${h.y}`);
+  }
+});
+
+test('natural features: one per hex, within about two hexes of the real summit / lake', () => {
+  const seen = new Set<string>();
+  for (const f of NATURAL_FEATURES) {
+    assert.ok(f.label && f.ko && f.hexes.length);
+    if (f.kind === 'range') continue;
+    for (const [x, y] of f.hexes) {
+      const k = `${x},${y}`;
+      assert.ok(!seen.has(k), `two features on ${k}`);
+      seen.add(k);
+    }
+    assert.ok(f.lat !== undefined && f.lon !== undefined, f.ko);
+    if (f.kind === 'peak') assert.ok((f.elevation ?? 0) > 500, f.ko);
+    const km = Math.min(...f.hexes.map(([x, y]) => distanceKm(hexToLatLon(x, y), { lat: f.lat!, lon: f.lon! })));
+    // two hexes; uncertain matches in the squeezed north are flagged and get three
+    assert.ok(km < (f.estimated ? 45 : 30), `${f.ko}: ${km.toFixed(1)} km from its hex`);
+  }
 });
 
 test('hex grid georeference is accurate to about one hex', () => {

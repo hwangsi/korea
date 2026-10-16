@@ -16,10 +16,10 @@ import { gameDate } from '../engine/weather.ts';
 import {
   TERRAIN_KO, NATION_KO, KIND_KO, EXPERIENCE_KO, EQUIPMENT_KO, POSSESSION_KO, SIDE_OF, SIDE_KO,
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
-  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO,
+  COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
-import { placeAt, hexToLatLon } from '../data/places.ts';
+import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
 import { directionsOf, DIRECTIONS } from '../engine/hex.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -367,6 +367,7 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   const hex = g.hexes[y * map.width + x];
   const is1995 = g.scenarioNo === 4;
   const place = placeAt(x, y, is1995);
+  const feature = featureAt(x, y);
   const port = map.ports.find((p) => p.x === x && p.y === y);
   const portState = port ? g.ports.find((p) => p.id === port.id) : undefined;
   const net = ctx.supplyNet()[y * map.width + x];
@@ -384,8 +385,9 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
   return `
     <section class="card">
       <p class="eyebrow">헥스 ${x}, ${y}</p>
-      <h2>${esc(place?.label ?? TERRAIN_KO[hex.terrain])}</h2>
+      <h2>${esc(place?.label ?? feature?.label ?? TERRAIN_KO[hex.terrain])}</h2>
       <dl class="facts">
+        ${feature ? `<dt>${esc(NATURE_KO[feature.kind])}</dt><dd>${esc(feature.ko)}${feature.elevation ? ` · ${esc(NATURE_KO.elevation(feature.elevation))}` : ''}${feature.historic ? ` <span class="muted">(${esc(NATURE_KO.historic(feature.historic))})</span>` : ''}${feature.built ? ` <span class="muted small">· ${esc(NATURE_KO.built(feature.built))}</span>` : ''}${feature.estimated ? ` <span class="tag">${esc(NATURE_KO.estimated)}</span>` : ''}${feature.note ? `<br><span class="muted small">${esc(feature.note)}</span>` : ''}</dd>` : ''}
         ${place ? `<dt>지명</dt><dd>${esc(place.ko)}${place.historic ? ` <span class="muted">(옛 이름: ${esc(place.historic)})</span>` : ''}${place.original ? ` <span class="muted small">· 원작 표기 ${esc(place.original)}</span>` : ''}</dd>` : ''}
         ${place?.note ? `<dt>비고</dt><dd>${esc(place.note)}</dd>` : ''}
         <dt>실제 위치</dt><dd>${latLonKo(x, y)} <span class="muted small">(헥스 보정 추정, 오차 약 10km)</span></dd>

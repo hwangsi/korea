@@ -12,11 +12,11 @@ import { allowance, frozen } from '../engine/movement.ts';
 import { supplyNet } from '../engine/supply.ts';
 import type { Reach } from '../engine/movement.ts';
 import { echelonOf, MOVE_MODE_KO, pathLabelKo } from '../i18n/ko.ts';
-import { placesFor } from '../data/places.ts';
+import { placesFor, NATURAL_FEATURES } from '../data/places.ts';
 
 export const HEX = 32; // hex radius in world units
 
-export interface Layers { possession: boolean; units: boolean; names: boolean; grid: boolean; coords: boolean; supply: boolean; }
+export interface Layers { possession: boolean; units: boolean; names: boolean; nature: boolean; grid: boolean; coords: boolean; supply: boolean; }
 
 const FONT = '"Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
 
@@ -36,6 +36,9 @@ const PAN_DIRS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRi
 const PAN_SPEED = 700;
 const PAN_SPEED_FAST = 1600;
 const PAN_TAP = 40;
+
+/** Zoom thresholds of the mountain / lake labels (ranges are shown below rangeMax only). */
+const NATURE_ZOOM = { lake: 0.3, peak: 0.34, elevation: 0.75, rangeMax: 0.34 };
 const isLand = (t: string) => !isWater(t) && t !== 'offmap';
 
 /** Forces in a hex, in TERRAIN byte order (first force, second force). */
@@ -63,7 +66,7 @@ export class MapView {
   hexes: Hex[] = [];
   scenario: Scenario | null = null;
   game: GameState | null = null;
-  layers: Layers = { possession: true, units: true, names: true, grid: false, coords: false, supply: false };
+  layers: Layers = { possession: true, units: true, names: true, nature: true, grid: false, coords: false, supply: false };
   cam = { x: 0, y: 0, zoom: 0.5 };
   selected: [number, number] | null = null;
   hover: [number, number] | null = null;
@@ -391,7 +394,7 @@ export class MapView {
     outline(this.selected, '#ffd400', 3.5);
 
     if (this.layers.units && sc) this.drawAssaultPlots();
-    if (this.layers.names) this.drawPlaceLabels();
+    if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
     if (this.movement) this.drawMoveLabels(vis, this.movement);
 
     if (this.layers.coords && z > 0.9) {
@@ -600,7 +603,7 @@ export class MapView {
     const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
     const free = (r: { x0: number; y0: number; x1: number; y1: number }) =>
       !placed.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
-    const items = placesFor(is1995).slice().sort((a, b) => a.rank - b.rank);
+    const items = this.layers.names ? placesFor(is1995).slice().sort((a, b) => a.rank - b.rank) : [];
     for (const p of items) {
       const st = style[p.rank];
       if (z < st.minZoom) continue;
@@ -623,7 +626,8 @@ export class MapView {
       ctx.fillStyle = st.color;
       ctx.fillText(p.label, spot.x, spot.y);
     }
-    const japan = this.hexes.find((hx) => hx.terrain === 'japan');
+    if (this.layers.nature) this.drawNatureLabels(placed, free);
+    const japan = this.layers.names ? this.hexes.find((hx) => hx.terrain === 'japan') : undefined;
     if (japan) {
       const s = this.toScreen(hexCenter(japan.x, japan.y + 2, HEX));
       ctx.font = `700 12px ${FONT}`;
@@ -633,6 +637,69 @@ export class MapView {
       ctx.fillText('일본', s.x, s.y);
     }
     ctx.restore();
+  }
+
+  /**
+   * Mountain and lake names (src/data/places.ts), drawn after the towns so a town label wins an overlap.
+   * Peaks and lakes sit on their own hex; mountain ranges appear only in the overview, when the peak
+   * names are hidden. Screen-space transform is already set by drawPlaceLabels.
+   */
+  private drawNatureLabels(
+    placed: { x0: number; y0: number; x1: number; y1: number }[],
+    free: (r: { x0: number; y0: number; x1: number; y1: number }) => boolean,
+  ) {
+    const ctx = this.ctx;
+    const z = this.cam.zoom;
+    const { w, h } = this.viewSize();
+    const halo = (text: string, x: number, y: number, fill: string, haloColor = 'rgba(255,255,255,0.9)') => {
+      ctx.lineWidth = 3.2;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = haloColor;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, x, y);
+    };
+    const order = { lake: 0, peak: 1, range: 2 } as const;
+    const items = NATURAL_FEATURES.slice().sort((a, b) => order[a.kind] - order[b.kind] || (b.elevation ?? 0) - (a.elevation ?? 0));
+    for (const f of items) {
+      if (f.kind === 'range' ? z >= NATURE_ZOOM.rangeMax : z < (f.kind === 'lake' ? NATURE_ZOOM.lake : NATURE_ZOOM.peak)) continue;
+      const [hx, hy] = f.hexes[0];
+      const c = hexCenter(hx, hy, HEX);
+      if (f.kind === 'range') {
+        const size = Math.max(11, Math.min(15, 10 + 14 * z));
+        ctx.font = `700 ${size}px ${FONT}`;
+        const text = [...f.label].join('\u2009'); // letter-spaced, like a printed atlas
+        const s = this.toScreen(c);
+        const tw = ctx.measureText(text).width;
+        const r = { x0: s.x - tw / 2 - 2, y0: s.y - size / 2 - 2, x1: s.x + tw / 2 + 2, y1: s.y + size / 2 + 2 };
+        if (r.x1 < 0 || r.y1 < 0 || r.x0 > w || r.y0 > h || !free(r)) continue;
+        placed.push(r);
+        halo(text, s.x, s.y, 'rgba(96, 66, 36, 0.62)', 'rgba(255,255,255,0.55)');
+        continue;
+      }
+      const peak = f.kind === 'peak';
+      const size = Math.max(9.5, Math.min(13, 7 + 6 * z));
+      ctx.font = `600 ${size}px ${FONT}`;
+      const text = peak ? `\u25B2 ${f.label}` : f.label;
+      const sub = peak && f.elevation && z >= NATURE_ZOOM.elevation ? `${f.elevation.toLocaleString('ko-KR')}m` : '';
+      const tw = Math.max(ctx.measureText(text).width, sub ? ctx.measureText(sub).width * 0.85 : 0);
+      const lines = sub ? size * 1.95 : size;
+      // centre of the hex, or a little lower if a town label is in the way
+      let spot: { x: number; y: number; r: { x0: number; y0: number; x1: number; y1: number } } | null = null;
+      for (const dy of [0, 0.5, -0.5]) {
+        const s = this.toScreen({ x: c.x, y: c.y + HEX * dy });
+        const r = { x0: s.x - tw / 2 - 3, y0: s.y - size / 2 - 2, x1: s.x + tw / 2 + 3, y1: s.y - size / 2 + lines + 2 };
+        if (r.x1 < 0 || r.y1 < 0 || r.x0 > w || r.y0 > h) break;
+        if (free(r)) { spot = { x: s.x, y: s.y, r }; break; }
+      }
+      if (!spot) continue;
+      placed.push(spot.r);
+      halo(text, spot.x, spot.y, peak ? '#5a3718' : '#14558f');
+      if (sub) {
+        ctx.font = `500 ${size * 0.85}px ${FONT}`;
+        halo(sub, spot.x, spot.y + size * 1.05, '#7a5a3a');
+      }
+    }
   }
 
   private icon(c: Pt, kind: 'port' | 'airfield' | 'supply', alert: boolean) {

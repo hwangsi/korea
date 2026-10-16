@@ -22,7 +22,7 @@ import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo,
 } from './i18n/ko.ts';
-import { placeAt } from './data/places.ts';
+import { placeAt, featureAt } from './data/places.ts';
 
 const DATA = 'data/extracted';
 
@@ -363,7 +363,8 @@ async function main() {
     const owner = game.possession[i];
     const forces = forcesInHex(game, x, y);
     const place = placeAt(x, y, game.scenarioNo === 4);
-    let text = `(${x}, ${y}) ${place ? place.label + ' · ' : ''}${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
+    const feature = featureAt(x, y);
+    let text = `(${x}, ${y}) ${place ? place.label + ' · ' : ''}${feature ? feature.label + (feature.elevation ? ` ${feature.elevation}m` : '') + ' · ' : ''}${TERRAIN_KO[h.terrain]}${owner ? ' · ' + POSSESSION_KO[owner] : ''}${forces.length ? ` · 부대 ${forces.length}개` : ''}`;
     if (view.layers.supply && owner && h.code < 0xa5) text += ` · ${view.supplyNet()[i] === owner ? TURN_UI_KO.inNet(PLAYER_KO[owner === 1 ? 2 : 1]) : TURN_UI_KO.outOfNet}`;
     if (orders) {
       const n = orders.reach.nodes.get(i);

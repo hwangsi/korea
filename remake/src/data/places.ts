@@ -79,6 +79,99 @@ export function placesFor(is1995: boolean): PlaceName[] {
   return PLACE_NAMES.filter((p) => (is1995 ? !p.only1950 : !p.only1995));
 }
 
+// ---------- mountains, lakes and ranges (docs/places.md "산과 호수") ----------
+
+export type NaturalKind = 'peak' | 'lake' | 'range';
+
+export interface NaturalFeature {
+  kind: NaturalKind;
+  /** Hexes the name covers (original mountain / reservoir hexes). The label goes on the first one. */
+  hexes: [number, number][];
+  /** Map label. */
+  label: string;
+  /** Full name for the panel (with the province when the name is not unique). */
+  ko: string;
+  /** Summit elevation in metres (peaks). */
+  elevation?: number;
+  /** Summit / lake centre (GeoNames). Ranges have none. */
+  lat?: number;
+  lon?: number;
+  /** Lakes: the dam was completed in this year (every lake on the map existed in 1950). */
+  built?: number;
+  /** Name at the time of the war, if it changed. */
+  historic?: string;
+  note?: string;
+  /** No clear match: the nearest notable summit is more than about 25 km from the hex. */
+  estimated?: boolean;
+}
+
+/**
+ * Every mountain hex (terrain 0x92) and reservoir hex (0xF4-0xFF) of the original map, named after the
+ * nearest summit / lake of the real map (GeoNames, checked 2026-10-16), plus Paektu-san on the border and a
+ * few range names for the overview. Matching: docs/places.md. Our own data from public geography.
+ */
+export const NATURAL_FEATURES: NaturalFeature[] = [
+  // ---------- North Korea ----------
+  { kind: 'peak', hexes: [[20, 8]], label: '백두산', ko: '백두산', elevation: 2744, lat: 41.994, lon: 128.078, note: '한반도 최고봉(장군봉)과 천지. 원작 지도에서는 작전 지역 밖(국경) 헥스' },
+  { kind: 'peak', hexes: [[30, 2]], label: '증산', ko: '증산 (함경북도)', elevation: 1041, lat: 42.753, lon: 130.005, note: '한반도 최북단 온성 일대' },
+  { kind: 'peak', hexes: [[32, 4]], label: '송진산', ko: '송진산', elevation: 1140, lat: 42.409, lon: 130.28, note: '두만강 하류' },
+  { kind: 'peak', hexes: [[28, 9]], label: '고성산', ko: '고성산 (함경북도)', elevation: 1756, lat: 41.973, lon: 129.512, note: '청진 서쪽' },
+  { kind: 'peak', hexes: [[26, 11]], label: '관모봉', ko: '관모봉', elevation: 2541, lat: 41.705, lon: 129.241, note: '함경산맥 최고봉, 한반도에서 두 번째로 높다. 헥스 중심은 관모연봉의 투구봉(2335m)에 더 가깝다' },
+  { kind: 'peak', hexes: [[22, 10]], label: '남포태산', ko: '남포태산', elevation: 2428, lat: 41.736, lon: 128.409, note: '백두산 남동쪽 약 40km' },
+  { kind: 'peak', hexes: [[23, 13]], label: '관두봉', ko: '관두봉 (양강도)', elevation: 2136, lat: 41.368, lon: 128.579, note: '백사봉(2099m) 인접' },
+  { kind: 'peak', hexes: [[24, 15]], label: '두류산', ko: '두류산 (양강도·함경도)', elevation: 2309, lat: 41.165, lon: 128.779 },
+  { kind: 'peak', hexes: [[22, 15]], label: '희사봉', ko: '희사봉 (함경남도)', elevation: 1760, lat: 40.764, lon: 128.363, estimated: true, note: '가장 가까운 1,000m 이상 봉우리가 30km가량 떨어져 있다 (달원봉은 더 가깝지만 높이 자료 없음)' },
+  { kind: 'peak', hexes: [[16, 15]], label: '대암산', ko: '대암산 (자강도)', elevation: 2205, lat: 40.88, lon: 127.623, estimated: true, note: '강원도 양구의 대암산과 다른 산. 낭림산맥 북부로, 두운봉·삼파두산도 비슷한 거리' },
+  { kind: 'peak', hexes: [[18, 15]], label: '두운봉', ko: '두운봉', elevation: 2487, lat: 41.0, lon: 127.7 },
+  { kind: 'peak', hexes: [[18, 16], [19, 16]], label: '백산', ko: '백산 (양강도)', elevation: 2476, lat: 40.816, lon: 127.761 },
+  { kind: 'peak', hexes: [[16, 17], [16, 18]], label: '연화산', ko: '연화산', elevation: 2355, lat: 40.779, lon: 127.376 },
+  { kind: 'peak', hexes: [[18, 18]], label: '북수백산', ko: '북수백산', elevation: 2522, lat: 40.71, lon: 127.748, note: '한반도에서 세 번째로 높은 산' },
+  { kind: 'peak', hexes: [[10, 17], [10, 18]], label: '장산', ko: '장산 (자강도)', elevation: 1005, lat: 40.982, lon: 126.425, note: '강계 서쪽. 만포 주변은 원작 지도가 남북으로 눌려 있어 판정이 덜 확실하다' },
+  { kind: 'peak', hexes: [[3, 22]], label: '천마산', ko: '천마산 (평안북도)', elevation: 1169, lat: 40.197, lon: 125.029 },
+  { kind: 'peak', hexes: [[10, 23]], label: '묘향산', ko: '묘향산', elevation: 1909, lat: 40.019, lon: 126.333, note: '비로봉, 보현사' },
+  { kind: 'peak', hexes: [[13, 25]], label: '철옹산', ko: '철옹산 (평안남도)', elevation: 1094, lat: 39.672, lon: 126.579, estimated: true, note: '가장 가까운 1,000m 이상 봉우리가 25km가량 떨어져 있다' },
+  { kind: 'peak', hexes: [[12, 27]], label: '백산', ko: '백산 (평안남도)', elevation: 1452, lat: 39.472, lon: 126.745 },
+  { kind: 'peak', hexes: [[14, 30]], label: '매봉산', ko: '매봉산 (법동)', elevation: 1571, lat: 38.987, lon: 127.148 },
+  { kind: 'peak', hexes: [[18, 30]], label: '황룡산', ko: '황룡산 (강원도)', elevation: 1268, lat: 38.993, lon: 127.62 },
+  { kind: 'peak', hexes: [[16, 31]], label: '추애산', ko: '추애산', elevation: 1530, lat: 38.835, lon: 127.279 },
+  { kind: 'peak', hexes: [[10, 32]], label: '언진산', ko: '언진산', elevation: 1150, lat: 38.831, lon: 126.446 },
+  { kind: 'peak', hexes: [[20, 33]], label: '금강산', ko: '금강산', elevation: 1638, lat: 38.656, lon: 128.105, note: '비로봉' },
+  // ---------- South Korea ----------
+  { kind: 'peak', hexes: [[20, 36]], label: '대암산', ko: '대암산 (양구·인제)', elevation: 1304, lat: 38.211, lon: 128.135, note: '동쪽 기슭에 펀치볼(해안분지). 1951년 격전지' },
+  { kind: 'peak', hexes: [[22, 37]], label: '설악산', ko: '설악산', elevation: 1708, lat: 38.119, lon: 128.467, note: '대청봉' },
+  { kind: 'peak', hexes: [[23, 40]], label: '오대산', ko: '오대산', elevation: 1563, lat: 37.793, lon: 128.542, note: '비로봉. 계방산(1577m) 인접' },
+  { kind: 'peak', hexes: [[25, 44]], label: '함백산', ko: '함백산', elevation: 1573, lat: 37.161, lon: 128.917 },
+  { kind: 'peak', hexes: [[26, 45]], label: '태백산', ko: '태백산', elevation: 1567, lat: 37.096, lon: 128.916, note: '장군봉' },
+  { kind: 'peak', hexes: [[24, 45]], label: '소백산', ko: '소백산', elevation: 1439, lat: 36.958, lon: 128.485, note: '비로봉' },
+  { kind: 'peak', hexes: [[19, 48]], label: '속리산', ko: '속리산', elevation: 1058, lat: 36.543, lon: 127.871, note: '천왕봉' },
+  { kind: 'peak', hexes: [[19, 53]], label: '민주지산', ko: '민주지산', elevation: 1242, lat: 36.04, lon: 127.849 },
+  { kind: 'peak', hexes: [[20, 53]], label: '가야산', ko: '가야산', elevation: 1430, lat: 35.823, lon: 128.12, note: '상왕봉, 해인사' },
+  { kind: 'peak', hexes: [[19, 54], [18, 54]], label: '덕유산', ko: '덕유산', elevation: 1614, lat: 35.86, lon: 127.746, note: '향적봉' },
+  { kind: 'peak', hexes: [[16, 54]], label: '마이산', ko: '마이산', elevation: 686, lat: 35.761, lon: 127.416, note: '진안고원. 북서쪽에 운장산(1126m)' },
+  { kind: 'peak', hexes: [[23, 55]], label: '비슬산', ko: '비슬산', elevation: 1084, lat: 35.716, lon: 128.525 },
+  { kind: 'peak', hexes: [[26, 56]], label: '가지산', ko: '가지산', elevation: 1241, lat: 35.62, lon: 129.003, note: '영남알프스 최고봉. 신불산(1208m) 인접' },
+  { kind: 'peak', hexes: [[18, 57], [17, 58], [18, 58]], label: '지리산', ko: '지리산', elevation: 1915, lat: 35.337, lon: 127.731, note: '천왕봉. 남한 내륙 최고봉, 전쟁 전후 빨치산 근거지' },
+
+  // ---------- lakes (all hydroelectric reservoirs of the Japanese colonial period) ----------
+  { kind: 'lake', hexes: [[15, 19]], label: '장진호', ko: '장진호 (Chosin Reservoir)', lat: 40.498, lon: 127.202, note: '장진강 수력발전용 저수지. 1950년 11~12월 장진호 전투' },
+  { kind: 'lake', hexes: [[17, 19]], label: '부전호', ko: '부전호 (Fusen Reservoir)', lat: 40.611, lon: 127.542, note: '부전강 수력발전용 저수지' },
+  { kind: 'lake', hexes: [[19, 17]], label: '황수원저수지', ko: '황수원저수지 (허천강)', lat: 40.699, lon: 128.073, note: '허천강 수력발전용 저수지' },
+  { kind: 'lake', hexes: [[19, 37]], label: '파로호', ko: '파로호', historic: '화천저수지', built: 1944, lat: 38.105, lon: 127.783, note: '화천댐(1944) 북한강. 1951년 전투 뒤 "오랑캐를 깨뜨린 호수"라는 뜻의 파로호로 개명' },
+  { kind: 'lake', hexes: [[18, 39]], label: '청평호', ko: '청평호', built: 1943, lat: 37.705, lon: 127.483, note: '청평댐(1943) 북한강. 원작 지도의 저수지 헥스는 실제 호수보다 동쪽으로 약 한 칸 치우쳐 있다 (의암호·소양호는 전쟁 뒤에 생김)' },
+
+  // ---------- ranges and plateaus (overview zoom only) ----------
+  { kind: 'range', hexes: [[18, 17]], label: '개마고원', ko: '개마고원' },
+  { kind: 'range', hexes: [[12, 21]], label: '낭림산맥', ko: '낭림산맥' },
+  { kind: 'range', hexes: [[23, 16]], label: '함경산맥', ko: '함경산맥' },
+  { kind: 'range', hexes: [[23, 41]], label: '태백산맥', ko: '태백산맥' },
+  { kind: 'range', hexes: [[21, 50]], label: '소백산맥', ko: '소백산맥' },
+];
+
+/** Peak or lake on a hex (ranges are labels only). */
+export function featureAt(x: number, y: number): NaturalFeature | undefined {
+  return NATURAL_FEATURES.find((f) => f.kind !== 'range' && f.hexes.some(([hx, hy]) => hx === x && hy === y));
+}
+
 export function placeAt(x: number, y: number, is1995: boolean): PlaceName | undefined {
   return placesFor(is1995).find((p) => p.x === x && p.y === y);
 }
@@ -118,10 +211,37 @@ const rows = GEO_CONTROL.map((p) => [...hexXY(p.x, p.y), 1]);
 const LAT = solve3(rows, GEO_CONTROL.map((p) => p.lat!));
 const LON = solve3(rows, GEO_CONTROL.map((p) => p.lon!));
 
-/** Approximate real position of a hex centre (affine fit, error about 10 km; worse along the Yalu). */
-export function hexToLatLon(x: number, y: number): { lat: number; lon: number } {
+function affine(x: number, y: number): { lat: number; lon: number } {
   const [px, py] = hexXY(x, y);
   return { lat: LAT[0] * px + LAT[1] * py + LAT[2], lon: LON[0] * px + LON[1] * py + LON[2] };
+}
+
+/**
+ * The original map squeezes the north (Manpo sits about 4 rows too far south), so north of row 30 the
+ * affine fit is corrected by the residuals of identified hexes (inverse distance weighting): the border
+ * crossings, the Chosin Reservoir and the northern control points.
+ */
+const NORTH_ANCHORS: { x: number; y: number; lat: number; lon: number }[] = [
+  { x: 9, y: 17, lat: 41.157, lon: 126.29 }, // 만포
+  { x: 14, y: 10, lat: 41.78, lon: 126.88 }, // 중강진
+  { x: 0, y: 22, lat: 40.1, lon: 124.4 }, // 신의주
+  { x: 29, y: 5, lat: 42.44, lon: 129.75 }, // 회령
+  { x: 15, y: 19, lat: 40.498, lon: 127.202 }, // 장진호
+  ...GEO_CONTROL.filter((p) => p.y <= 30).map((p) => ({ x: p.x, y: p.y, lat: p.lat!, lon: p.lon! })),
+];
+const RESIDUALS = NORTH_ANCHORS.map((a) => { const e = affine(a.x, a.y); return { x: a.x, y: a.y, dLat: a.lat - e.lat, dLon: a.lon - e.lon }; });
+
+/** Approximate real position of a hex centre (affine fit, about 10 km; corrected locally in the north). */
+export function hexToLatLon(x: number, y: number): { lat: number; lon: number } {
+  const e = affine(x, y);
+  const fade = Math.max(0, Math.min(1, (30 - y) / 6)); // full correction from row 24 northwards
+  if (!fade) return e;
+  let w = 0, dLat = 0, dLon = 0;
+  for (const r of RESIDUALS) {
+    const k = 1 / (Math.hypot(r.x - x, r.y - y) + 1) ** 2;
+    w += k; dLat += k * r.dLat; dLon += k * r.dLon;
+  }
+  return { lat: e.lat + (fade * dLat) / w, lon: e.lon + (fade * dLon) / w };
 }
 
 /** Great-circle-ish distance in km (equirectangular, fine at this scale). */
