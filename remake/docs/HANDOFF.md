@@ -120,6 +120,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 
 ```
 korea/                                   ← Aside Project 루트 / Git 저장소 루트 권장
+  README.md                              프로젝트 소개, 원작과 동일 / 다른 점 / 미구현 목록 (기능을 넣거나 규칙을 바꾸면 함께 갱신)
   AGENTS.md                              AI 코딩 에이전트용 요약 규칙
   .gitignore                             원본·생성물 제외
   .agents/skills/conflict-korea-remake/  Aside가 자동으로 읽는 프로젝트 스킬

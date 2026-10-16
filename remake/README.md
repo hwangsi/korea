@@ -10,6 +10,7 @@ SSI의 1992년 DOS 작전급 워게임 **Conflict: Korea – The First Year 1950
 - 성격: 개인 프로젝트. 원본 파일과 원본에서 추출한 데이터는 공개 저장소에 올리지 않습니다.
 
 > 처음이거나 다른 PC·새 AI 세션에서 이어갈 때는 [`docs/HANDOFF.md`](docs/HANDOFF.md)부터 읽으세요.
+> 무엇이 원작과 같고, 다르고, 아직 없는지는 저장소 맨 위 [`README.md`](../README.md)에 정리되어 있습니다.
 
 ## 준비물
 
@@ -47,7 +48,9 @@ node tools/disasm/strings.cjs             # 코드 안의 UI 문자열 707개 ->
 ```
 remake/
   index.html, src/          웹 클라이언트 (TypeScript, 의존성 없음, Canvas 2D)
-    engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, combat, supply, turn, endturn, weather, hex)
+    engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, combat, supply, air, naval, intel, spotting,
+                            turn, endturn, weather, hex, strength)
+    data/places.ts          지명·산·호수 데이터(자체 제작)와 헥스→위경도 보정
     i18n/ko.ts              한글 용어집과 번역 규칙
     ui/                     지도 렌더러, 정보 패널
   tools/
@@ -57,11 +60,14 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement.md, combat.md, supply.md, turn.md, air.md)
+  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel)
+  docs/places.md            지명 판정 방법과 근거
   tests/                    단위 테스트 (node:test)
 ```
 
 ## 진행 상황
+
+자세한 현황(원작과 동일 / 다른 점 / 미구현)은 [`../README.md`](../README.md), 다음 작업은 `docs/HANDOFF.md` 7장.
 
 - [x] 원본 분석: Turbo Pascal 6 실행 파일에 남은 디버그 심볼(TDInfo)로 프로시저 285개, 변수, 레코드 구조 복원
 - [x] 시나리오/세이브 포맷 완전 해독 (전역변수 영역 덤프 33,792바이트)
@@ -76,17 +82,21 @@ remake/
       증원 도착, 날씨·결빙선·예보, 순찰·게릴라, 기뢰, 중공군 개입, 피란민, 종료·승리 수준 → [`docs/rules/turn.md`](docs/rules/turn.md), [`docs/rules/supply.md`](docs/rules/supply.md)
 - [x] 항공 작전 (임무·기지·날씨 약화, 1950년대 공산 요격 수준·미그 앨리, 1995 제공권 손실, 차단, 공습 목표 지정·해결)
       + 항공 작전 패널·전투 단계 공습 UI → [`docs/rules/air.md`](docs/rules/air.md)
-- [ ] 해상·공수 이동 → 정보(안개) → 옵션 화면
+- [x] 해상·공수 이동 (상륙, 상륙 공격, 일본 철수, 187공수 낙하) → [`docs/rules/naval.md`](docs/rules/naval.md)
+- [x] 정보(안개) (정찰 단계, 보이는 정보만 표시, 이동 중 적 발견, 정보 제한/완전 선택) → [`docs/rules/intel.md`](docs/rules/intel.md)
+- [ ] 옵션 화면 (역량·플레이 모드·Air Campaign·정보·중공군 개입)
+- [ ] 저장/불러오기
 - [ ] AI (원본 Kim/Walton 분석 후 재설계)
-- [ ] 전체 한글화 (UI 문자열, 이벤트 뉴스), 새 그래픽과 사운드
+- [ ] 보고서 화면, 전략 개관 지도
+- [ ] 전체 한글화 마무리, 새 그래픽과 사운드
 
 ## 다음 단계 제안
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **해상·공수 이동**, 상륙 공격
-2. **정보(안개)**, 옵션 화면(역량·개입·항공 제어·정보), 저장
-3. **AI**
+1. **옵션 화면** (새 게임 설정)
+2. **저장/불러오기**
+3. **AI**, 보고서 화면
 
 ## 저작권 주의
 
