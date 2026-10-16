@@ -6,6 +6,8 @@ import { effectiveStrength, displayStrength } from '../engine/strength.ts';
 import type { GameState, Side, UnitState } from '../engine/state.ts';
 import { forceUnits, sideOf, unit, activeSide, POSSESSION_CODE } from '../engine/state.ts';
 import { fogActive, forceIntel, hexIntel, strengthReport, dropRisk } from '../engine/intel.ts';
+import { ccfStatus, airShownAsProgram, RANDOM_COMPETENCE } from '../engine/options.ts';
+import type { GameOptions } from '../engine/options.ts';
 import { allowance, canEntrain, canBugOut, inPort, isDeepOcean } from '../engine/movement.ts';
 import type { MoveMode, Reach } from '../engine/movement.ts';
 import { assaultTarget, atSea } from '../engine/combat.ts';
@@ -27,6 +29,7 @@ import {
   TEMPERATURE_KO, SKY_KO, unitNameKo, forceNameKo, newsKo, dateKo, MOVE_MODE_KO, MOVE_UI_KO, BLOCK_KO, costItemKo,
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
+  OPTIONS_UI_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
@@ -47,6 +50,25 @@ export interface PanelContext {
   supplyNet: () => Uint8Array;
   /** Side whose knowledge the screen shows (intel.ts viewerSide). */
   viewer: () => Side;
+  /** Start menu values the game began with (docs/rules/options.md). */
+  options?: GameOptions;
+}
+
+/** The original "Scenario Info" (S_DATA on the report screen): the settings of the running game. */
+function settingsLine(ctx: PanelContext): string {
+  const g = ctx.game;
+  const O = OPTIONS_UI_KO;
+  const comp = O.competenceValues[g.competence - 1] ?? String(g.competence);
+  const ccf = ccfStatus(g.scenarioNo as 1 | 2 | 3 | 4);
+  const parts = [
+    O.playModeValues[g.computerSide] ?? '',
+    `${O.competence} ${ctx.options?.competence === RANDOM_COMPETENCE ? O.randomRolled(comp) : comp}`,
+    `${O.air} ${O.airValues[airShownAsProgram({ airPlayerControl: g.airPlayerControl, scenario: g.scenarioNo as 1 | 2 | 3 | 4, playMode: g.computerSide as 0 | 1 | 2 }) ? 1 : 0]}`,
+    `${O.intel} ${O.intelValues[g.limitedIntel ? 0 : 1]}`,
+    `${O.ccf} ${ccf === 'choose' ? O.ccfValues[g.ccfFixed ? 1 : 0] : ccf === 'inProgress' ? O.ccfInProgress : O.ccfNotAllowed}`,
+  ];
+  if (ctx.scenario.variant === 'S') parts.push(O.deployment);
+  return `<p class="settings-line">${esc(O.settings)}: ${esc(parts.join(' · '))}</p>`;
 }
 
 /** The viewer only knows part of this force: an enemy force under limited intelligence. */
@@ -145,6 +167,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
       <p class="eyebrow">시나리오 ${s.scenario}${s.variant === 'S' ? ' · 편성 배치' : ''}</p>
       <h2>${esc(s.title.ko)}</h2>
       <p class="muted">${esc(s.title.en)} · ${dateOfTurn(g, g.turn)} · ${g.turn}턴</p>
+      ${settingsLine(ctx)}
       <p class="phase-line"><span class="chip ${g.player === 2 ? 'un-bg' : 'red-bg'}"></span><b>${esc(PHASE_KO[g.phase] ?? '')}</b> · ${esc(PLAYER_KO[g.player])}${g.gameOver ? ` · <span class="tag warn">${esc(TURN_UI_KO.gameOver)}</span>` : ''}</p>
       <div class="stats">
         <div><span class="label">유엔군 유닛</span><span class="value un">${side('un')}</span></div>
@@ -169,6 +192,7 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
     <section class="card help">
       <h3>조작</h3>
       <ul>
+        <li>상단 ${esc(OPTIONS_UI_KO.button)}: 시나리오와 게임 설정(개입·역량·플레이 방식·항공·정보)을 골라 새로 시작</li>
         <li>자기 진영 부대가 있는 헥스 클릭: 부대 선택, 갈 수 있는 범위 표시</li>
         <li>범위 안 헥스에 마우스: 경로·비용 미리보기</li>
         <li>목적지 클릭: 경로 고정 → 한 번 더 클릭: 이동</li>

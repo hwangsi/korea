@@ -15,6 +15,9 @@ import type { GameState } from './engine/state.ts';
 import { pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
 import { orderReach, defaultMode, seaMove, seaAssault, seaAssaultPreview, airDrop, airdropLoss } from './engine/naval.ts';
 import { fogActive, viewerSide, perceivedState, knownForces, dropRisk } from './engine/intel.ts';
+import { REMAKE_DEFAULTS, scenarioFileId, optionsForFile, toStartOptions } from './engine/options.ts';
+import type { GameOptions } from './engine/options.ts';
+import { renderNewGame, applyChoice } from './ui/newGame.ts';
 import { assault, assaultPreview, cancelAssault } from './engine/combat.ts';
 import type { MoveMode, Reach } from './engine/movement.ts';
 import { startNewGame, endPlayerPhase, finishGame, continuePastEnd } from './engine/turn.ts';
@@ -28,21 +31,11 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
 const DATA = 'data/extracted';
-
-const SCENARIOS: { id: string; label: string }[] = [
-  { id: 'korea1', label: '1. 용이 깨어나다 (1950.6.25)' },
-  { id: 'korea1s', label: '1. 용이 깨어나다 · 편성 배치' },
-  { id: 'korea2', label: '2. 크로마이트 작전 (1950.9.15)' },
-  { id: 'korea2s', label: '2. 크로마이트 작전 · 편성 배치' },
-  { id: 'korea3', label: '3. 차가운 강철 (1950.11.22)' },
-  { id: 'korea3s', label: '3. 차가운 강철 · 편성 배치' },
-  { id: 'korea4', label: '4. 내일의 전쟁 (1995.6.25)' },
-  { id: 'korea4s', label: '4. 내일의 전쟁 · 편성 배치' },
-];
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -105,13 +98,10 @@ async function main() {
   /** Airstrikes of this turn, drawn on the map until the next turn begins. */
   let strikeMarks: StrikeMarker[] = [];
 
-  const select = $('#scenario') as unknown as HTMLSelectElement;
-  select.innerHTML = SCENARIOS.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
-  /** REALITY[4] for the next new game (docs/rules/intel.md 5: limited by default, the historical setting). */
-  let limitedIntel = true;
-  const intelSelect = $('#intel') as unknown as HTMLSelectElement;
-  intelSelect.innerHTML = `<option value="limited">${INTEL_UI_KO.limited}</option><option value="complete">${INTEL_UI_KO.complete}</option>`;
-  intelSelect.title = INTEL_UI_KO.optionTitle;
+  /** Start menu values of the game being played (docs/rules/options.md); `draft` while the dialog is open. */
+  let options: GameOptions = { ...REMAKE_DEFAULTS };
+  let draft: GameOptions | null = null;
+  const newGameEl = $('#newgame');
 
   /** Side whose knowledge the screen shows. */
   const viewer = () => (game ? viewerSide(game) : 'un');
@@ -175,7 +165,7 @@ async function main() {
     view.airstrikes = strikeMarks;
     view.viewer = viewer();
     // two players, limited intelligence: the hand-over screen shows no forces at all
-    view.hideForces = !!game && !!banner && fogActive(game) && game.computerSide === 0;
+    view.hideForces = !!game && (!!banner || !!draft) && fogActive(game) && game.computerSide === 0;
     view.showMigAlley = !!game && game.scenarioNo < 4 && (airOpen || inStrikes() || orders?.mode === 'air');
     if (!inStrikes() || !pendingAirstrike(game!)) view.strikeAim = null;
     view.invalidate();
@@ -184,6 +174,8 @@ async function main() {
   function renderHeader() {
     if (!game) return;
     const d = gameDate(game);
+    const info = SCENARIO_INFO_KO[game.scenarioNo - 1];
+    $('#scenario-name').textContent = `${game.scenarioNo}. ${info?.title ?? ''}${scenario?.variant === 'S' ? ` · ${OPTIONS_UI_KO.deployment}` : ''}`;
     $('#date').textContent = `${dateKo(d.year, d.month, d.day)} · ${game.turn}턴`;
     const t = TEMPERATURE_KO[game.temperature];
     const freeze = game.freezeLine > 0 ? ` · 결빙선 ${game.freezeLine}행` : '';
@@ -195,10 +187,11 @@ async function main() {
     pill.innerHTML = game.gameOver
       ? esc(TURN_UI_KO.gameOver)
       : `<span class="dot"></span>${esc(PLAYER_KO[game.player])} · ${esc(PHASE_KO[game.phase] ?? '')}`;
-    ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || !!banner;
+    ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || !!banner || !!draft;
     const airBtn = $('#air-ops') as HTMLButtonElement;
     const airOk = canPlanAir(game);
-    airBtn.disabled = !airOk || !!banner;
+    airBtn.disabled = !airOk || !!banner || !!draft;
+    ($('#new-game') as HTMLButtonElement).setAttribute('aria-pressed', String(!!draft));
     airBtn.setAttribute('aria-pressed', String(airOpen && airOk));
   }
 
@@ -228,6 +221,7 @@ async function main() {
     renderSide();
     renderHeader();
     renderBanner();
+    renderDialog();
   }
 
   // ---------- turn sequence ----------
@@ -255,6 +249,8 @@ async function main() {
         for (const n of e.report.news) lines.push(newsKo(n.text).text);
       } else if (e.kind === 'ordersPhase' && e.reinforcements) lines.push(TURN_UI_KO.reinforcements);
     }
+    // the hand-over prompt is for two players only (docs/rules/options.md 4)
+    const handover = g.computerSide === 0 ? [TURN_UI_KO.handover] : [];
     const over = events.find((e) => e.kind === 'gameOver');
     turnView = combat || resolution || air ? { combat, air, resolution, result: null } : null;
     sel = null;
@@ -274,7 +270,7 @@ async function main() {
         side: strikes.player,
         eyebrow: `${gameDateKo(g)} · ${g.turn}턴 · ${PHASE_KO[2]}`,
         title: AIR_UI_KO.strikeTitle(PLAYER_KO[strikes.player]),
-        lines: [...lines, AIR_UI_KO.strikeLines(strikes.count), TURN_UI_KO.handover],
+        lines: [...lines, AIR_UI_KO.strikeLines(strikes.count), ...handover],
         buttons: [{ label: TURN_UI_KO.begin, action: 'close' }],
       };
       return;
@@ -285,7 +281,7 @@ async function main() {
         side: begin.player,
         eyebrow: `${gameDateKo(g)} · ${g.turn}턴`,
         title: TURN_UI_KO.beginPhase(PLAYER_KO[begin.player], PHASE_KO[begin.phase] ?? ''),
-        lines: [...lines, TURN_UI_KO.handover],
+        lines: [...lines, ...handover],
         buttons: [{ label: TURN_UI_KO.begin, action: 'close' }],
       };
     }
@@ -294,7 +290,7 @@ async function main() {
   const gameDateKo = (g: GameState) => { const d = gameDate(g); return dateKo(d.year, d.month, d.day); };
 
   function endPhase(confirmFirst = true) {
-    if (!game || banner) return;
+    if (!game || banner || draft) return;
     if (inStrikes()) {
       // the program picks the targets of the airstrikes not flown yet (docs/rules/air.md 9)
       const left = game.air!.queue.length;
@@ -433,7 +429,7 @@ async function main() {
   // ---------- air operations ----------
 
   function toggleAir() {
-    if (!game || banner || !canPlanAir(game)) return;
+    if (!game || banner || draft || !canPlanAir(game)) return;
     airOpen = !airOpen;
     // the original bases the air units whenever the Air Operations screen opens (OPSSUBS 1058 -> CHOOSE_BASES)
     if (airOpen) { chooseBases(game, game.player); sel = null; orders = null; turnView = null; message = null; }
@@ -472,7 +468,7 @@ async function main() {
   // ---------- map events ----------
 
   view.onClick = (x, y) => {
-    if (!game || banner) return;
+    if (!game || banner || draft) return;
     const i = idx(game, x, y);
     if (inStrikes()) { if (pendingAirstrike(game)) strikeAt(x, y); return; }
     airOpen = false;
@@ -550,7 +546,7 @@ async function main() {
 
   panel.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-action]');
-    if (!btn || !game || banner) return;
+    if (!btn || !game || banner || draft) return;
     const action = btn.dataset.action;
     if (action === 'confirm') execute();
     else if (action === 'confirm-assault') executeAssault();
@@ -579,6 +575,12 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
+    if (draft) {
+      // the start menu: Enter begins the game (original key 7), Esc closes it while a game is running
+      if (e.key === 'Enter') { e.preventDefault(); startGame(draft); }
+      else if (e.key === 'Escape') closeNewGame();
+      return;
+    }
     if (banner) {
       if (e.key === 'Enter' && banner.buttons.length === 1) onBanner(banner.buttons[0].action);
       return;
@@ -591,17 +593,20 @@ async function main() {
 
   // ---------- scenario loading ----------
 
-  async function load(id: string) {
-    select.value = id;
+  /** Start a new game with the start menu values (docs/rules/options.md 2). */
+  async function startGame(o: GameOptions) {
+    const id = scenarioFileId(o);
     scenario = await getJson<Scenario>(`${DATA}/scenarios/${id}.json`);
     game = createGameState(map, scenario, (Date.now() >>> 0) || 1950);
-    intelSelect.value = limitedIntel ? 'limited' : 'complete';
-    const events = startNewGame(game, { limitedIntel });
+    options = { ...o };
+    draft = null;
+    const events = startNewGame(game, toStartOptions(o));
     view.setData(map, scenario, game);
     const g = game;
+    const chosen = options;
     ctx = {
       map, hexes: g.hexes, scenario, game: g, forcesAt: (x, y) => knownAt(g, x, y), supplyNet: () => view.supplyNet(),
-      viewer: () => viewerSide(g),
+      viewer: () => viewerSide(g), options: chosen,
     };
     sel = null;
     orders = null;
@@ -615,19 +620,42 @@ async function main() {
     render();
   }
 
-  // give the keyboard back to the map (arrow keys would otherwise switch the scenario)
-  select.addEventListener('change', () => { select.blur(); load(select.value); });
-  intelSelect.addEventListener('change', () => {
-    intelSelect.blur();
-    const want = intelSelect.value === 'limited';
-    const label = want ? INTEL_UI_KO.limited : INTEL_UI_KO.complete;
-    if (game && want !== game.limitedIntel && !window.confirm(INTEL_UI_KO.restartConfirm(label))) {
-      intelSelect.value = limitedIntel ? 'limited' : 'complete';
-      return;
-    }
-    limitedIntel = want;
-    load(select.value);
+  /** Start the scenario data `id` (korea1 .. korea4s) with the current menu values. */
+  async function load(id: string) {
+    await startGame(optionsForFile(id, options));
+  }
+
+  // ---------- new game dialog (the original start menu) ----------
+
+  function renderDialog() {
+    if (!draft) { newGameEl.hidden = true; newGameEl.innerHTML = ''; return; }
+    renderNewGame(newGameEl, { options: draft, canClose: !!game });
+    newGameEl.hidden = false;
+  }
+
+  function openNewGame() {
+    draft = { ...options };
+    render();
+    newGameEl.querySelector<HTMLButtonElement>('[data-ng="start"]')?.focus();
+  }
+
+  function closeNewGame() {
+    if (!game) return;
+    draft = null;
+    render();
+  }
+
+  newGameEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-ng]');
+    if (!b || !draft || (b as HTMLButtonElement).disabled) return;
+    const field = b.dataset.ng!;
+    if (field === 'start') { startGame(draft); return; }
+    if (field === 'close') { closeNewGame(); return; }
+    draft = applyChoice(draft, field, b.dataset.value ?? '');
+    renderDialog();
+    newGameEl.querySelector<HTMLElement>(`[data-ng="${field}"][aria-pressed="true"]`)?.focus();
   });
+  $('#new-game').addEventListener('click', () => { if (!draft) openNewGame(); });
 
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;
@@ -644,10 +672,17 @@ async function main() {
   $('#end-phase').addEventListener('click', () => endPhase(true));
   $('#air-ops').addEventListener('click', toggleAir);
 
-  await load(SCENARIOS[0].id);
+  // the original opens with the start menu: a game with the default values runs behind it
+  await startGame(options);
+  openNewGame();
   // debugging hooks for the browser console / automated checks
   (globalThis as { __app?: unknown }).__app = {
     view, load,
+    /** Start a new game with the current menu values changed by `o` (closes the dialog). */
+    newGame: (o: Partial<GameOptions> = {}) => startGame({ ...options, ...o }),
+    openNewGame, closeNewGame,
+    get options() { return options; },
+    get draft() { return draft; },
     get game() { return game; },
     get orders() { return orders; },
     get banner() { return banner; },
@@ -660,7 +695,7 @@ async function main() {
     bannerAction: (a: string) => onBanner(a),
     cancel, undo,
     /** Intelligence option for the next new game (true = limited); `load(id)` starts it. */
-    setIntel: (limited: boolean) => { limitedIntel = limited; },
+    setIntel: (limited: boolean) => { options = { ...options, limitedIntel: limited }; },
     get viewer() { return viewer(); },
     /** Switch the selected force's movement mode ('tactical' | 'rail' | 'sea' | 'air'). */
     setMode: (m: MoveMode) => { if (orders) { message = null; startOrders(orders.leader, m); render(); } },

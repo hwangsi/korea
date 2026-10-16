@@ -3,9 +3,9 @@
 새 환경이나 새 AI 세션에서 작업을 이어갈 때 **가장 먼저 읽는 문서**입니다.
 작업을 마칠 때마다 2장(현재 상태)과 7장(다음 작업)을 갱신하세요.
 
-- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **정보(안개) 화면 완료** (규칙 `docs/rules/intel.md`, 엔진 `intel.ts`·`spotting.ts`
-  + `movement.ts` 이동 중 정찰·발견 정지·되돌리기 제한, `combat.ts` 후퇴 주변 정찰, 상단 "정보 제한/완전 정보" 선택, 테스트 66개 통과,
-  standalone 브라우저 검증: 용이 깨어나다 양쪽 시점·교대 화면·이동 중 발견, 크로마이트 인천 숨은 적 발견, 차가운 강철 낙하 경고). 다음은 7장 옵션 화면
+- 마지막 갱신: 2026-10-16, 노트북(C:\Users\hwang\AIprojects\korea). **옵션 화면(새 게임) 완료** (규칙 `docs/rules/options.md`, 엔진 `options.ts`
+  + `startNewGame` 무작위 역량, 화면 `ui/newGame.ts`, 상단 "새 게임" 버튼과 처음 열 때의 대화 상자, 테스트 71개 통과,
+  standalone 브라우저 검증: 크로마이트 편성 배치판 UN Solitaire·무작위 역량, 개입·항공 표시 특수 경우, Enter/Esc). 다음은 7장 저장/불러오기
 - 저장소: https://github.com/hwangsi/korea (Public, main 브랜치). Aside 샌드박스에서는 git이 돌지 않아 커밋·푸시는 사용자가 직접 한다
 - 다음 세션 시작 문장 예: "korea/remake/docs/HANDOFF.md 읽고 7장 다음 작업부터 이어서 해줘"
 
@@ -101,6 +101,17 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
     적 부대 카드(종류/이름·완편 여부, 유닛 목록 없음). 공격·상륙 공격 미리보기: 적 전력·예상 손실·후퇴·돌파 여부 감춤.
     공수: 정찰 0 적 점령지면 "숨어 있으면 전멸". 요약의 적 유닛 수 "?". 이동 메시지 "적 부대 발견"
 
+- **새 게임 옵션** (`docs/rules/options.md`, `src/engine/options.ts`, `src/ui/newGame.ts`, `tests/options.test.ts` 5개)
+  - 규칙: SCENARIO_DISPLAY/S_DATA/LOAD_NEW_GAME(`49a2` 기본값·메뉴 호출, `46fd` 입력 루프). 메뉴 값은 SCENARIO[0..7]·REALITY[1..4]의 지역 사본.
+    원작 기본값: 용이 깨어나다, Historical, Challenging, **UN Solitaire**, Player Control, Limited. Random 역량은 시작 때 RND(1,5).
+    **UN Solitaire(컴퓨터가 공산군)면 편성 배치판 koreaNs.dat**를 읽음. 개입 줄은 차가운 강철 "In progress", 1995 "Not allowed".
+    1950년대 Red Solitaire는 항공이 "Program Control"로 보임. REALITY[1]은 늘 참(거짓이면 메뉴 세 칸이 "..."), [3]은 읽는 코드 없음.
+    LOAD_NEW_GAME 끝의 `2b41`은 문서 확인(복사 방지)
+  - 엔진: `GameOptions`, `ORIGINAL_DEFAULTS`/`REMAKE_DEFAULTS`(플레이 방식만 두 사람), `scenarioFileId`/`optionsForFile`, `ccfStatus`, `airShownAsProgram`,
+    `toStartOptions`. `startNewGame`의 competence 6 = 무작위
+  - UI: 처음 열면 새 게임 대화 상자(뒤에는 기본값 게임). 시나리오 카드 4장 + 개입·역량·플레이 방식·항공·정보 버튼, 고급(데이터: 자동/기본판/편성 배치판과 읽을 파일),
+    Enter 시작·Esc 닫기. 상단은 "새 게임" 버튼 + 시나리오 이름. 요약 카드에 현재 설정 줄(원작 Scenario Info). 컴퓨터 진영이 있으면 교대 문구 없음
+
 검증된 사실
 - `NKPA 50/15 Inf Rgt` 전투력 계산 = 매뉴얼 부록 F 예시 (생존력 234, 살상력 418)
 - 시나리오 날짜: 1950-06-25 / 1950-09-15 / 1950-11-22 / 1995-06-25
@@ -112,7 +123,7 @@ SSI의 1992년 DOS 워게임 **Conflict: Korea – The First Year 1950-51** (디
 - TERRAIN 바이트 3·4 = 그 헥스 첫째·둘째 부대 선두 유닛 번호 (모든 시나리오에서 부대 위치와 일치)
 
 아직 없음
-- 옵션 화면(역량·개입·플레이 모드·Air Campaign, 정보는 상단 임시 선택만), AI, 저장/불러오기,
+- AI, 저장/불러오기,
   보고서 화면(전략 보고, 비행장·항구), 전략 개관 지도(DO_OVERVIEW), 전체 한글화, 새 그래픽/사운드
 - 컴퓨터 진영을 고르면 AI가 없어 그 진영 단계가 그냥 지나감 (기본은 두 사람 대전)
 
@@ -138,6 +149,7 @@ korea/                                   ← Aside Project 루트 / Git 저장�
     docs/rules/air.md                    항공 (약화, 기지, 임무, 공산 요격 수준, 1995 제공권, 차단, 공습)
     docs/rules/naval.md                  해상·공수 이동 (자격, 수송 수요, 상륙, 상륙 공격, 일본 철수, 공수 낙하)
     docs/rules/intel.md                  정보(안개) (정찰 단계, 누가 무엇을 보는가, 정찰 갱신, 되돌리기 제한, 거짓 전력 보고)
+    docs/rules/options.md                새 게임 옵션 (시작 메뉴 항목·기본값, 무작위 역량, 시나리오 파일 고르기)
     docs/places.md                       지명 판정 방법과 근거
     index.html, src/                     웹 클라이언트
       data/types.ts                      추출 JSON 타입
@@ -150,13 +162,14 @@ korea/                                   ← Aside Project 루트 / Git 저장�
         air.ts                           항공 작전 (기지·임무·예상치·DO_AIR_COMBAT·공습)
         naval.ts                         해상·공수 이동 명령 (자격·범위·상륙·상륙 공격·공수 낙하)
         intel.ts                         정보: 보는 쪽, 부대별 정찰 단계, 전력 보고, 아는 상태(perceivedState)
+        options.ts                       새 게임 옵션 (메뉴 값, 기본값, 시나리오 파일, 표시 규칙)
         spotting.ts                      이동·전투의 정찰 갱신 (CHEK_HEX, NEAR_THE_FRONT, 12점 규칙, 후퇴 주변)
         turn.ts                          단계 진행·선공·새 게임·END_TEST·NEXT_TURN
         endturn.ts                       정리 단계 (증원·보충·중공군·기뢰·순찰·게릴라·정보·도시 뉴스·승리 수준)
         weather.ts                       달력·날씨 생성·예보·결빙선
         hex.ts, strength.ts              헥스 수학, 전투력(부록 F)
       i18n/ko.ts                         한글 용어집·번역 규칙
-      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널
+      ui/                                지도 렌더러(Canvas 2D, 이동 오버레이), 정보·명령 패널, 새 게임 대화 상자(newGame.ts)
       main.ts                            화면 연결, 이동 명령 컨트롤러
     tests/                               node:test 단위 테스트 (data/extracted 필요)
     tools/
@@ -200,7 +213,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   `__app.endPhase()` (확인 없이 단계 종료, 전투 단계에서는 남은 공습을 프로그램에 맡기고 지상전), `__app.banner`, `__app.closeBanner()`,
   `__app.bannerAction('end-game' | 'override')`, `__app.toggleAir()` (항공 작전 패널), `__app.airOpen`. 전투 단계 공습 중에는 `__app.click(x, y)`가 공습.
   `__app.setMode('tactical' | 'rail' | 'sea' | 'air')` (선택한 부대의 이동 모드). 해상 모드에서는 적 해안 `click` 두 번이 상륙 공격.
-  정보: 기본이 "정보 제한"이라 적 부대 일부가 안 보임. `__app.setIntel(false)` 뒤 `__app.load(id)`면 완전 정보 새 게임, `__app.viewer`(지금 보는 쪽).
+  새 게임: 페이지를 열면 새 게임 대화 상자가 떠 있고 그동안 지도 클릭·단계 종료가 막힘. `__app.newGame({ scenario: 2, playMode: 0, limitedIntel: false, ... })`
+  (바로 시작), `__app.load('korea2s')`(파일 지정, 현재 옵션), `__app.closeNewGame()`, `__app.openNewGame()`, `__app.options`, `__app.draft`.
+  정보: 기본이 "정보 제한"이라 적 부대 일부가 안 보임. `__app.newGame({ limitedIntel: false })`면 완전 정보, `__app.viewer`(지금 보는 쪽).
   두 사람 대전 + 정보 제한에서는 단계 알림 창이 떠 있는 동안 지도에 부대가 없음(`view.hideForces`)
   알림 창이 떠 있으면 지도 클릭이 막히므로 먼저 `closeBanner()`
 - standalone 번들러(`tools/build.mjs`)는 `export { a }` / `export default` / `export *`를 처리하지 못함 → 선언 앞에 `export`만 쓸 것
@@ -250,22 +265,23 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
 
 원본 게임을 직접 돌려 비교하려면 DOSBox-X를 설치해 `confkorea/KOREA.EXE`를 실행하세요 (디버거로 메모리 덤프 가능).
 
-## 7. 다음 작업: 옵션 화면 (새 게임 설정)
+## 7. 다음 작업: 저장 / 불러오기
 
-목표: 원작 시작 메뉴(매뉴얼 2.1·2.11)의 선택을 모두 고를 수 있는 "새 게임" 화면. 지금은 시나리오 선택과 상단 "정보 제한/완전 정보"만 있고
-나머지는 고정값(`startNewGame` 기본: 역량 3, 두 사람, 중공군 개입 역사적, Air Campaign Player Control).
+목표: 게임을 언제든 저장하고 나중에 그 자리에서 이어 하기. 원작은 명령 단계 메뉴의 "Save Game"(KOREA.DO_ITEM `0c20` → GAME_SAVE `0a3a`
+→ TACSUBS.SAVE_GAME `1ee0`, 파일 이름은 GET_NAME, 확장자 .SAV)으로 저장하고, 시작할 때 INIT_GAME이 "A saved game"을 물어 LOAD_OLD_GAME `3bf4`로 읽음
+(파일 목록은 SET_ENVIRONMENT의 "Saved Game File Manager"). 세이브는 시나리오 DAT와 같은 전역변수 영역 덤프(`original-format.md`).
 
-1. 규칙 확정 → `docs/rules/options.md`
-   - 메뉴: TACSUBS.S_DATA `446a`(선택 항목·순서, 문자열 "Pushover"~"Hideous!", "Red/UN Solitaire", "Program Control", "Limited/Complete" 등은 `4385`~ 중첩 구간),
-     SCENARIO_DISPLAY `4153`, LOAD_NEW_GAME `4b62`(메뉴 값을 SCENARIO[2]·[3]·[6], REALITY[1..4]에 씀. air.md 7장에 "4 Play Mode, 5 Air Campaign, 6 Intelligence" 순서까지 확인됨)
-   - 확인할 것: 역량 "Random"의 처리, REALITY[1]·[3]의 정체(아직 쓰는 코드 없음), S_DATA가 `koreaNs.dat`를 고르는 조건(플레이 모드 1 또는 TEST_BOTH_PLAYERS),
-     컴퓨터 진영이 있을 때의 차이(INIT_GAME 0턴 뉴스, 소리반 교대 창, 항공 자동 임무, 정보는 컴퓨터가 항상 제한)
-2. 엔진: `StartOptions` 정리(무작위 역량 등), 테스트
-3. UI: 새 게임 화면(시나리오 카드 + 선택 항목, 마우스 중심). 상단의 시나리오·정보 select는 이 화면으로 옮기고,
-   상단에는 "새 게임" 버튼만(1440px에서 한 줄 유지 확인). 컴퓨터 진영 선택 시 "AI 없음: 그 진영은 움직이지 않음" 안내
-4. 이어서: 저장/불러오기(SAVE_GAME `1ee0`, LOAD_OLD_GAME `3bf4`, GameState 직렬화, 브라우저 저장소) → AI(WARRIORS.KIM/WALTON,
-   해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀. AI도 정찰 바이트를 씀: AISUBS `0818`·`0e2c`, WARRIORS `04ec`) → 보고서 화면
-   (항공은 이미 컴퓨터 진영이면 자동 임무·자동 목표로 동작). 전략 개관 지도(DO_OVERVIEW)는 보고서와 함께
+1. 규칙 확인 → `docs/rules/save.md`: SAVE_GAME/LOAD_OLD_GAME이 쓰고 읽는 범위, 언제 저장할 수 있는지(명령 단계만? 전투 단계 공습 중은?),
+   불러온 뒤 어느 단계부터 이어지는지(UTILITY_SPACE[11] = 1이면 INIT_GAME 0턴 사건 생략, SAVEORDER·PLAYER·PHASE 복원)
+2. 엔진: `src/engine/save.ts` — GameState ↔ JSON(Map·Uint8Array 변환, 형식 버전, 시나리오 id와 GameOptions 포함, 정적 데이터인 hexes·장비표는
+   시나리오 JSON에서 다시 만듦). 진행 중 상태(`g.air` 공습 대기, `g.undo`)도 다룰지 결정(원작처럼 명령 단계에서만 저장하면 단순).
+   테스트: 저장 → 불러오기 왕복 뒤 같은 시드로 몇 턴 진행해 결과가 같은지(난수 상태 rng·intelSeed 포함)
+3. UI: 상단 또는 새 게임 대화 상자에 "저장"·"불러오기". 브라우저 저장소(localStorage 슬롯 몇 개 + 자동 저장)와 파일 내려받기/올리기(JSON).
+   두 사람 대전 + 정보 제한이면 불러온 직후 교대 알림 창부터. 원작 .SAV를 가져오는 것은 웹 코드가 원본 바이너리를 직접 읽지 않는
+   규칙(5장) 때문에 필요하면 `tools/extract`에 변환 명령을 추가하는 방식으로
+4. 이어서: AI(WARRIORS.KIM/WALTON, 해상 이동은 WARRIORS `383b`~`49eb`가 SEALIFT_DEMAND를 직접 씀. AI도 정찰 바이트를 씀:
+   AISUBS `0818`·`0e2c`, WARRIORS `04ec`. 매뉴얼: 컴퓨터는 늘 정보 제한으로 판단) → 보고서 화면(REPORTS.STRATEGIC_REPORT,
+   PORTS_AIRFIELDS_REPORT, W_REPORT, SCENARIO_REPORT) → 전략 개관 지도(DO_OVERVIEW)
 
 ## 8. 미해결 질문
 
@@ -274,7 +290,9 @@ korea4s: 25-June-1995 turn 0, 202 units (...)
   같은 시드라도 원작과 난수 순서가 일치하지 않음(원작도 조작마다 달라 비교 불가능). 모드 3을 부르는 다른 곳(보고서, AI)도 0x20을 세우는지 보고서·AI 작업 때 확인
 - 정보: 공산군 12점 규칙이 철도 이동에도 걸리는지(걸음 코드는 공통이지만 철도 중 MOVE는 출발 값 그대로라 사실상 안 걸림). 지금은 일반 이동만 적용
 - 정보: 원작은 적 점령 바다 헥스(점령값이 남은 곳)의 아군 함대도 정찰 0이면 숨김. 리메이크는 아군을 항상 표시(원본 게임에서 실제로 보이는지 확인해 볼 것)
-- SCENARIO[1], [4], [7], REALITY[1]·[3], 점령값 3 (쓰는 코드 없음). UTILITY_SPACE[9]는 확정: 턴당 상륙 공격 명령 수(naval.md 3)
+- SCENARIO[1], [4], [7], 점령값 3 (쓰는 코드 없음. 새 게임은 [1] = 1, [4] = 0, [7]은 초기화 안 된 지역 변수). REALITY[1]·[3]은 확정(options.md 1).
+  UTILITY_SPACE[9]는 확정: 턴당 상륙 공격 명령 수(naval.md 3)
+- 옵션: 원작 기본 플레이 모드는 UN Solitaire(편성 배치판). 리메이크는 AI가 생기면 기본값을 원작대로 돌릴지 결정
 - 해상: 바다 헥스에도 점령값(0/1/2)이 들어 있음(예: 11,41은 유엔). 해상 이동은 바꾸지 않지만 ENEMY_ADJACENT·순찰이 이 값을 읽음(원작 그대로 둠)
 - 해상: 바다에서 턴을 시작한 부대는 정리 단계가 미리 1점 청구해 두고, 항구에 상륙하면 1점이 돌아옴(원작 그대로). 항구→항구는 턴당 3개(매뉴얼은 4개).
   상륙 공격이 막혀 바다에 남는 "드문 경우"는 테스트로만 확인(원본 게임 비교 필요)

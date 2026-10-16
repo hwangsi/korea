@@ -449,14 +449,58 @@ export const COMBAT_UI_KO = {
 
 export const ARMY_NAME_KO = ['북한군', '중공군', '국군', '유엔군'];
 
+// ---------- new game options (docs/rules/options.md) ----------
+
+/** The four scenarios of the start menu (manual 2.111). */
+export const SCENARIO_INFO_KO: { no: 1 | 2 | 3 | 4; title: string; en: string; date: string; desc: string }[] = [
+  { no: 1, title: '용이 깨어나다', en: 'The Dragon Wakes', date: '1950년 6월 25일', desc: '북한군의 남침으로 시작합니다.' },
+  { no: 2, title: '크로마이트 작전', en: 'Operation Chromite', date: '1950년 9월 15일', desc: '유엔군이 인천 상륙을 준비하는 시점입니다.' },
+  { no: 3, title: '차가운 강철', en: 'Cold Steel', date: '1950년 11월 22일', desc: '중공군이 기습 반격에 나서는 시점입니다.' },
+  { no: 4, title: '내일의 전쟁', en: "Tomorrow's War", date: '1995년 6월 25일', desc: '1995년을 가정한 현대전입니다.' },
+];
+
+export const OPTIONS_UI_KO = {
+  title: '새 게임',
+  eyebrow: '시나리오와 게임 설정',
+  button: '새 게임',
+  buttonTitle: '시나리오와 게임 설정을 골라 새로 시작',
+  scenario: '시나리오',
+  ccf: '중공군 개입',
+  ccfValues: ['역사적', '고정'],
+  ccfHint: ['역사적: 유엔군이 북진해도 중국이 개입하지 않을 수 있어요(허세).', '고정: 국군이 아닌 유엔 부대가 38선을 넘으면 반드시 개입해요.'],
+  ccfInProgress: '이미 개입함',
+  ccfNotAllowed: '해당 없음',
+  competence: '공산군 역량',
+  competenceValues: ['허약', '보통', '역사적', '강함', '최강', '무작위'],
+  competenceEn: ['Pushover', 'Moderate', 'Challenging', 'Hairy', 'Hideous!', 'Random'],
+  competenceHint: '공산군 전투력·재보급·보급 비축에 영향을 줍니다. 역사적 수준은 "역사적"(Challenging).',
+  playMode: '플레이 방식',
+  playModeValues: ['두 사람', '유엔군으로', '공산군으로'],
+  playModeEn: ['Two player', 'UN Solitaire', 'Red Solitaire'],
+  playModeHint: ['두 사람이 한 화면에서 번갈아 합니다.', '컴퓨터가 공산군을 맡습니다.', '컴퓨터가 유엔군을 맡습니다.'],
+  noAi: '컴퓨터 AI는 아직 없어서 컴퓨터 진영의 지상군은 움직이지 않아요. 미리 정해진 공격 명령과 항공 자동 임무만 실행됩니다.',
+  air: '항공 작전',
+  airValues: ['직접 지휘', '프로그램에 맡김'],
+  airHint: ['항공대 임무와 공습 목표를 직접 정합니다.', '프로그램이 양쪽 항공대의 임무와 목표를 정합니다(다소 역사적이고 조심스럽게).'],
+  airShownProgram: '1950년대에 공산군은 항공대가 없고 유엔 항공대는 컴퓨터 몫이라, 원작도 이 조합은 "프로그램"으로 표시해요.',
+  intel: '정보',
+  intelValues: ['제한', '완전'],
+  intelHint: ['정찰된 적 부대만 보입니다(역사적 설정).', '모든 적 부대와 전력이 보입니다. 컴퓨터 상대로는 크게 유리해요.'],
+  advanced: '고급: 시나리오 데이터',
+  variantLabel: '데이터',
+  variantValues: ['자동', '기본판', '편성 배치판'],
+  variantHint: '자동은 원작 규칙대로, "유엔군으로"면 공산군의 시작 이동·공격 명령이 들어 있는 편성 배치판(koreaNs.dat)을, 그 밖에는 기본판을 씁니다.',
+  file: (id: string) => `읽을 파일: ${id}`,
+  start: '게임 시작',
+  cancel: '닫기',
+  settings: '설정',
+  randomRolled: (label: string) => `무작위 → ${label}`,
+  deployment: '편성 배치판',
+} as const;
+
 // ---------- intelligence / fog of war (docs/rules/intel.md) ----------
 
 export const INTEL_UI_KO = {
-  option: '정보',
-  limited: '정보 제한',
-  complete: '완전 정보',
-  optionTitle: '정보 옵션: 새 게임(시나리오 다시 불러오기)부터 적용',
-  restartConfirm: (label: string) => `정보 옵션을 "${label}"(으)로 바꾸고 이 시나리오를 처음부터 다시 시작할까요?`,
   level: (n: number) => `정찰 ${n}단계`,
   levelNote: ['적 부대가 있어도 알 수 없음', '부대 종류만 앎', '부대 이름과 완편 여부까지 앎'],
   scouting: '정찰',

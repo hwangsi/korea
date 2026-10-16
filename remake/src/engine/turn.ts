@@ -30,7 +30,7 @@ export const PHASE_SECOND_ORDERS = 3;
 export const PHASE_RESOLUTION = 4;
 
 export interface StartOptions {
-  /** SCENARIO[2]: 1 Pushover .. 5 Hideous (3 = Challenging, historical). */
+  /** SCENARIO[2]: 1 Pushover .. 5 Hideous (3 = Challenging, historical), 6 = Random (RND(1,5) at the start). */
   competence?: number;
   /** SCENARIO[3]: 0 two players, 1 computer plays Communist, 2 computer plays UN. */
   computerSide?: number;
@@ -135,7 +135,8 @@ function advancePlayer(g: GameState, events: TurnEvent[]): boolean {
 
 /** Start a freshly loaded scenario: weather, intelligence option, turn-0 events, then the first orders phase. */
 export function startNewGame(g: GameState, opts: StartOptions = {}): TurnEvent[] {
-  g.competence = opts.competence ?? 3;
+  // LOAD_NEW_GAME 4A0B: "Random?" is rolled before the scenario file is read (docs/rules/options.md 2)
+  g.competence = opts.competence === 6 ? rnd(g, 1, 5) : opts.competence ?? 3;
   g.computerSide = opts.computerSide ?? 0;
   g.limitedIntel = opts.limitedIntel ?? false;
   g.ccfFixed = opts.ccfFixed ?? false;

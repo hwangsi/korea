@@ -56,7 +56,10 @@ node --preserve-symlinks --preserve-symlinks-main tools/disasm/dis.cjs --at MOVE
 - standalone 번들러는 `export { a }`, `export default`, `export *`를 모른다. 쓰면 standalone.html이 조용히 아무것도 띄우지 않는다.
 - 화면 검증은 `window.confirm = () => true`를 먼저 넣고, 단계 알림 창은 `__app.closeBanner()`, 단계 종료는 `__app.endPhase()`.
 - 항공: `__app.toggleAir()`로 항공 작전 패널(1차 명령 단계). 전투 단계 공습 중에는 `__app.click(x, y)`가 공습이고 `__app.endPhase()`는 남은 공습을 프로그램에 맡긴 뒤 지상전으로 넘어감.
-- 정보(안개): 기본이 "정보 제한"이라 정찰 0인 적 부대는 지도·`__app.click` 대상에서 빠진다. 완전 정보는 `__app.setIntel(false)` 후 `__app.load(id)`.
+- 새 게임 대화 상자: 페이지를 열면 떠 있고 그동안 지도 클릭·단계 종료가 막힌다. 검증 스크립트는 먼저
+  `__app.newGame({ scenario: 2, playMode: 0, limitedIntel: false })`(옵션을 바꿔 바로 시작) 또는 `__app.load('korea2s')`, 아니면 `__app.closeNewGame()`.
+  기본 플레이 방식은 두 사람(playMode 0). playMode 1(유엔군으로)은 원작 규칙대로 편성 배치판(koreaNs)을 읽는다.
+- 정보(안개): 기본이 "정보 제한"이라 정찰 0인 적 부대는 지도·`__app.click` 대상에서 빠진다. 완전 정보는 `__app.newGame({ limitedIntel: false })`.
   두 사람 대전에서는 단계 알림 창이 떠 있는 동안 부대가 안 그려지므로 스크린샷 전에 `closeBanner()`. `__app.viewer`는 지금 보는 쪽.
   엔진 테스트에서 지형을 바꿀 때는 `g.hexes = g.hexes.slice()` 후 항목을 새 객체로 교체(1950년대는 지도 배열을 공유함).
 - 해상·공수: 부대를 `click`으로 고른 뒤 `__app.setMode('sea' | 'air')`. 크로마이트(korea2) 해병 212번은 일본 항구(33,59), 차가운 강철(korea3) 187공수(221)는 평양 비행장(7,29).

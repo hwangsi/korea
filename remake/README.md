@@ -49,7 +49,7 @@ node tools/disasm/strings.cjs             # 코드 안의 UI 문자열 707개 ->
 remake/
   index.html, src/          웹 클라이언트 (TypeScript, 의존성 없음, Canvas 2D)
     engine/                 규칙 엔진 (UI와 분리된 순수 로직: state, movement, combat, supply, air, naval, intel, spotting,
-                            turn, endturn, weather, hex, strength)
+                            options, turn, endturn, weather, hex, strength)
     data/places.ts          지명·산·호수 데이터(자체 제작)와 헥스→위경도 보정
     i18n/ko.ts              한글 용어집과 번역 규칙
     ui/                     지도 렌더러, 정보 패널
@@ -60,7 +60,7 @@ remake/
     build.mjs               정적 빌드 + standalone.html
   data/extracted/           추출 결과 (git 제외)
   docs/original-format.md   원본 포맷과 역공학 결과 정리
-  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel)
+  docs/rules/               규칙 명세 (movement, combat, supply, turn, air, naval, intel, options)
   docs/places.md            지명 판정 방법과 근거
   tests/                    단위 테스트 (node:test)
 ```
@@ -84,7 +84,7 @@ remake/
       + 항공 작전 패널·전투 단계 공습 UI → [`docs/rules/air.md`](docs/rules/air.md)
 - [x] 해상·공수 이동 (상륙, 상륙 공격, 일본 철수, 187공수 낙하) → [`docs/rules/naval.md`](docs/rules/naval.md)
 - [x] 정보(안개) (정찰 단계, 보이는 정보만 표시, 이동 중 적 발견, 정보 제한/완전 선택) → [`docs/rules/intel.md`](docs/rules/intel.md)
-- [ ] 옵션 화면 (역량·플레이 모드·Air Campaign·정보·중공군 개입)
+- [x] 새 게임 옵션 (원작 시작 메뉴: 시나리오·중공군 개입·역량·플레이 방식·항공·정보) → [`docs/rules/options.md`](docs/rules/options.md)
 - [ ] 저장/불러오기
 - [ ] AI (원본 Kim/Walton 분석 후 재설계)
 - [ ] 보고서 화면, 전략 개관 지도
@@ -94,9 +94,9 @@ remake/
 
 자세한 순서는 `docs/HANDOFF.md` 7장.
 
-1. **옵션 화면** (새 게임 설정)
-2. **저장/불러오기**
-3. **AI**, 보고서 화면
+1. **저장/불러오기**
+2. **AI**
+3. 보고서 화면, 전략 개관 지도
 
 ## 저작권 주의
 

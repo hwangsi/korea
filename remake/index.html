@@ -12,15 +12,8 @@
       <strong>Conflict: Korea</strong>
       <span>리메이크 프로토타입</span>
     </div>
-    <label class="field">
-      <span>시나리오</span>
-      <select id="scenario"></select>
-    </label>
-    <label class="field">
-      <span class="sr-only">정보</span>
-      <select id="intel"></select>
-    </label>
-    <div class="info"><span id="date">-</span><span id="weather" class="muted">-</span></div>
+    <button id="new-game" class="btn" type="button" title="시나리오와 게임 설정을 골라 새로 시작">새 게임</button>
+    <div class="info"><b id="scenario-name">-</b><span id="date">-</span><span id="weather" class="muted">-</span></div>
     <div id="phase" class="phase-pill">-</div>
     <div class="spacer"></div>
     <button id="air-ops" class="btn" type="button" title="항공대 임무 정하기 (1차 명령 단계)" aria-pressed="false">✈ 항공</button>
@@ -45,6 +38,7 @@
       <canvas id="map"></canvas>
       <div id="status" class="status">지도 위에 마우스를 올려 보세요</div>
       <div id="banner" class="banner" hidden></div>
+      <div id="newgame" class="banner newgame-wrap" hidden></div>
     </div>
     <aside id="panel" class="panel"><section class="card"><p class="muted">불러오는 중...</p></section></aside>
   </main>
