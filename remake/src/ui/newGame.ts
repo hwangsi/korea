@@ -4,7 +4,7 @@
 import type { GameOptions } from '../engine/options.ts';
 import { aiAvailable } from '../engine/ai/index.ts';
 import { ccfStatus, airShownAsProgram, scenarioFileId, usesDeploymentFile } from '../engine/options.ts';
-import { SCENARIO_INFO_KO, OPTIONS_UI_KO as T, SAVE_UI_KO } from '../i18n/ko.ts';
+import { SCENARIO_INFO_KO, OPTIONS_UI_KO as T, SAVE_UI_KO, TUTORIAL_KO } from '../i18n/ko.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -91,6 +91,7 @@ export function renderNewGame(el: HTMLElement, v: NewGameView) {
       <div class="actions">
         <button type="button" class="btn primary" data-ng="start">${esc(T.start)} <span class="kbd">Enter</span></button>
         <button type="button" class="btn" data-ng="load">${esc(SAVE_UI_KO.fromNewGame)}</button>
+    <button type="button" class="btn ghost" data-ng="tutorial" title="${esc(TUTORIAL_KO.buttonTitle)}">${esc(TUTORIAL_KO.newGame)}</button>
         ${v.canClose ? `<button type="button" class="btn ghost" data-ng="close">${esc(T.cancel)}</button>` : ''}
       </div>
     </div>`;

@@ -12,7 +12,7 @@ import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstri
 import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
-import { pathTo, moveForce, railMove, undoMove, bugOut, sideMask } from './engine/movement.ts';
+import { pathTo, moveForce, railMove, undoMove, bugOut, sideMask, allowance, enemyAdjacent } from './engine/movement.ts';
 import { orderReach, defaultMode, seaMove, seaAssault, seaAssaultPreview, airDrop, airdropLoss } from './engine/naval.ts';
 import { fogActive, viewerSide, perceivedState, knownForces, dropRisk } from './engine/intel.ts';
 import { REMAKE_DEFAULTS, scenarioFileId, optionsForFile, toStartOptions } from './engine/options.ts';
@@ -46,9 +46,12 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
-  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO, LAYOUT_KO, SKY_ICON, TITLE_KO,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO, LAYOUT_KO, SKY_ICON, TITLE_KO, TUTORIAL_KO,
 } from './i18n/ko.ts';
-import { placeAt, featureAt } from './data/places.ts';
+import { placeAt, featureAt, PLACE_NAMES } from './data/places.ts';
+import { TUTORIAL_STEPS, chapterStart, taskDone, renderTutorial } from './ui/tutorial.ts';
+import { neighbor } from './engine/hex.ts';
+import type { TutProbe, TutMarks, TutChapter } from './ui/tutorial.ts';
 import { TITLE_ART } from './data/titleArt.ts';
 
 const DATA = 'data/extracted';
@@ -370,6 +373,7 @@ async function main() {
     renderSaveDlg();
     renderReportsDlg();
     renderOrganizeDlg();
+    refreshTutorial();
   }
 
   // ---------- force organisation (docs/rules/forces.md) ----------
@@ -825,6 +829,7 @@ async function main() {
       : mode === 'air' ? airDrop(game, leader, orders.pinned)
       : moveForce(game, leader, path);
     if (res.ok) {
+      tutMoves++;
       animateMove(leader, from, mode === 'air' ? [orders.pinned] : res.steps.map((s) => s.hex));
       audio.sfx(res.destroyed ? 'explosion' : mode === 'rail' ? 'rail' : mode === 'sea' ? 'ship' : mode === 'air' ? 'drop' : 'march');
       const parts = [MOVE_UI_KO.done, mode === 'rail' ? `${path.length}칸 철도 수송` : `${res.usedAfter - res.usedBefore}${MOVE_UI_KO.points} 사용`];
@@ -872,6 +877,7 @@ async function main() {
     if (orders.mode === 'sea') {
       const out = seaAssault(game, leader, t % game.width, Math.floor(t / game.width));
       audio.sfx(!out.ok ? 'error' : out.result === 'overrun' ? 'overrun' : out.result === 'stranded' ? 'error' : 'bugle');
+      if (out.ok) tutAssaults++;
       if (!out.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[out.error ?? ''] ?? out.error}` };
       else if (out.result === 'overrun') message = { kind: 'ok', text: NAVAL_UI_KO.seaOverran };
       else if (out.result === 'stranded') message = { kind: 'warn', text: NAVAL_UI_KO.seaStranded };
@@ -881,6 +887,7 @@ async function main() {
     }
     const res = assault(game, leader, t % game.width, Math.floor(t / game.width));
     audio.sfx(!res.ok ? 'error' : res.result === 'overrun' ? 'overrun' : res.result === 'stopped' ? 'march' : 'bugle');
+    if (res.ok) tutAssaults++;
     if (!res.ok) message = { kind: 'error', text: `${MOVE_UI_KO.failed}: ${BLOCK_KO[res.error ?? ''] ?? res.error}` };
     else if (res.result === 'overrun') message = { kind: 'ok', text: COMBAT_UI_KO.overran };
     else if (res.result === 'stopped') message = { kind: 'warn', text: COMBAT_UI_KO.stopped };
@@ -1087,6 +1094,7 @@ async function main() {
         <p class="ts-sub">${esc(TITLE_KO.subtitle)}</p>
         <div class="ts-actions">
           <button type="button" class="btn primary ts-start" data-title="start">${esc(TITLE_KO.start)}</button>
+          <button type="button" class="btn ghost" data-title="tutorial">${esc(TITLE_KO.tutorial)}</button>
           <button type="button" class="btn ghost" data-title="load">${esc(TITLE_KO.load)}</button>
         </div>
         <p class="ts-keys">${esc(TITLE_KO.keys)}</p>
@@ -1104,6 +1112,7 @@ async function main() {
   }
   titleEl.addEventListener('click', (e) => {
     const what = (e.target as HTMLElement).closest<HTMLElement>('[data-title]')?.dataset.title;
+    if (what === 'tutorial') { void startTutorial(); return; }
     closeTitle();
     if (what === 'load') openSave();
   });
@@ -1113,6 +1122,177 @@ async function main() {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); closeTitle(); }
     e.stopImmediatePropagation();
   }, true);
+
+  // ---------- tutorial (ui/tutorial.ts, docs/tutorial.md) ----------
+  const tutEl = $('#tutorial');
+  const tutBtn = $('#tutorial-btn') as HTMLButtonElement;
+  tutBtn.title = TUTORIAL_KO.buttonTitle;
+  /** The card: step, the game when the step began (for its task), finished tasks, folded. Null when closed. */
+  let tut: { step: number; base: TutProbe; done: Set<number>; min: boolean } | null = null;
+  /** The running game was started by the tutorial: the button reopens the card instead of starting again. */
+  let tutGame = false;
+  let tutMoves = 0;
+  let tutAssaults = 0;
+  let tutDrawn = '';
+  /** Width the card takes over the map, so the marked hexes are framed beside it. */
+  const TUT_CARD = 420;
+
+  function tutProbe(): TutProbe {
+    const av = game ? assaultView() : null;
+    return {
+      selected: !!game && !!orders && canCommand(orders.leader),
+      moves: tutMoves,
+      assaults: tutAssaults,
+      preview: !!av && !!av.preview,
+      airOpen,
+      supplyLayer: view.layers.supply,
+      phaseKey: game ? `${game.turn}-${game.phase}-${game.player}` : '',
+    };
+  }
+
+  /** The hexes a step points at, found in the running game (the first ones decide where the map goes). */
+  function tutMarks(kind: TutMarks | undefined): { hex: number; label: string; below?: boolean }[] {
+    const g = game;
+    if (!g || !kind) return [];
+    const L = TUTORIAL_KO.marks;
+    const W = g.width;
+    const xy = (i: number): [number, number] => [i % W, Math.floor(i / W)];
+    const inJapan = (x: number, y: number) => x >= 33 && y >= 58;
+    const mine: number[] = [];
+    g.stacks.forEach((s) => s.forEach((l) => { if (canCommand(l)) mine.push(l); }));
+    const restingForce = (): { hex: number; label: string }[] => {
+      // a force out of contact with movement left, near the middle of the front (Pusan perimeter in Chromite);
+      // infantry rather than artillery, so the counter looks like the one the text describes
+      let best = -1, bestD = Infinity;
+      for (const l of mine) {
+        const h = forceHex(g, l);
+        if (h < 0) continue;
+        const [x, y] = xy(h);
+        if (inJapan(x, y) || enemyAdjacent(g, x, y) || allowance(g, l).remaining < 6) continue;
+        const d = Math.hypot(x - 25, y - 56) + (/artillery/.test(unit(g, l).kind) ? 8 : 0);
+        if (d < bestD) { best = h; bestD = d; }
+      }
+      return best >= 0 ? [{ hex: best, label: L.force }] : [];
+    };
+    if (kind === 'force') return restingForce();
+    if (kind === 'attackPair') {
+      let best: { from: number; to: number; score: number } | null = null;
+      for (const l of mine) {
+        const h = forceHex(g, l);
+        if (h < 0) continue;
+        const [x, y] = xy(h);
+        for (let d = 0; d < 6; d++) {
+          const [nx, ny] = neighbor(x, y, d);
+          if (nx < 0 || ny < 0 || nx >= W || ny >= g.height || !knownAt(g, nx, ny).some((f) => !canCommand(f.leader))) continue;
+          const p = assaultPreview(g, l, nx, ny);
+          if (!p.allowed || !p.estimate) continue;
+          const score = p.estimate.defenderLoss - p.estimate.attackerLoss;
+          if (!best || score > best.score) best = { from: h, to: idx(g, nx, ny), score };
+        }
+      }
+      return best ? [{ hex: best.from, label: L.attacker }, { hex: best.to, label: L.target, below: true }] : restingForce();
+    }
+    if (kind === 'cities') {
+      const list = PLACE_NAMES.filter((p) => p.rank === 1 && !p.only1995);
+      list.sort((a, b) => (a.label === '서울' ? -1 : b.label === '서울' ? 1 : 0));
+      return list.map((p) => ({ hex: idx(g, p.x, p.y), label: p.label }));
+    }
+    if (kind === 'ports') {
+      const own = g.ports.filter((p) => !p.mined && !inJapan(p.x, p.y) && g.possession[idx(g, p.x, p.y)] === 1);
+      own.sort((a, b) => Math.hypot(a.x - 26, a.y - 59) - Math.hypot(b.x - 26, b.y - 59));
+      return own.map((p) => ({ hex: idx(g, p.x, p.y), label: `${placeAt(p.x, p.y, g.scenarioNo === 4)?.label ?? ''} ${L.port}`.trim() }));
+    }
+    // xCorps: X Corps waits in Japan (1st Marine and 7th Infantry Divisions), Inchon is where it landed
+    const japan: number[] = [];
+    for (const l of mine) {
+      const h = forceHex(g, l);
+      if (h >= 0 && inJapan(...xy(h)) && !japan.includes(h)) japan.push(h);
+    }
+    return [{ hex: idx(g, 12, 41), label: L.inchon }, ...japan.slice(0, 2).map((h, k) => ({ hex: h, label: k === 0 ? L.japan : '' }))];
+  }
+
+  function tutGo(step: number) {
+    if (!tut) return;
+    tut.step = Math.max(0, Math.min(TUTORIAL_STEPS.length - 1, step));
+    tut.base = tutProbe();
+    tut.min = false;
+    const s = TUTORIAL_STEPS[tut.step];
+    if (s.openAir && game && !airOpen && canPlanAir(game) && !modal()) toggleAir();
+    view.tutorialMarks = tutMarks(s.marks);
+    if (view.tutorialMarks.length) {
+      const pick = s.marks === 'cities' ? view.tutorialMarks.slice(0, 2) : view.tutorialMarks;
+      view.frameHexes(pick.map((m) => m.hex), TUT_CARD, s.marks === 'cities' ? 0.6 : 0.95);
+    }
+    view.invalidate();
+    audio.sfx('click');
+    refreshTutorial(true);
+  }
+
+  /** Card, task check and outlines; called after every render and twice a second while the card is open. */
+  function refreshTutorial(force = false) {
+    document.querySelectorAll('.tut-focus').forEach((e) => e.classList.remove('tut-focus'));
+    tutBtn.setAttribute('aria-pressed', String(!!tut && !tut.min));
+    if (!tut) {
+      if (tutDrawn) { tutEl.hidden = true; tutEl.innerHTML = ''; tutDrawn = ''; }
+      return;
+    }
+    const s = TUTORIAL_STEPS[tut.step];
+    if (s.task && !tut.done.has(tut.step) && taskDone(s.task, tut.base, tutProbe())) {
+      tut.done.add(tut.step);
+      audio.sfx('pin');
+    }
+    const key = `${tut.step}:${tut.done.has(tut.step)}:${tut.min}`;
+    if (force || key !== tutDrawn) {
+      renderTutorial(tutEl, { step: tut.step, done: tut.done.has(tut.step), minimized: tut.min });
+      tutEl.hidden = false;
+      tutDrawn = key;
+    }
+    if (!tut.min && s.focus) document.querySelectorAll(s.focus).forEach((e) => e.classList.add('tut-focus'));
+  }
+  setInterval(() => { if (tut && !tut.min) refreshTutorial(); }, 500);
+
+  function closeTutorial() {
+    tut = null;
+    view.tutorialMarks = [];
+    view.invalidate();
+    refreshTutorial();
+  }
+
+  /** Start the tutorial: a fresh Operation Chromite, UN against the original computer, complete intelligence. */
+  async function startTutorial() {
+    if (game && !bootGame && !draft && !game.gameOver && !window.confirm(TUTORIAL_KO.confirmStart)) return;
+    closeTitle();
+    await startGame({
+      ...REMAKE_DEFAULTS, scenario: 2, playMode: 1, limitedIntel: false, airPlayerControl: true, ccfFixed: false, competence: 3,
+      variant: 'auto', aiLevel: 'original',
+    });
+    tutGame = true;
+    tutMoves = 0;
+    tutAssaults = 0;
+    // the phase banner (the computer moved first) would cover the first card
+    if (banner) onBanner(banner.buttons[0].action);
+    view.layers.supply = false;
+    document.querySelector('[data-layer="supply"]')?.setAttribute('aria-pressed', 'false');
+    tut = { step: 0, base: tutProbe(), done: new Set(), min: false };
+    tutGo(0);
+  }
+
+  tutBtn.addEventListener('click', () => {
+    if (tut) { tut.min = !tut.min; refreshTutorial(true); return; }
+    if (tutGame && game && !game.gameOver) { tut = { step: 0, base: tutProbe(), done: new Set(), min: false }; tutGo(0); return; }
+    void startTutorial();
+  });
+  tutEl.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-tut]');
+    if (!b || !tut || (b as HTMLButtonElement).disabled) return;
+    const act = b.dataset.tut;
+    if (act === 'next') tutGo(tut.step + 1);
+    else if (act === 'prev') tutGo(tut.step - 1);
+    else if (act === 'chapter') tutGo(chapterStart(b.dataset.value as TutChapter));
+    else if (act === 'close') closeTutorial();
+    else if (act === 'min') { tut.min = true; refreshTutorial(true); }
+    else if (act === 'restore') { tut.min = false; refreshTutorial(true); }
+  });
 
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
@@ -1164,6 +1344,9 @@ async function main() {
     saveOpen = false;
     const events = startNewGame(game, toStartOptions(o));
     bootGame = !save;
+    // another game ends the tutorial (startTutorial sets it again)
+    tutGame = false;
+    if (tut) closeTutorial();
     if (save) closeTitle();
     // the game shown behind the start menu when the page opens does not replay its opening battles
     useGame(events, save);
@@ -1245,6 +1428,8 @@ async function main() {
     saveOpen = false;
     saveMsg = null;
     bootGame = false;
+    tutGame = false;
+    if (tut) closeTutorial();
     closeTitle();
     useGame(resumeGame(game));
     if (banner) banner.lines.unshift(SAVE_UI_KO.loaded);
@@ -1360,6 +1545,7 @@ async function main() {
     if (field === 'start') { startGame(draft); return; }
     if (field === 'close') { closeNewGame(); return; }
     if (field === 'load') { openSave(); return; }
+    if (field === 'tutorial') { void startTutorial(); return; }
     draft = applyChoice(draft, field, b.dataset.value ?? '');
     renderDialog();
     if (field === 'scenario') { renderSide(); panel.scrollTop = 0; }

@@ -103,6 +103,8 @@ export class MapView {
   hideForces = false;
   /** Combat replay: the battle being shown step by step (ui/combatReplay.ts), or null. */
   replay: ReplayOverlay | null = null;
+  /** Hexes the tutorial points at (ui/tutorial.ts): a bright outline and a tag. */
+  tutorialMarks: { hex: number; label: string; below?: boolean }[] = [];
   private tileCache: TileCache | null = null;
   /** Screen rectangles of the counters drawn this frame: place and mountain labels keep clear of them. */
   private counterRects: { x0: number; y0: number; x1: number; y1: number }[] = [];
@@ -274,6 +276,23 @@ export class MapView {
     this.cam.zoom = zoom;
     this.cam.x = -HEX + ws.w / 2 - w / 2 / zoom;
     this.cam.y = -HEX + ws.h / 2 - h / 2 / zoom;
+    this.invalidate();
+  }
+
+  /** Show all these hexes (indices), keeping `left` CSS pixels on the left free (the tutorial card). */
+  frameHexes(list: number[], left = 0, maxZoom = 0.95) {
+    const g = this.game;
+    if (!g || !list.length) return;
+    const pts = list.map((i) => hexCenter(i % g.width, Math.floor(i / g.width), HEX));
+    const pad = HEX * 1.8;
+    const x0 = Math.min(...pts.map((p) => p.x)) - pad, x1 = Math.max(...pts.map((p) => p.x)) + pad;
+    const y0 = Math.min(...pts.map((p) => p.y)) - pad, y1 = Math.max(...pts.map((p) => p.y)) + pad;
+    const { w, h } = this.viewSize();
+    const aw = Math.max(240, w - left);
+    const zoom = Math.max(0.2, Math.min(maxZoom, aw / (x1 - x0), h / (y1 - y0)));
+    this.cam.zoom = zoom;
+    this.cam.x = (x0 + x1) / 2 - (w - aw + aw / 2) / zoom;
+    this.cam.y = (y0 + y1) / 2 - h / 2 / zoom;
     this.invalidate();
   }
 
@@ -590,6 +609,7 @@ export class MapView {
     if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
     if (this.fx.length) this.drawStrikeFx(performance.now());
     if (this.movement && !this.anim) this.drawMoveLabels(vis, this.movement);
+    if (this.tutorialMarks.length && sc) this.drawTutorialMarks();
 
     if (this.layers.coords && z > 0.9) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
@@ -601,6 +621,54 @@ export class MapView {
         ctx.fillText(`${h.x},${h.y}`, s.x, s.y - HEX * 0.62 * z);
       }
     }
+  }
+
+  /** Tutorial marks: a glowing yellow outline and a small tag above the hex (screen space, crisp at any zoom). */
+  private drawTutorialMarks() {
+    const g = this.game!;
+    const ctx = this.ctx;
+    const z = this.cam.zoom;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    for (const m of this.tutorialMarks) {
+      const c = this.toScreen(hexCenter(m.hex % g.width, Math.floor(m.hex / g.width), HEX));
+      const r = HEX * z * 1.02;
+      const path = () => {
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (Math.PI / 3) * k;
+          const px = c.x + r * Math.cos(a), py = c.y + r * Math.sin(a);
+          if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+      };
+      path();
+      ctx.strokeStyle = 'rgba(255, 212, 0, 0.35)';
+      ctx.lineWidth = 10;
+      ctx.stroke();
+      path();
+      ctx.strokeStyle = '#ffd400';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (!m.label) continue;
+      ctx.font = `700 12px ${FONT}`;
+      const tw = ctx.measureText(m.label).width + 12;
+      const ty = m.below ? c.y + r * 0.87 + 16 : c.y - r * 0.87 - 16;
+      // keep the tag on screen (Japan is at the right edge of the map)
+      const vw = this.viewSize().w;
+      const tx = Math.max(tw / 2 + 4, Math.min(vw - tw / 2 - 4, c.x));
+      ctx.fillStyle = '#ffd400';
+      ctx.beginPath();
+      ctx.roundRect(tx - tw / 2, ty - 10, tw, 20, 6);
+      ctx.fill();
+      ctx.fillStyle = '#14181f';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(m.label, tx, ty + 0.5);
+    }
+    ctx.restore();
   }
 
   /** Supply Net Map (manual 3.13): supplied hexes tinted, cut-off friendly hexes hatched. */

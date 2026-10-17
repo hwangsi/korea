@@ -764,3 +764,43 @@ details.card.help[open] > summary { margin-bottom: 8px; }
 .ts-credit { position: absolute; right: 16px; bottom: 10px; margin: 0; font-size: 11px; color: rgba(230, 236, 245, 0.6); }
 @keyframes ts-zoom { from { transform: scale(1.06); } to { transform: scale(1); } }
 @keyframes ts-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* ---------- tutorial (ui/tutorial.ts): a card over the top-left of the map, outlines on the parts it explains ---------- */
+.tutorial { position: absolute; left: 12px; top: 12px; z-index: 4; width: 400px; max-width: calc(100% - 24px); }
+.tutorial[hidden] { display: none; }
+.tut-card {
+  background: rgba(12, 20, 34, 0.96); border: 1px solid #2d4466; border-top: 4px solid #ffd400; border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5); padding: 12px 14px 12px; max-height: calc(100vh - 150px); overflow-y: auto; color: var(--text);
+}
+.tut-top { display: flex; align-items: center; justify-content: space-between; }
+.tut-kicker { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: #ffd400; text-transform: uppercase; }
+.tut-tools { display: flex; gap: 4px; }
+.tut-icon { font: inherit; width: 26px; height: 24px; border-radius: 6px; border: 1px solid #2d4466; background: #15223a; color: var(--muted); cursor: pointer; line-height: 1; }
+.tut-icon:hover { color: var(--text); border-color: #4ea3ff; }
+.tut-chaps { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.tut-chap { font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid #263852; background: #111c2e; color: var(--muted); cursor: pointer; }
+.tut-chap:hover { color: var(--text); }
+.tut-chap.on { background: #ffd400; border-color: #ffd400; color: #14181f; font-weight: 700; }
+.tut-card h3 { margin: 6px 0 6px; font-size: 18px; letter-spacing: -0.01em; }
+.tut-body { font-size: 13.5px; line-height: 1.6; }
+.tut-body p { margin: 0 0 8px; }
+.tut-body ul { margin: 0 0 8px; padding-left: 18px; }
+.tut-body li { margin-bottom: 4px; }
+.tut-body b { color: #ffe680; }
+.tut-table { width: 100%; border-collapse: collapse; margin: 2px 0 10px; font-size: 12.5px; }
+.tut-table th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; border-bottom: 1px solid #2d4466; padding: 3px 6px; }
+.tut-table td { border-bottom: 1px solid #1c2b42; padding: 4px 6px; vertical-align: top; }
+.tut-table td:first-child { white-space: nowrap; font-weight: 600; }
+.tut-task { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; padding: 8px 10px; border-radius: 8px; border: 1px dashed #ffd400; background: rgba(255, 212, 0, 0.07); font-size: 13px; }
+.tut-task b { color: #ffd400; font-size: 12px; }
+.tut-task.done { border-style: solid; border-color: #3ccf7a; background: rgba(60, 207, 122, 0.1); }
+.tut-task.done b { color: #3ccf7a; }
+.tut-ref { margin: 0 0 8px; font-size: 11px; color: var(--muted); }
+.tut-nav { display: flex; align-items: center; gap: 8px; }
+.tut-bar { flex: 1; height: 4px; border-radius: 4px; background: #1c2b42; overflow: hidden; }
+.tut-bar i { display: block; height: 100%; background: #ffd400; }
+.tut-pill { box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); border-color: #ffd400 !important; color: #ffd400; }
+.tut-focus { outline: 3px solid #ffd400 !important; outline-offset: 2px; border-radius: 8px; animation: tut-pulse 1.4s ease-in-out infinite; }
+@keyframes tut-pulse { 0%, 100% { outline-color: #ffd400; } 50% { outline-color: rgba(255, 212, 0, 0.35); } }
+#panel.tut-focus { outline-offset: -3px; }
+.title-screen .ts-actions { flex-wrap: wrap; }
