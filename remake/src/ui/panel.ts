@@ -33,6 +33,7 @@ import {
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { barChart, lineChart, CHART_COLORS } from './charts.ts';
+import { verdict, armySide } from './combatReplay.ts';
 import { SCENARIO_PHOTOS } from '../data/photos.ts';
 import { placeAt, hexToLatLon, featureAt } from '../data/places.ts';
 import { directionsOf, DIRECTIONS } from '../engine/hex.ts';
@@ -746,13 +747,19 @@ function combatCard(ctx: PanelContext, reports: CombatReport[], current?: number
       const leader = 'leader' in e ? e.leader : undefined;
       return `<li>${esc(combatEventKo(e as { kind: string; name?: string; to?: [number, number] }, name, leader))}</li>`;
     }).join('');
-    const head = r.moveIn ? COMBAT_UI_KO.moveIn : r.retreated ? COMBAT_UI_KO.retreated : COMBAT_UI_KO.held;
+    // the verdict as the replay gives it (wiped out / retreated / held), and the original's "Attacker / Defender Loss
+    // Ratio" as two bars in the sides' colours
+    const head = r.moveIn ? COMBAT_UI_KO.moveIn : verdict(r);
+    const wiped = !r.moveIn && r.defenders.length > 0 && r.defenders.every((d) => !d.after);
+    const aSide = armySide(r.army);
+    const bar = (label: string, pct: number, side: Side) => `<span class="lr-label">${esc(label)}</span><span class="lr-bar"><i class="${side === 'un' ? 'un' : 'red'}" style="width:${Math.max(2, Math.min(100, pct))}%"></i></span><b>${pct}%</b>`;
     return `
-      <article class="report ${r.moveIn ? '' : r.retreated ? 'win' : 'hold'} ${k === current ? 'current' : ''}">
-        <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(target)}</b><span class="tag">${esc(head)}</span>
+      <article class="report ${r.moveIn ? '' : r.retreated || wiped ? 'win' : 'hold'} ${k === current ? 'current' : ''}">
+        <header><b>${esc(ARMY_NAME_KO[r.army] ?? '')} ${esc(COMBAT_UI_KO.attacks)} → ${esc(target)}</b><span class="tag verdict ${wiped ? 'wiped' : ''}">${esc(head)}</span>
           ${current === undefined ? `<button type="button" class="btn small ghost" data-action="replay-battle" data-scope="one" data-index="${k}" title="${esc(REPLAY_KO.replayOne)}">▶</button>` : ''}</header>
         ${r.moveIn ? '' : `<p class="muted small">${esc(r.attackers.map((a) => name(a.leader)).join(', '))} vs ${esc(r.defenders.map((d) => name(d.leader)).join(', '))}</p>
-        <p class="small">${esc(COMBAT_UI_KO.lossRatio)}: ${esc(COMBAT_UI_KO.attackerSide)} ${r.attackerLoss}% · ${esc(COMBAT_UI_KO.defenderSide)} ${r.defenderLoss}% · ${esc(COMBAT_UI_KO.retreatChance)} ${r.retreatChance}%</p>`}
+        <div class="loss-row">${bar(LAYOUT_KO.lossA, r.attackerLoss, aSide)}${bar(LAYOUT_KO.lossD, r.defenderLoss, aSide === 'un' ? 'communist' : 'un')}</div>
+        <p class="muted small">${esc(LAYOUT_KO.retreatChance(r.retreatChance))}</p>`}
         ${events ? `<ul class="events">${events}</ul>` : ''}
       </article>`;
   }).join('');

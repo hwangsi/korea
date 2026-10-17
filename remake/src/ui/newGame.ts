@@ -58,7 +58,7 @@ export function renderNewGame(el: HTMLElement, v: NewGameView) {
     ? row(T.ai, 'ai', levels.map((lv, k) => {
       const ok = aiAvailable(computer, lv);
       return { value: lv, label: ok ? T.aiValues[k] : `${T.aiValues[k]} (${T.aiSoon})`, title: T.aiTitles[k], disabled: !ok };
-    }), o.aiLevel ?? 'original', esc(T.aiHint(computer)))
+    }), o.aiLevel ?? 'original', esc(T.aiHint(computer, o.aiLevel ?? 'original')))
     : '';
 
   const program = airShownAsProgram(o);

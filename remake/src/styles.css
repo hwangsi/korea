@@ -728,3 +728,38 @@ details.card.help[open] > summary { margin-bottom: 8px; }
 .report.strike .events li { font-size: 12.5px; }
 
 .strike-last .warn { color: #ffc44d; font-size: 12px; }
+
+/* battle results: verdict tag and the two loss ratios as bars (the original's Attacker / Defender Loss Ratio) */
+.report .tag.verdict { font-size: 12px; font-weight: 600; padding: 2px 9px; }
+.report .tag.verdict.wiped { background: rgba(255, 95, 86, 0.18); color: #ff8a83; }
+.loss-row { display: grid; grid-template-columns: auto 1fr 40px; gap: 4px 8px; align-items: center; margin: 6px 0 2px; font-size: 12px; }
+.loss-row .lr-label { color: #9fb0c8; }
+.loss-row .lr-bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.loss-row .lr-bar i { display: block; height: 100%; border-radius: 4px; }
+.loss-row .lr-bar i.un { background: #4ea3ff; }
+.loss-row .lr-bar i.red { background: #ff5f56; }
+.loss-row b { text-align: right; font-variant-numeric: tabular-nums; color: #f2f6fc; }
+/* reports: zeros recede, the numbers that matter stand out */
+.rp-table td.muted { color: #43536b; }
+.rp-table td { color: #e4ebf5; }
+
+/* title screen */
+.title-screen { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; background: #05080f; cursor: pointer; }
+.title-screen[hidden] { display: none; }
+.title-screen .ts-art { position: absolute; inset: 0; background-size: cover; background-position: center 60%; animation: ts-zoom 18s ease-out forwards; }
+.title-screen .ts-shade { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 30%, rgba(5, 8, 15, 0.15), rgba(5, 8, 15, 0.55) 60%, rgba(5, 8, 15, 0.85)); }
+.title-screen .ts-body { position: relative; text-align: center; margin-top: -18vh; animation: ts-in 1.2s ease-out; }
+.ts-kicker { margin: 0; font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase; color: #ffd38a; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8); }
+.title-screen h1 {
+  margin: 8px 0 6px; font-size: clamp(48px, 8vw, 104px); line-height: 1; letter-spacing: -0.02em; color: #fff;
+  text-shadow: 0 4px 0 #6b1d14, 0 8px 28px rgba(0, 0, 0, 0.85);
+}
+.ts-sub { margin: 0; font-size: clamp(18px, 2.2vw, 28px); color: #f4e6c8; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9); font-weight: 600; }
+.ts-actions { display: flex; gap: 10px; justify-content: center; margin-top: 30px; }
+.ts-actions .btn { font-size: 16px; padding: 11px 26px; justify-content: center; text-align: center; }
+.ts-actions .ts-start { min-width: 160px; box-shadow: 0 0 24px rgba(78, 163, 255, 0.45); }
+.ts-actions .btn.ghost { background: rgba(10, 18, 32, 0.6); }
+.ts-keys { margin: 12px 0 0; font-size: 12px; color: #c8d3e4; text-shadow: 0 1px 4px #000; }
+.ts-credit { position: absolute; right: 16px; bottom: 10px; margin: 0; font-size: 11px; color: rgba(230, 236, 245, 0.6); }
+@keyframes ts-zoom { from { transform: scale(1.06); } to { transform: scale(1); } }
+@keyframes ts-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }

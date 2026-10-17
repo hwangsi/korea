@@ -103,7 +103,7 @@ test('Random competence is rolled first with RND(1,5)', opts, () => {
 });
 
 test('play settings: GAMEDELAY is ms x DELAYVALUE div 2, medium speed and centering off by default (options.md 5)', () => {
-  assert.deepEqual(PLAY_DEFAULTS, { speed: 2, follow: false, replay: true });
+  assert.deepEqual(PLAY_DEFAULTS, { speed: 2, follow: false, replay: true, counters: 'nato' });
   assert.deepEqual(loadPlaySettings(), PLAY_DEFAULTS); // no browser storage in Node
   assert.deepEqual([1, 2, 3].map((s) => gameDelay(1000, s as 1 | 2 | 3)), [500, 1000, 1500]);
   assert.equal(gameDelay(25, 3), 37); // integer division like the original

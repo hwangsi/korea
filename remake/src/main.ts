@@ -46,9 +46,10 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
-  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO, LAYOUT_KO, SKY_ICON,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO, LAYOUT_KO, SKY_ICON, TITLE_KO,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
+import { TITLE_ART } from './data/titleArt.ts';
 
 const DATA = 'data/extracted';
 
@@ -133,6 +134,9 @@ async function main() {
   let turnView: TurnView | null = null;
   let banner: Banner | null = null;
   let first = true;
+  /** The game drawn behind the start menu when the page opens: nobody chose it, so the menu cannot be closed onto it
+   *  (the original also begins at the start menu). */
+  let bootGame = false;
   /** Air Operations panel open (first orders phase). */
   let airOpen = false;
   /** Hex under the mouse while aiming an airstrike. */
@@ -177,7 +181,13 @@ async function main() {
   let soundOpen = false;
   /** Speed and movement centering of the original options menu (docs/rules/options.md 5). */
   let play: PlaySettings = loadPlaySettings();
-  const setPlay = (p: Partial<PlaySettings>) => { play = { ...play, ...p }; savePlaySettings(play); renderSound(); };
+  view.counterArt = play.counters;
+  const setPlay = (p: Partial<PlaySettings>) => {
+    play = { ...play, ...p };
+    savePlaySettings(play);
+    renderSound();
+    if (view.counterArt !== play.counters) { view.counterArt = play.counters; view.invalidate(); }
+  };
   const renderSound = () => {
     ($('#sound') as HTMLButtonElement).setAttribute('aria-pressed', String(soundOpen));
     $('#sound').classList.toggle('muted-btn', !audio.settings.music && !audio.settings.sfx);
@@ -207,6 +217,7 @@ async function main() {
     else if (what === 'speed') { setPlay({ speed: Number(b.dataset.value) as Speed }); audio.sfx('click'); }
     else if (what === 'follow') { setPlay({ follow: !play.follow }); audio.sfx('click'); }
     else if (what === 'replay') { setPlay({ replay: !play.replay }); audio.sfx('click'); }
+    else if (what === 'counters') { setPlay({ counters: play.counters === 'picture' ? 'nato' : 'picture' }); audio.sfx('click'); }
   });
   soundEl.addEventListener('input', (e) => {
     const r = e.target as HTMLInputElement;
@@ -928,6 +939,7 @@ async function main() {
       message = { kind: 'error', text: res.error === 'manchuria' ? AIR_UI_KO.manchuria : AIR_UI_KO.friendly };
     } else {
       strikeMarks = [...strikeMarks, marker(res.result)];
+      view.flashStrikes([marker(res.result)], 0, gameDelay(1100, play.speed));
       // the strike card shows the result as the original's message line; a toast only when nothing was found
       message = res.result.found ? null : { kind: 'warn', text: strikeText(res.result) };
     }
@@ -939,6 +951,8 @@ async function main() {
     const done = delegateAirstrikes(game, all);
     if (done.length) audio.sfx('airstrike');
     strikeMarks = [...strikeMarks, ...done.map(marker)];
+    // the program's strikes one after another, as the original shows them
+    view.flashStrikes(done.map(marker), gameDelay(650, play.speed), gameDelay(1100, play.speed));
     const last = done[done.length - 1];
     message = last ? { kind: 'ok', text: `${AIR_UI_KO.autoTag}: ${strikeText(last)}` } : null;
     render();
@@ -1059,6 +1073,47 @@ async function main() {
     render();
   });
 
+  // ---------- title screen (the original opens with a title picture, then the start menu) ----------
+  const titleEl = $('#title-screen');
+  let titleOpen = false;
+  function showTitle() {
+    titleOpen = true;
+    titleEl.innerHTML = `
+      <div class="ts-art" style="background-image:url('${TITLE_ART}')"></div>
+      <div class="ts-shade"></div>
+      <div class="ts-body">
+        <p class="ts-kicker">${esc(TITLE_KO.kicker)}</p>
+        <h1>${esc(TITLE_KO.title)}</h1>
+        <p class="ts-sub">${esc(TITLE_KO.subtitle)}</p>
+        <div class="ts-actions">
+          <button type="button" class="btn primary ts-start" data-title="start">${esc(TITLE_KO.start)}</button>
+          <button type="button" class="btn ghost" data-title="load">${esc(TITLE_KO.load)}</button>
+        </div>
+        <p class="ts-keys">${esc(TITLE_KO.keys)}</p>
+      </div>
+      <p class="ts-credit">${esc(TITLE_KO.credit)}</p>`;
+    titleEl.hidden = false;
+    titleEl.querySelector<HTMLButtonElement>('.ts-start')?.focus();
+  }
+  function closeTitle() {
+    if (!titleOpen) return;
+    titleOpen = false;
+    titleEl.hidden = true;
+    titleEl.innerHTML = '';
+    newGameEl.querySelector<HTMLButtonElement>('[data-ng="start"]')?.focus();
+  }
+  titleEl.addEventListener('click', (e) => {
+    const what = (e.target as HTMLElement).closest<HTMLElement>('[data-title]')?.dataset.title;
+    closeTitle();
+    if (what === 'load') openSave();
+  });
+  // the title takes the keys first: Enter / Space / Esc go on to the start menu
+  window.addEventListener('keydown', (e) => {
+    if (!titleOpen) return;
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') { e.preventDefault(); closeTitle(); }
+    e.stopImmediatePropagation();
+  }, true);
+
   window.addEventListener('keydown', (e) => {
     if ((e.target as HTMLElement).closest('select, input, textarea')) return;
     if (replay) {
@@ -1108,6 +1163,8 @@ async function main() {
     draft = null;
     saveOpen = false;
     const events = startNewGame(game, toStartOptions(o));
+    bootGame = !save;
+    if (save) closeTitle();
     // the game shown behind the start menu when the page opens does not replay its opening battles
     useGame(events, save);
     // the game shown behind the start menu when the page opens must not replace the last autosave
@@ -1187,6 +1244,8 @@ async function main() {
     draft = null;
     saveOpen = false;
     saveMsg = null;
+    bootGame = false;
+    closeTitle();
     useGame(resumeGame(game));
     if (banner) banner.lines.unshift(SAVE_UI_KO.loaded);
     render();
@@ -1278,7 +1337,7 @@ async function main() {
 
   function renderDialog() {
     if (!draft) { newGameEl.hidden = true; newGameEl.innerHTML = ''; return; }
-    renderNewGame(newGameEl, { options: draft, canClose: !!game });
+    renderNewGame(newGameEl, { options: draft, canClose: !!game && !bootGame });
     newGameEl.hidden = false;
   }
 
@@ -1289,7 +1348,7 @@ async function main() {
   }
 
   function closeNewGame() {
-    if (!game) return;
+    if (!game || bootGame) return;
     draft = null;
     render();
   }
@@ -1335,6 +1394,7 @@ async function main() {
   // the original opens with the start menu: a game with the default values runs behind it
   await startGame(options, false);
   openNewGame();
+  showTitle();
   // debugging hooks for the browser console / automated checks
   (globalThis as { __app?: unknown }).__app = {
     view, load,

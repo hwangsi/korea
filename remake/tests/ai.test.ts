@@ -61,13 +61,13 @@ test('the invasion routes (WARRIORS unit init 5E4A)', () => {
   assert.deepEqual(routePoint(2, 72), [26, 59]);
 });
 
-test('registry: the original players of both sides exist, the improved ones are planned', () => {
+test('registry: the original and the improved players of both sides exist', () => {
   assert.equal(computerPlayer(1, 'original')?.id, 'kim');
   assert.equal(computerPlayer(2, 'original')?.id, 'walton');
   assert.equal(aiAvailable(1, 'original'), true);
   assert.equal(aiAvailable(2, 'original'), true);
-  assert.equal(aiAvailable(1, 'improved'), false);
-  assert.equal(aiAvailable(2, 'improved'), false);
+  assert.equal(aiAvailable(1, 'improved'), true);
+  assert.equal(aiAvailable(2, 'improved'), true);
 });
 
 test('Dragon Wakes opening: the deployment plots stand, force 18 is sent against Seoul (KIM 2A1D)', opts, () => {

@@ -40,6 +40,7 @@ export function renderSoundPanel(el: HTMLElement, a: AudioManager, play: PlaySet
       <div class="snd-row">
         <button type="button" class="btn snd-toggle" data-snd="follow" aria-pressed="${play.follow}">${esc(play.follow ? T.followOn : T.followOff)}</button>
         <button type="button" class="btn snd-toggle" data-snd="replay" aria-pressed="${play.replay}">${esc(play.replay ? T.replayOn : T.replayOff)}</button>
+      <button type="button" class="btn snd-toggle" data-snd="counters" aria-pressed="${play.counters === 'picture'}" title="${esc(T.countersTitle)}">${esc(play.counters === 'picture' ? T.countersPicture : T.countersNato)}</button>
       </div>
       <p class="snd-note">${esc(T.playNote)}</p>
     </div>`;

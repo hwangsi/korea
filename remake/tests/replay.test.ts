@@ -96,3 +96,20 @@ test('during a full replay the forces of the battles to come stand as they were 
   const last = battles.at(-1)!;
   assert.ok(overlayFor(last, 0).ghosts.every((gh) => !gh.waiting));
 });
+
+
+test('the replay paints possession as it was before each battle (front line follows the replay)', opts, () => {
+  for (const seed of [7, 11, 23]) {
+    const { reports, g } = openingBattles(seed);
+    const battles = buildReplay(reports);
+    // every reported change is real: replaying the diffs from the earliest "before" gives the live value
+    const first = new Map<number, number>();
+    for (const b of battles) for (const [h, before] of b.report.possession ?? []) if (!first.has(h)) first.set(h, before);
+    const o = overlayFor(battles[0], 0, battles.slice(1));
+    for (const [h, before] of first) assert.equal(o.possession.get(h), before, `hex ${h} shown as before the first battle that took it`);
+    const last = battles.at(-1)!;
+    const end = overlayFor(last, last.steps.length - 1, []);
+    assert.equal(end.possession.size, 0, 'after the last battle the live map is right');
+    for (const b of battles) for (const [h, , after] of b.report.possession ?? []) assert.ok(after === g.possession[h] || battles.some((x) => x !== b && x.report.possession?.some(([k]) => k === h)));
+  }
+});

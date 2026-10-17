@@ -487,7 +487,7 @@ export const REPLAY_KO = {
   defenderLoss: '방어 측 손실률',
   retreatChance: (p: number) => `후퇴 확률 ${p}%`,
   retreated: '방어 부대 후퇴',
-  held: '방어 부대 버틴',
+  held: '방어 부대 버텨',
   wipedOut: '방어 부대 괴멸',
   equipLost: (a: number, d: number) => `잃은 장비: 공격 측 ${a} · 방어 측 ${d}`,
   destroyed: '괴멸',
@@ -550,10 +550,12 @@ export const OPTIONS_UI_KO = {
   noAi: '이 진영을 맡을 컴퓨터 AI가 없어서 컴퓨터 쪽 지상군은 움직이지 않아요. 미리 정해진 공격 명령과 항공 자동 임무만 실행됩니다.',
   ai: '컴퓨터 AI',
   aiValues: ['원작', '개선판'],
-  aiTitles: ['원작 프로그램(1992, Norm Koger)의 판단을 그대로 옮긴 것', '리메이크에서 새로 만들 AI (준비 중)'],
-  aiHint: (player: number) => player === 2
-    ? '원작: 1992년 원작의 유엔군 AI(WALTON)를 코드 그대로 옮겼어요. 부산 교두보 방어, 인천·군산 상륙, 일본에서 오는 증원 수송까지 합니다. 개선판은 준비 중입니다.'
-    : '원작: 1992년 원작의 공산군 AI(KIM)를 코드 그대로 옮겼어요. 개선판은 준비 중입니다.',
+  aiTitles: ['원작 프로그램(1992, Norm Koger)의 판단을 그대로 옮긴 것', '리메이크 AI: 사람과 같은 정보와 규칙으로 판단'],
+  aiHint: (player: number, level: 'original' | 'improved' = 'original') => level === 'improved'
+    ? '개선판: 정찰한 적만 보고(정보 제한일 때) 사람과 같은 이동·공격 규칙으로 움직여요. 공격 전에 예상 손실을 따져 승산이 있을 때만 공격하고, 빈 전선을 메우며, 우세하면 도시와 적 땅으로 밀고 들어가요.'
+    : player === 2
+      ? '원작: 1992년 원작의 유엔군 AI(WALTON)를 코드 그대로 옮겼어요. 부산 교두보 방어, 인천·군산 상륙, 일본에서 오는 증원 수송까지 합니다.'
+      : '원작: 1992년 원작의 공산군 AI(KIM)를 코드 그대로 옮겼어요.',
   aiSoon: '준비 중',
   air: '항공 작전',
   airValues: ['직접 지휘', '프로그램에 맡김'],
@@ -866,6 +868,9 @@ export const SOUND_UI_KO = {
   followOff: '이동 따라가기 꺼짐',
   replayOn: '전투 재생 켜짐',
   replayOff: '전투 재생 꺼짐',
+  countersNato: '말: NATO 기호',
+  countersPicture: '말: 그림',
+  countersTitle: '부대 말 앞면: NATO 기호(원작처럼) 또는 병종 그림(보병·전차·야포·공수)',
   playNote: '부대가 움직이는 속도입니다(원작 Speed). 따라가기를 켜면 지도가 움직이는 부대를 계속 가운데에 둡니다(원작 Mvmnt Centering). 꺼 두면 부대가 화면 밖으로 나갈 때만 옮깁니다. C 키: 선택한 부대로 지도 이동.',
   note: '1990년대 초 FM 사운드카드 느낌으로 직접 편곡한 연주곡(가사 없음)입니다. 저작권이 끝난 곡만 저장소에 들어 있고, 6.25의 노래는 개인 데이터(data/private)에 있을 때만 나옵니다.',
 } as const;
@@ -1102,6 +1107,9 @@ export const LAYOUT_KO = {
   readiness: '준비도',
   moves: '이동력',
   fogNote: '정찰 보고 읽는 법',
+  lossA: '공격 측 손실',
+  lossD: '방어 측 손실',
+  retreatChance: (p: number) => `후퇴 확률 ${p}%`,
 };
 
 /** One-word missions for the compact air unit rows (MISSION_KO is the full name in the tooltip). */
@@ -1125,4 +1133,16 @@ export const AIR_READ_KO = {
   severityOnly: '원작처럼 피해 정도만 보고됩니다 (정보 제한).',
   aimHere: (place: string, pct: number) => `${place} 조준 · 살상률 ${pct}%`,
   notTarget: '공습할 수 없는 헥스',
+};
+
+
+/** Title screen (the original opens with a title picture before the start menu). */
+export const TITLE_KO = {
+  kicker: 'SSI 1992 · 웹 리메이크',
+  title: 'Conflict: Korea',
+  subtitle: '한국전쟁 첫해 1950–51',
+  start: '시작',
+  load: '저장한 게임 불러오기',
+  keys: 'Enter 또는 클릭',
+  credit: '그림: 생성형 AI로 만든 삽화',
 };

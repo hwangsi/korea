@@ -67,6 +67,8 @@ export interface ReplayOverlay {
   burst: boolean;
   /** Units of every participant: their live counters are hidden while the battle is replayed. */
   hide: Set<number>;
+  /** Possession as it was at this moment of the replay (hex -> owner), where it differs from the live map. */
+  possession: Map<number, number>;
 }
 
 export const armySide = (army: number): Side => (army < 2 ? 'communist' : 'un');
@@ -92,6 +94,12 @@ export function overlayFor(b: ReplayBattle, s: number, later: ReplayBattle[] = [
     }
   }
   o.hide = claimed;
+  // possession of the battles not replayed yet (and of this one until it ends) is turned back, latest first, so the
+  // front line and the tint show the moment of the replay (CombatReport.possession)
+  const pos = new Map<number, number>();
+  for (const lb of [...later].reverse()) for (const [h, before] of lb.report.possession ?? []) pos.set(h, before);
+  if (b.steps[s]?.kind !== 'end') for (const [h, before] of b.report.possession ?? []) pos.set(h, before);
+  o.possession = pos;
   return o;
 }
 
@@ -146,6 +154,7 @@ function currentOverlay(b: ReplayBattle, s: number): ReplayOverlay {
     marks,
     burst: cur?.kind === 'result',
     hide: new Set([...r.attackers, ...r.defenders].flatMap((x) => x.units)),
+    possession: new Map(),
   };
 }
 

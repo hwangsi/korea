@@ -509,6 +509,15 @@ export interface CombatReport {
   events: CombatEvent[];
   /** No combat: the target was empty or friendly, the force moved in. */
   moveIn?: boolean;
+  /** Hexes whose possession this battle changed: [hex, before, after] (the replay paints them in battle order). */
+  possession?: [number, number, number][];
+}
+
+/** Possession changes since `before` (a copy taken when the battle began). */
+function possessionDiff(g: GameState, before: ArrayLike<number>): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  for (let i = 0; i < g.possession.length; i++) if (g.possession[i] !== before[i]) out.push([i, before[i], g.possession[i]]);
+  return out;
 }
 
 /** GRCMBT 015F: MOVE := MOVE mod 100, capped at the national rate (no refund of the 5 reserved points). */
@@ -740,6 +749,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         else if (g.possession[ti] === enemyCode && s.length > 0) r = 2;
       }
       if (r === 1) {
+        const before = g.possession.slice();
         const snap = sideSnapshot(g, id);
         executePlot(g, id);
         enterHex(g, id, tx, ty);
@@ -748,6 +758,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         reports.push({
           army: corps, target: [tx, ty], attackers: [snap], defenders: [], aL: 0, aS: 0, dL: 0, dS: 0,
           attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, moveIn: true, events: [{ kind: 'moveIn', leader: id, to: [tx, ty] }],
+          possession: possessionDiff(g, before),
         });
       } else if (r === 2) {
         table.push({ leader: id, x: tx, y: ty, active: true });
@@ -761,6 +772,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
       const { x, y } = entry;
       const ti = idx(g, x, y);
       const same = table.filter((e, j) => j >= i && e.active && e.x === x && e.y === y);
+      const before = g.possession.slice();
       if (g.stacks[ti].length === 0) {
         // target vacated: advance (original bug fixed: the other entries are retired too)
         const events: CombatEvent[] = [];
@@ -771,6 +783,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         reports.push({
           army: corps, target: [x, y], attackers: snaps, defenders: [],
           aL: 0, aS: 0, dL: 0, dS: 0, attackerLoss: 0, defenderLoss: 0, retreatChance: 0, retreated: false, moveIn: true, events,
+          possession: possessionDiff(g, before),
         });
         continue;
       }
@@ -831,6 +844,7 @@ export function resolveGroundCombat(g: GameState): CombatReport[] {
         if (atSea(g, entry.leader) && g.stacks[ti].length === 0) advanceInto(g, same, x, y, report.events);
       }
       for (const s of [...report.attackers, ...report.defenders]) finishSnapshot(g, s);
+      report.possession = possessionDiff(g, before);
       reports.push(report);
     }
   }

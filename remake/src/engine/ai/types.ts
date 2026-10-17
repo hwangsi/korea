@@ -4,7 +4,7 @@ import type { GameState, Player } from '../state.ts';
 
 /**
  * Which computer player plays a side. 'original': the port of the 1992 program (Communist: WARRIORS.KIM,
- * UN: WARRIORS.WALTON). 'improved': a remake AI (planned, not written yet; docs/rules/ai.md 5).
+ * UN: WARRIORS.WALTON). 'improved': the remake AI for both sides (ai/improved.ts, docs/rules/ai.md 9).
  */
 export type AiLevel = 'original' | 'improved';
 
@@ -30,7 +30,7 @@ export interface AiReport {
  * the turn loop (turn.ts) then goes on. It may draw random numbers with `rnd(g, ...)` only (reproducible games).
  */
 export interface ComputerPlayer {
-  /** 'kim' (original Communist), 'walton' (original UN). Planned: 'kim-improved', 'walton-improved'. */
+  /** 'kim' (original Communist), 'walton' (original UN), 'kim-improved' / 'walton-improved' (ai/improved.ts). */
   id: string;
   player: Player;
   level: AiLevel;

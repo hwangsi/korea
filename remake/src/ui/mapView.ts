@@ -409,6 +409,79 @@ export class MapView {
     requestAnimationFrame(this.panStep);
   };
 
+  // ---------- airstrike effect: the original flashes 1-3 explosions on the struck hex (AIRCMBT, manual 4.13) ----------
+
+  private fx: { hex: number; n: number; found: boolean; start: number; dur: number }[] = [];
+  private fxRaf = 0;
+
+  /** Play the explosions of these strikes one after another (`stepMs` apart, each `durMs` long). */
+  flashStrikes(list: { hex: number; explosions: number; found: boolean }[], stepMs = 650, durMs = 1100) {
+    const now = performance.now();
+    list.forEach((m, k) => this.fx.push({ hex: m.hex, n: Math.max(1, Math.min(3, m.explosions)), found: m.found, start: now + k * stepMs, dur: durMs }));
+    if (this.fxRaf) return;
+    const tick = () => {
+      const t = performance.now();
+      this.fx = this.fx.filter((f) => t < f.start + f.dur);
+      this.draw();
+      this.fxRaf = this.fx.length ? requestAnimationFrame(tick) : 0;
+    };
+    this.fxRaf = requestAnimationFrame(tick);
+  }
+
+  /** Effects still playing (tests / checks). */
+  get flashing() { return this.fx.length; }
+
+  private drawStrikeFx(now: number) {
+    const g = this.game;
+    if (!g) return;
+    const ctx = this.ctx;
+    const z = this.cam.zoom;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    for (const f of this.fx) {
+      const p = (now - f.start) / f.dur;
+      if (p < 0 || p > 1) continue;
+      const c = this.toScreen(hexCenter(f.hex % g.width, Math.floor(f.hex / g.width), HEX));
+      const R = HEX * 0.55 * z;
+      const fade = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
+      if (!f.found) {
+        // nothing found: a grey ring spreads and fades
+        ctx.globalAlpha = fade * 0.9;
+        ctx.strokeStyle = 'rgba(230, 230, 230, 0.9)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, R * (0.4 + p * 0.8), 0, Math.PI * 2);
+        ctx.stroke();
+        continue;
+      }
+      const spots = f.n === 1 ? [[0, 0]] : f.n === 2 ? [[-0.32, 0.12], [0.32, -0.12]] : [[-0.36, 0.2], [0.36, 0.2], [0, -0.3]];
+      spots.forEach(([dx, dy], k) => {
+        const q = (p - k * 0.18) / 0.5; // each blast grows in turn
+        if (q <= 0) return;
+        const s = R * (0.35 + 0.65 * Math.min(1, q));
+        const x = c.x + dx * R, y = c.y + dy * R;
+        ctx.globalAlpha = fade;
+        const grd = ctx.createRadialGradient(x, y, 0, x, y, s);
+        grd.addColorStop(0, 'rgba(255, 250, 210, 1)');
+        grd.addColorStop(0.35, 'rgba(255, 196, 64, 0.95)');
+        grd.addColorStop(0.7, 'rgba(235, 90, 20, 0.85)');
+        grd.addColorStop(1, 'rgba(120, 30, 10, 0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        for (let a = 0; a < 18; a++) {
+          const ang = (Math.PI / 9) * a + k;
+          const rr = a % 2 === 0 ? s : s * 0.62;
+          const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr;
+          if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      });
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   invalidate() {
     if (this.pending) return;
     this.pending = true;
@@ -458,7 +531,7 @@ export class MapView {
     if (this.layers.possession && sc) {
       for (const h of vis) {
         if (!isLand(h.terrain)) continue;
-        const owner = sc.possession[h.y * map.width + h.x];
+        const owner = this.ownerAt(h.y * map.width + h.x);
         if (!owner) continue;
         this.hexPath(hexCenter(h.x, h.y, HEX));
         ctx.fillStyle = owner === 1 ? 'rgba(40, 110, 230, 0.075)' : 'rgba(220, 40, 30, 0.075)';
@@ -515,6 +588,7 @@ export class MapView {
     if (this.replay) this.drawReplay(this.replay);
     if (this.airstrikes.length || this.strikeAim) this.drawAirstrikes();
     if (this.layers.names || this.layers.nature) this.drawPlaceLabels();
+    if (this.fx.length) this.drawStrikeFx(performance.now());
     if (this.movement && !this.anim) this.drawMoveLabels(vis, this.movement);
 
     if (this.layers.coords && z > 0.9) {
@@ -672,14 +746,18 @@ export class MapView {
     ctx.setLineDash([]);
   }
 
+  /** Possession shown on the map: the live value, or the one at the moment a combat replay shows. */
+  private ownerAt(i: number): number {
+    return this.replay?.possession.get(i) ?? this.game!.possession[i];
+  }
+
   private drawFrontLine(vis: Hex[]) {
     const ctx = this.ctx;
     const map = this.map!;
-    const sc = this.game!;
     ctx.beginPath();
     for (const h of vis) {
       if (!isLand(h.terrain)) continue;
-      const own = sc.possession[h.y * map.width + h.x];
+      const own = this.ownerAt(h.y * map.width + h.x);
       if (own !== 1) continue; // draw each border once, from the UN side
       const c = hexCenter(h.x, h.y, HEX);
       const pts = hexCorners(c, HEX);
@@ -687,7 +765,7 @@ export class MapView {
         const [nx, ny] = neighbor(h.x, h.y, d);
         if (nx < 0 || ny < 0 || nx >= map.width || ny >= map.height) continue;
         const n = this.hexes[ny * map.width + nx];
-        if (!isLand(n.terrain) || sc.possession[ny * map.width + nx] !== 2) continue;
+        if (!isLand(n.terrain) || this.ownerAt(ny * map.width + nx) !== 2) continue;
         const a = pts[(4 + d) % 6];
         const b = pts[(5 + d) % 6];
         ctx.moveTo(a.x, a.y);
@@ -1047,6 +1125,67 @@ export class MapView {
   }
 
   /** One counter; `stub` = a stacked force under the top one (box only); `ghost` = a replayed force (given strength). */
+  /** Counter face: 'nato' symbols like the original, or 'picture' silhouettes (remake addition). */
+  counterArt: 'nato' | 'picture' = 'nato';
+
+  /**
+   * Silhouette of the unit type in white, centred on (cx, cy), half height s (world units): rifleman, tank,
+   * field gun (heavy artillery: longer barrel), paratrooper under a canopy.
+   */
+  private pictureSymbol(kind: string, cx: number, cy: number, s: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    ctx.shadowBlur = s * 0.25;
+    ctx.shadowOffsetY = s * 0.06;
+    const circle = (x: number, y: number, r: number) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+    const line = (x1: number, y1: number, x2: number, y2: number, wdt: number) => {
+      ctx.lineWidth = wdt; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    };
+    if (kind === 'armor') {
+      ctx.beginPath(); ctx.roundRect(cx - s * 1.45, cy + s * 0.12, s * 2.9, s * 0.72, s * 0.36); ctx.fill(); // tracks
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 1.3, cy + s * 0.18); ctx.lineTo(cx - s * 1.05, cy - s * 0.24);
+      ctx.lineTo(cx + s * 1.15, cy - s * 0.24); ctx.lineTo(cx + s * 1.38, cy + s * 0.18); ctx.closePath(); ctx.fill(); // hull
+      ctx.beginPath(); ctx.roundRect(cx - s * 0.6, cy - s * 0.72, s * 1.05, s * 0.52, s * 0.22); ctx.fill(); // turret
+      line(cx + s * 0.35, cy - s * 0.5, cx + s * 1.62, cy - s * 0.6, s * 0.17); // gun
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+      for (const k of [-1.0, -0.34, 0.34, 1.0]) circle(cx + k * s, cy + s * 0.48, s * 0.17); // road wheels
+    } else if (kind === 'artillery' || kind === 'heavy_artillery') {
+      const heavy = kind === 'heavy_artillery';
+      const len = heavy ? 2.05 : 1.6;
+      line(cx - s * 0.35, cy + s * 0.12, cx - s * 0.35 + len * s * 0.88, cy + s * 0.12 - len * s * 0.5, s * (heavy ? 0.27 : 0.2)); // barrel
+      line(cx - s * 0.25, cy + s * 0.32, cx - s * 1.5, cy + s * 0.82, s * 0.15); // trail
+      ctx.beginPath(); // shield
+      ctx.moveTo(cx - s * 0.62, cy - s * 0.12); ctx.lineTo(cx + s * 0.02, cy - s * 0.42);
+      ctx.lineTo(cx + s * 0.16, cy + s * 0.12); ctx.lineTo(cx - s * 0.5, cy + s * 0.34); ctx.closePath(); ctx.fill();
+      ctx.lineWidth = s * 0.15;
+      ctx.beginPath(); ctx.arc(cx - s * 0.18, cy + s * 0.48, s * (heavy ? 0.46 : 0.4), 0, Math.PI * 2); ctx.stroke(); // wheel
+      circle(cx - s * 0.18, cy + s * 0.48, s * 0.1);
+    } else if (kind === 'airborne') {
+      ctx.beginPath(); ctx.arc(cx, cy - s * 0.2, s * 0.95, Math.PI, 0); ctx.closePath(); ctx.fill(); // canopy
+      for (const k of [-0.95, -0.35, 0.35, 0.95]) line(cx + k * s, cy - s * 0.2, cx, cy + s * 0.5, s * 0.06); // shroud lines
+      circle(cx, cy + s * 0.52, s * 0.15); // jumper
+      line(cx, cy + s * 0.6, cx, cy + s * 0.92, s * 0.18);
+    } else {
+      // rifleman: helmet, body, legs, rifle at the port
+      ctx.beginPath(); ctx.arc(cx - s * 0.05, cy - s * 0.6, s * 0.27, Math.PI, 0); ctx.closePath(); ctx.fill(); // helmet
+      circle(cx - s * 0.05, cy - s * 0.5, s * 0.17); // head
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.36, cy - s * 0.3); ctx.lineTo(cx + s * 0.26, cy - s * 0.3);
+      ctx.lineTo(cx + s * 0.2, cy + s * 0.28); ctx.lineTo(cx - s * 0.3, cy + s * 0.28); ctx.closePath(); ctx.fill(); // body
+      line(cx - s * 0.18, cy + s * 0.22, cx - s * 0.48, cy + s * 0.9, s * 0.17); // legs
+      line(cx + s * 0.06, cy + s * 0.22, cx + s * 0.3, cy + s * 0.9, s * 0.17);
+      line(cx - s * 0.75, cy + s * 0.12, cx + s * 0.78, cy - s * 0.78, s * 0.1); // rifle
+    }
+    ctx.restore();
+  }
+
   private counter(f: Force, c: Pt, z: number, stub = false, ghost?: { strength: { L: number; S: number } | null; units: number; faded: boolean }) {
     const ctx = this.ctx;
     const lead = this.unit(f.leader);
@@ -1103,14 +1242,15 @@ export class MapView {
     this.shipBadge(lead, x, y);
     if (z < 0.4) { ctx.restore(); return; }
 
-    // NATO frame
+    // NATO frame (or a drawn picture of the unit type, PlaySettings.counters)
     const fw = w * 0.6, fh = h * 0.42;
     const fx = c.x - fw / 2, fy = y + h * 0.2;
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = HEX * 0.05;
-    ctx.strokeRect(fx, fy, fw, fh);
+    if (this.counterArt === 'picture') this.pictureSymbol(lead.kind, c.x, fy + fh * 0.55, fh * 0.6);
+    else ctx.strokeRect(fx, fy, fw, fh);
     ctx.beginPath();
-    if (lead.kind === 'infantry' || lead.kind === 'airborne') {
+    if (this.counterArt === 'picture') { /* drawn above */ } else if (lead.kind === 'infantry' || lead.kind === 'airborne') {
       ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy + fh);
       ctx.moveTo(fx + fw, fy); ctx.lineTo(fx, fy + fh);
       if (lead.kind === 'airborne') { ctx.moveTo(fx + fw * 0.25, fy + fh); ctx.quadraticCurveTo(fx + fw / 2, fy + fh * 0.55, fx + fw * 0.75, fy + fh); }
@@ -1160,9 +1300,15 @@ export class MapView {
       const e = ctxS({ x: c.x, y: y + h * 0.1 });
       ctx.fillText(ech, e.x, e.y);
     }
-    ctx.font = `700 ${Math.max(9, 9 * z)}px ${FONT}`;
+    // strength: shrink to fit the counter (1995 forces reach 4 digits a side)
+    const txt = shown ? `${shown.L}-${shown.S}` : '-';
+    let size = Math.max(9, 9 * z);
+    ctx.font = `700 ${size}px ${FONT}`;
+    const room = w * z * 0.94;
+    const tw = ctx.measureText(txt).width;
+    if (tw > room) { size = Math.max(7, size * room / tw); ctx.font = `700 ${size}px ${FONT}`; }
     const t = ctxS({ x: c.x, y: y + h * 0.84 });
-    ctx.fillText(shown ? `${shown.L}-${shown.S}` : '-', t.x, t.y);
+    ctx.fillText(txt, t.x, t.y);
     if (f.units.length > 1) {
       const b = ctxS({ x: x + w, y });
       const r = Math.max(7, 6.5 * z);

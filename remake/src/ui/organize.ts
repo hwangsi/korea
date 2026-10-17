@@ -8,7 +8,7 @@ import { hexSlots, forcePresence, hexModifiers, transferCheck, canRename, FORCE_
 import type { TransferCheck } from '../engine/forces.ts';
 import { placeAt, featureAt } from '../data/places.ts';
 import {
-  FORCES_UI_KO as T, NATION_KO, KIND_KO, EXPERIENCE_KO, TERRAIN_KO, PLAYER_KO, PHASE_KO, unitNameKo, forceNameKo,
+  FORCES_UI_KO as T, NATION_KO, KIND_KO, EXPERIENCE_KO, TERRAIN_KO, PLAYER_KO, PHASE_KO, unitNameKo, forceNameKo, LAYOUT_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 
@@ -121,7 +121,7 @@ export function renderOrganize(el: HTMLElement, v: OrganizeView) {
         <span class="og-mod ${m.softSurvival !== 1 ? 'on' : ''}">${esc(T.softSurvival)} <b>${factor(m.softSurvival)}</b></span></p>
       <div class="og-cols">${forceColumn(v, 0, a, b)}${forceColumn(v, 1, b, a)}</div>
       ${msg}
-      <p class="rp-hint">${esc(T.rules)}</p>
+      <details class="hint og-rules"><summary>${esc(LAYOUT_KO.help)}</summary><p class="rp-hint">${esc(T.rules)}</p></details>
       <div class="actions"><button type="button" class="btn ghost" data-og="close">${esc(T.close)} <span class="kbd">Esc</span></button></div>
     </div>`;
 }

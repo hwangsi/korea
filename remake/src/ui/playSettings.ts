@@ -11,9 +11,11 @@ export interface PlaySettings {
   follow: boolean;
   /** Show every ground battle step by step after the combat phase, like the original (ui/combatReplay.ts). */
   replay: boolean;
+  /** Counter face: NATO symbol (like the original) or a drawn picture of the unit type (remake addition). */
+  counters: 'nato' | 'picture';
 }
 
-export const PLAY_DEFAULTS: PlaySettings = { speed: 2, follow: false, replay: true };
+export const PLAY_DEFAULTS: PlaySettings = { speed: 2, follow: false, replay: true, counters: 'nato' };
 
 const KEY = 'conflict-korea-remake/play';
 
@@ -27,6 +29,7 @@ export function loadPlaySettings(): PlaySettings {
         speed,
         follow: typeof j.follow === 'boolean' ? j.follow : PLAY_DEFAULTS.follow,
         replay: typeof j.replay === 'boolean' ? j.replay : PLAY_DEFAULTS.replay,
+        counters: j.counters === 'picture' ? 'picture' : 'nato',
       };
     }
   } catch { /* storage not available */ }
