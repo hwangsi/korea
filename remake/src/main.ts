@@ -50,6 +50,8 @@ import {
 } from './i18n/ko.ts';
 import { placeAt, featureAt, PLACE_NAMES } from './data/places.ts';
 import { TUTORIAL_STEPS, chapterStart, taskDone, renderTutorial } from './ui/tutorial.ts';
+import { ICON, sideFlag } from './ui/icons.ts';
+import { SCENARIO_PHOTOS } from './data/photos.ts';
 import { neighbor } from './engine/hex.ts';
 import type { TutProbe, TutMarks, TutChapter } from './ui/tutorial.ts';
 import { TITLE_ART } from './data/titleArt.ts';
@@ -313,22 +315,39 @@ async function main() {
     // the edition is in the settings line of the summary and the scenario report
     $('#scenario-name').title = scenario?.variant === 'S' ? OPTIONS_UI_KO.deployment : '';
     $('#date').innerHTML = `<b>${esc(dateKo(d.year, d.month, d.day))}</b><span>${esc(LAYOUT_KO.turn(game.turn))}</span>`;
+    // command-console top bar (docs/graphics.md 9): the commanding side's flag, resources with icons, then the clock
+    const me = viewer();
+    const flag = $('#side-flag');
+    flag.innerHTML = sideFlag(me);
+    flag.title = LAYOUT_KO.flagTitle(me === 'un' ? '유엔군' : '공산군');
+    const sup = $('#res-supply');
+    sup.innerHTML = `${ICON.supply}<span class="lbl">${esc(LAYOUT_KO.resSupply)}</span><b class="un">${game.stockpile[1]}</b><i>/</i><b class="red">${game.stockpile[0]}</b>`;
+    sup.title = LAYOUT_KO.resSupplyTitle;
+    const reinf = $('#res-reinf');
+    reinf.innerHTML = `${ICON.reinforcements}<span class="lbl">${esc(LAYOUT_KO.resReinf)}</span><b>${[...game.units.values()].filter((u) => u.x < -1).length}</b>`;
+    reinf.title = LAYOUT_KO.resReinfTitle;
     const t = TEMPERATURE_KO[game.temperature];
     const wx = $('#weather');
-    wx.className = `top-chip wx s${game.sky}`;
-    wx.innerHTML = t ? `<i>${SKY_ICON[game.sky] ?? ''}</i>${esc(`${t} · ${SKY_KO[game.sky] ?? '-'}`)}${game.freezeLine > 0 ? ' <span class="frz">❄</span>' : ''}` : '-';
+    wx.className = `res wx s${game.sky}`;
+    wx.innerHTML = t ? `<i class="wx-ico">${SKY_ICON[game.sky] ?? ''}</i><b>${esc(`${t} · ${SKY_KO[game.sky] ?? '-'}`)}</b>${game.freezeLine > 0 ? ' <span class="frz">❄</span>' : ''}` : '-';
     wx.title = LAYOUT_KO.weatherTitle(game.freezeLine);
     const lvl = territoryBalance(game);
     const vc = $('#victory');
-    vc.className = `top-chip victory ${game.victoryVoid ? '' : lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}`;
-    vc.innerHTML = `<span>${esc(LAYOUT_KO.victoryShort)}</span><b>${esc(game.victoryVoid ? '-' : victoryKo(lvl))}</b>`;
+    vc.className = `res victory ${game.victoryVoid ? '' : lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}`;
+    vc.innerHTML = `${ICON.victory}<span class="lbl">${esc(LAYOUT_KO.resVictory)}</span><b>${esc(game.victoryVoid ? '-' : victoryKo(lvl))}</b>`;
     vc.title = LAYOUT_KO.victoryTitle;
     const pill = $('#phase');
     const ordersPhase = game.phase === 1 || game.phase === 3;
-    pill.className = `phase-pill ${ordersPhase ? (game.player === 2 ? 'un' : 'red') : ''}`;
+    const sideCls = game.player === 2 ? 'un' : 'red';
+    pill.className = 'phase-pips';
+    pill.title = LAYOUT_KO.phaseStepsTitle;
     pill.innerHTML = game.gameOver
-      ? esc(TURN_UI_KO.gameOver)
-      : `<span class="dot"></span>${esc(PLAYER_KO[game.player])} · ${esc(PHASE_KO[game.phase] ?? '')}`;
+      ? `<b class="side">${esc(TURN_UI_KO.gameOver)}</b>`
+      : `<b class="side ${ordersPhase ? sideCls : ''}">${esc(ordersPhase ? PLAYER_KO[game.player] : PHASE_KO[game.phase] ?? '')}</b>${LAYOUT_KO.phaseShort.map((s, k) => {
+        const p = k + 1;
+        const cls = p === game!.phase ? `on ${p === 1 || p === 3 ? sideCls : 'neutral'}` : p < game!.phase ? 'done' : '';
+        return `<i class="${cls}">${esc(s)}</i>`;
+      }).join('')}`;
     ($('#end-phase') as HTMLButtonElement).disabled = !(ordersPhase || inStrikes()) || !!game.gameOver || modal();
     const airBtn = $('#air-ops') as HTMLButtonElement;
     const airOk = canPlanAir(game);
@@ -342,8 +361,12 @@ async function main() {
   function renderBanner() {
     if (!banner) { bannerEl.hidden = true; bannerEl.innerHTML = ''; return; }
     const cls = banner.side === 2 ? 'side-un' : banner.side === 1 ? 'side-red' : '';
-    bannerEl.innerHTML = `<div class="box ${cls}" role="dialog" aria-modal="true">
-      <p class="eyebrow">${esc(banner.eyebrow)}</p><h2>${esc(banner.title)}</h2>
+    // an event window like the strategy games': title, a period photograph, the text, long option buttons
+    const photo = game ? SCENARIO_PHOTOS[game.scenarioNo] : undefined;
+    bannerEl.innerHTML = `<div class="box event ${cls}" role="dialog" aria-modal="true">
+      <h2>${esc(banner.title)}</h2>
+      ${photo ? `<div class="ev-pic" role="img" aria-label="${esc(photo.caption)}" style="background-image:url('${photo.src}')"></div>` : ''}
+      <p class="eyebrow">${esc(banner.eyebrow)}</p>
       ${banner.lines.map((l) => `<p>${esc(l)}</p>`).join('')}
       <div class="actions">${banner.buttons.map((b) => `<button class="btn ${b.kind ?? 'primary'}" data-banner="${b.action}">${esc(b.label)}</button>`).join('')}</div>
     </div>`;
@@ -1557,6 +1580,15 @@ async function main() {
 
   // the layer toggles sit in a small drop-down (minor controls); a click elsewhere folds it
   rememberDetails(panel);
+  // icons on the top-bar buttons (the labels stay; the icons make them quicker to find, as in strategy games)
+  const withIcon = (sel: string, icon: string) => { const b = $(sel); b.innerHTML = `${icon}<span>${esc(b.textContent?.trim() ?? '')}</span>`; };
+  withIcon('#new-game', ICON.newGame);
+  withIcon('#save-game', ICON.save);
+  withIcon('#reports-btn', ICON.reports);
+  withIcon('#sound', ICON.sound);
+  withIcon('#tutorial-btn', ICON.tutorial);
+  withIcon('#air-ops', ICON.air);
+  withIcon('#layers-btn', ICON.layers);
   const layersMenu = $('#layers-menu') as HTMLDetailsElement;
   $('#layers-btn').title = LAYOUT_KO.layersTitle;
   document.addEventListener('pointerdown', (e) => {

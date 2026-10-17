@@ -25,9 +25,10 @@ export function shade(hex: string, k: number): string {
 
 /** Board colours (the sea is also the canvas background). */
 export const BOARD = {
-  sea: '#1d5b97',
-  seaEdge: '#174d84',
-  shallow: '#3f86b8',
+  // steel blue, toned to the command-console UI (docs/graphics.md 9)
+  sea: '#2b5272',
+  seaEdge: '#244862',
+  shallow: '#4e819f',
   sand: '#e2cd8e',
   foam: 'rgba(255,255,255,0.78)',
   grid: 'rgba(70, 48, 22, 0.16)',
@@ -35,7 +36,7 @@ export const BOARD = {
 
 const BASE: Record<string, string> = {
   open: '#dbc68a', japan: '#cfcf96', rough: '#c3ab6d', mountain: '#b48c5a', urban: '#cdbf9c',
-  ocean: BOARD.sea, estuary: '#4a8bb3', reservoir: '#3a84c4', offmap: '#a9a594', undefined: '#dbc68a',
+  ocean: BOARD.sea, estuary: '#5389a6', reservoir: '#4a82a6', offmap: '#a9a594', undefined: '#dbc68a',
 };
 
 function hexPath(ctx: CanvasRenderingContext2D, R: number) {

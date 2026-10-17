@@ -9,23 +9,27 @@
 <body>
   <header class="topbar">
     <div class="brand">
-      <strong>Conflict: Korea</strong>
-      <span id="scenario-name">-</span>
+      <span id="side-flag" class="side-flag"></span>
+      <div class="brand-text">
+        <strong>Conflict: Korea</strong>
+        <span id="scenario-name">-</span>
+      </div>
     </div>
-    <button id="new-game" class="btn" type="button" title="시나리오와 게임 설정을 골라 새로 시작">새 게임</button>
-    <button id="save-game" class="btn" type="button" title="게임 저장·불러오기" aria-pressed="false">저장</button>
-    <button id="reports-btn" class="btn" type="button" title="전략 보고·항구와 비행장·날씨·시나리오 정보·전략 개관" aria-pressed="false">보고서</button>
-    <button id="sound" class="btn" type="button" title="소리·진행 설정: 배경 음악, 효과음, 진행 속도, 이동 따라가기" aria-pressed="false">♪ 설정</button>
-      <button id="tutorial-btn" class="btn" type="button" aria-pressed="false">튜토리얼</button>
-    <div class="info">
-      <span id="date" class="date">-</span>
-      <div id="phase" class="phase-pill">-</div>
-      <span id="weather" class="top-chip">-</span>
-      <span id="victory" class="top-chip">-</span>
+    <nav class="menu-btns">
+      <button id="new-game" class="btn menu" type="button" title="시나리오와 게임 설정을 골라 새로 시작">새 게임</button>
+      <button id="save-game" class="btn menu" type="button" title="게임 저장·불러오기" aria-pressed="false">저장</button>
+      <button id="reports-btn" class="btn menu" type="button" title="전략 보고·항구와 비행장·날씨·시나리오 정보·전략 개관" aria-pressed="false">보고서</button>
+      <button id="sound" class="btn menu" type="button" title="소리·진행 설정: 배경 음악, 효과음, 진행 속도, 이동 따라가기" aria-pressed="false">설정</button>
+      <button id="tutorial-btn" class="btn menu" type="button" aria-pressed="false">튜토리얼</button>
+    </nav>
+    <div class="res-strip">
+      <span id="res-supply" class="res"></span>
+      <span id="res-reinf" class="res"></span>
+      <span id="weather" class="res"></span>
+      <span id="victory" class="res"></span>
     </div>
     <div class="spacer"></div>
-    <button id="air-ops" class="btn" type="button" title="항공대 임무 정하기 (1차 명령 단계)" aria-pressed="false">✈ 항공</button>
-    <button id="end-phase" class="btn primary" type="button" title="이 단계의 명령을 마치고 다음 단계로">단계 종료 ▶</button>
+    <button id="air-ops" class="btn" type="button" title="항공대 임무 정하기 (1차 명령 단계)" aria-pressed="false">항공</button>
     <details id="layers-menu" class="layers-menu">
       <summary class="btn" id="layers-btn">지도 표시 ▾</summary>
     <div class="group layers" role="group" aria-label="표시 레이어">
@@ -38,11 +42,16 @@
       <button data-layer="coords" type="button">좌표</button>
     </div>
     </details>
-    <div class="group" role="group" aria-label="확대">
+    <div class="group zoom" role="group" aria-label="확대">
       <button id="zoom-out" type="button" title="축소">−</button>
       <button id="zoom-in" type="button" title="확대">+</button>
       <button id="zoom-fit" type="button" title="전체 보기">전체</button>
     </div>
+    <div class="clock">
+      <span id="date" class="date">-</span>
+      <div id="phase" class="phase-pips">-</div>
+    </div>
+    <button id="end-phase" class="btn primary end-turn" type="button" title="이 단계의 명령을 마치고 다음 단계로">단계 종료 ▶</button>
   </header>
   <main class="layout">
     <div class="map-wrap">
