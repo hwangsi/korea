@@ -1293,7 +1293,8 @@ export class MapView {
     const g = this.game;
     if (!g) return;
     const z = this.cam.zoom;
-    const r = Math.max(5, HEX * 0.24 * z);
+    // the original shows 1-3 explosions in the struck hex; here they stay on the hex's upper corner all turn
+    const r = Math.max(7, HEX * 0.3 * z);
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const burst = (x: number, y: number, size: number, color: string) => {

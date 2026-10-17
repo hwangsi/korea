@@ -78,7 +78,7 @@ remake/
 - [x] 지도 의미 데이터: 34×66 헥스, 지형, 강/도로/철도 6방향 연결, 도시, 항구, 비행장
 - [x] 유닛 250개(1995년 202개), 장비, 항공대, 보충, 뉴스 추출 및 매뉴얼 수치 검증
 - [x] 한글 지도 뷰어 프로토타입 (시나리오 8종, 점령지/전선, 부대 정보, 장비표)
-- [x] 이동 규칙 엔진 (원본 MOVE_COST 그대로, 철도 이동, 버그아웃, 되돌리기) + 단위 테스트 → [`docs/rules/movement.md`](docs/rules/movement.md)
+- [x] 이동 규칙 엔진 (원본 MOVE_COST 그대로, 철도 이동, 급속패퇴, 되돌리기) + 단위 테스트 → [`docs/rules/movement.md`](docs/rules/movement.md)
 - [x] 마우스 이동 UI (도달 범위, 경로·비용 미리보기, 클릭 확정, 우클릭 취소)
 - [x] 지상전 (돌파, 공격 명령, 전투 해결, 후퇴·제거) + 공격 예상치 UI → [`docs/rules/combat.md`](docs/rules/combat.md)
 - [x] 아이콘 헥스 전체에 현재 지명 → [`docs/places.md`](docs/places.md)

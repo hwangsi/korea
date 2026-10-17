@@ -29,6 +29,7 @@ import {
   COMBAT_UI_KO, ARMY_NAME_KO, combatEventKo, TURN_UI_KO, PHASE_KO, PLAYER_KO, victoryKo, END_REASON_KO, PLACE_KO, NATURE_KO, NAVAL_UI_KO,
   AIR_UI_KO, MISSION_KO, MISSION_HINT_KO, BASE_KO, AIR_WEATHER_KO, STRIKE_SEVERITY_KO, AIRCRAFT_KO, airUnitNameKo, INTEL_UI_KO,
   OPTIONS_UI_KO, FORCES_UI_KO, HELP_KO, terrainCodeKo, REPLAY_KO, CHART_KO, SCENARIO_INFO_KO, SCENARIO_BRIEF_KO, BRIEF_UI_KO,
+  LAYOUT_KO, MISSION_SHORT_KO, SKY_ICON, AIR_READ_KO,
 } from '../i18n/ko.ts';
 import { NATION_COLOR } from './mapView.ts';
 import { barChart, lineChart, CHART_COLORS } from './charts.ts';
@@ -39,6 +40,18 @@ import { organizeBlock } from '../engine/forces.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const DIR_KO: Record<string, string> = { N: '북', NE: '북동', SE: '남동', S: '남', SW: '남서', NW: '북서' };
+
+/** Folded sections the player opened: the panel is redrawn often and they must stay open. */
+const keptOpen = new Set<string>();
+const keep = (key: string) => `data-keep="${key}"${keptOpen.has(key) ? ' open' : ''}`;
+/** Track the open state of `<details data-keep>` in the panel (call once). */
+export function rememberDetails(el: HTMLElement) {
+  el.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (!(d instanceof HTMLDetailsElement) || !d.dataset.keep) return;
+    if (d.open) keptOpen.add(d.dataset.keep); else keptOpen.delete(d.dataset.keep);
+  }, true);
+}
 const dirsKo = (mask: number) => directionsOf(mask).map((d) => DIR_KO[DIRECTIONS[d]]).join('·');
 
 export interface PanelContext {
@@ -169,43 +182,46 @@ export function renderSummary(el: HTMLElement, ctx: PanelContext, message: Panel
   const waiting = [...g.units.values()].filter((u) => u.x < -1).length;
   const news = newsItems(ctx).slice(0, 12);
   const lvl = territoryBalance(g);
+  // the key numbers large (victory level, both sides' strength, stockpiles); forecast, air levels and settings folded
   el.innerHTML = `
     ${messageCard(message)}
-    <section class="card ${SCENARIO_PHOTOS[s.scenario] ? 'hero' : ''}">
+    <section class="card ${SCENARIO_PHOTOS[s.scenario] ? 'hero compact' : ''}">
       ${photoBanner(s.scenario)}
       <p class="eyebrow">시나리오 ${s.scenario}${s.variant === 'S' ? ' · 편성 배치' : ''}</p>
       <h2>${esc(SCENARIO_INFO_KO[s.scenario - 1]?.title ?? s.title.ko)}</h2>
-      <p class="muted">${esc(s.title.en)} · ${dateOfTurn(g, g.turn)} · ${g.turn}턴</p>
-      ${settingsLine(ctx)}
       <p class="phase-line"><span class="chip ${g.player === 2 ? 'un-bg' : 'red-bg'}"></span><b>${esc(PHASE_KO[g.phase] ?? '')}</b> · ${esc(PLAYER_KO[g.player])}${g.gameOver ? ` · <span class="tag warn">${esc(TURN_UI_KO.gameOver)}</span>` : ''}</p>
-      <div class="stats">
+      <div class="stats key">
+        <div class="victory"><span class="label">${esc(LAYOUT_KO.keyVictory)}</span><span class="value ${lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}">${g.victoryVoid ? '-' : esc(victoryKo(lvl))}</span><span class="sub">${esc(LAYOUT_KO.keyVictorySub)}</span></div>
         <div><span class="label">유엔군 유닛</span><span class="value un">${side('un')}</span></div>
         <div><span class="label">공산군 유닛</span><span class="value red">${side('communist')}</span></div>
+      </div>
+      <div class="stats second">
+        <div><span class="label">${esc(TURN_UI_KO.stockpile)} (유엔/공산)</span><span class="value">${g.stockpile[1]} / ${g.stockpile[0]}</span></div>
         <div><span class="label">증원 대기</span><span class="value">${waiting}</span></div>
-      </div>
-      <div class="stats">
-        <div><span class="label">${esc(TURN_UI_KO.weather)}</span><span class="value small">${esc(weatherKo(g.weather[0][0]))}${g.freezeLine > 0 ? ` · ${esc(TURN_UI_KO.freezeLine)} ${g.freezeLine}행` : ''}</span></div>
-        <div><span class="label">${esc(TURN_UI_KO.stockpile)} (유엔/공산)</span><span class="value small">${g.stockpile[1]} / ${g.stockpile[0]}</span></div>
-        <div><span class="label">${esc(TURN_UI_KO.victory)}</span><span class="value small ${lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}">${g.victoryVoid ? '-' : esc(victoryKo(lvl))}</span></div>
-      </div>
-      ${forecastLine(g)}
-      <div class="stats compact three">
-        <div><span class="label">${esc(AIR_UI_KO.unil)}</span><span class="value small">${g.interdiction[1]}</span></div>
-        ${g.scenarioNo < 4
-          ? `<div><span class="label">${esc(AIR_UI_KO.cilShort)}</span><span class="value small">${g.redAir}</span></div>`
-          : `<div><span class="label">${esc(AIR_UI_KO.communistIl)}</span><span class="value small">${g.interdiction[0]}</span></div>`}
+        <div><span class="label">${esc(TURN_UI_KO.weather)}</span><span class="value">${esc(weatherKo(g.weather[0][0]))}</span></div>
       </div>
       ${g.refugees ? `<p class="note warn">${esc(TURN_UI_KO.refugees)}</p>` : ''}
+      <details class="more" ${keep('summary-more')}><summary>${esc(LAYOUT_KO.summaryMore)}</summary>
+        ${forecastLine(g)}
+        ${g.freezeLine > 0 ? `<p>${esc(TURN_UI_KO.freezeLine)} ${g.freezeLine}행</p>` : ''}
+        <div class="stats compact three">
+          <div><span class="label">${esc(AIR_UI_KO.unil)}</span><span class="value small">${g.interdiction[1]}</span></div>
+          ${g.scenarioNo < 4
+            ? `<div><span class="label">${esc(AIR_UI_KO.cilShort)}</span><span class="value small">${g.redAir}</span></div>`
+            : `<div><span class="label">${esc(AIR_UI_KO.communistIl)}</span><span class="value small">${g.interdiction[0]}</span></div>`}
+        </div>
+        ${settingsLine(ctx)}
+      </details>
     </section>
     ${chartCards(ctx, side, waiting)}
-    ${news.length ? `<section class="card"><h3>최근 소식</h3><ul class="news">${news.map((n) => `<li><span class="muted">${esc(n.date)}</span>${esc(n.text)}</li>`).join('')}</ul></section>` : ''}
-    <section class="card help">
-      <h3>${esc(HELP_KO.title)}</h3>
+    ${news.length ? `<section class="card"><h3>최근 소식</h3><ul class="news">${news.slice(0, 8).map((n) => `<li><span class="muted">${esc(n.date)}</span>${esc(n.text)}</li>`).join('')}</ul></section>` : ''}
+    <details class="card help" ${keep('help')}>
+      <summary>${esc(HELP_KO.title)}</summary>
       <ul>${HELP_KO.lines(OPTIONS_UI_KO.button, AIR_UI_KO.button, TURN_UI_KO.endPhase).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
       <p class="muted small">${esc(g.computerSide
         ? HELP_KO.computer(g.computerSide === 1 ? SIDE_KO.communist : SIDE_KO.un, g.computerSide === 1 ? 'KIM' : 'WALTON')
         : HELP_KO.twoPlayer)} ${esc(g.limitedIntel ? INTEL_UI_KO.summaryNote : INTEL_UI_KO.completeNote)}</p>
-    </section>`;
+    </details>`;
 }
 
 /**
@@ -308,21 +324,27 @@ function aircraftNames(ctx: PanelContext, a: AirUnitState): string {
 
 const strengthKo = (eff: number, raw: number) => eff === 0 && raw > 0 ? `<b>0</b> <span class="muted small">(${esc(AIR_UI_KO.zero)})</span>` : `<b>${eff}</b>`;
 
-function airUnitRow(ctx: PanelContext, a: AirUnitState, editable: boolean): string {
+/**
+ * One air unit as one line, like the original's list A~U (name, mission) with the Air Unit Description folded into
+ * a second line: aircraft, base, long range, all weather, basing requirement.
+ */
+function airUnitRow(ctx: PanelContext, a: AirUnitState, editable: boolean, k: number): string {
   const s = displayedStrengths(ctx.game, a);
-  const tags = [
-    `<span class="tag">${esc(BASE_KO[a.base] ?? '?')}</span>`,
-    a.longRange ? `<span class="tag">${esc(AIR_UI_KO.longRange)}</span>` : '',
-    a.allWeather ? `<span class="tag">${esc(AIR_UI_KO.allWeather)}</span>` : '',
-    `<span class="tag">${esc(a.poorRunways ? AIR_UI_KO.runwayAny : AIR_UI_KO.runwayImproved)}</span>`,
-  ].join(' ');
-  const seg = [0, 1, 2].map((m) => `<button type="button" data-action="mission" data-unit="${a.id}" data-mission="${m}" aria-pressed="${a.mission === m}" title="${esc(MISSION_HINT_KO[m])}" ${editable ? '' : 'disabled'}>${esc(MISSION_KO[m])}</button>`).join('');
+  const sub = [
+    aircraftNames(ctx, a),
+    BASE_KO[a.base] ?? '?',
+    a.longRange ? AIR_UI_KO.longRange : '',
+    a.allWeather ? AIR_UI_KO.allWeather : '',
+    a.poorRunways ? AIR_UI_KO.runwayAny : AIR_UI_KO.runwayImproved,
+  ].filter(Boolean).join(' · ');
+  const seg = [0, 1, 2].map((m) => `<button type="button" data-action="mission" data-unit="${a.id}" data-mission="${m}" aria-pressed="${a.mission === m}" title="${esc(`${MISSION_KO[m]}: ${MISSION_HINT_KO[m]}`)}" ${editable ? '' : 'disabled'}>${esc(MISSION_SHORT_KO[m])}</button>`).join('');
   return `
-    <li class="air-unit m${a.mission}">
-      <div class="air-head"><b>${esc(airUnitNameKo(a.name))}</b><span class="air-str">${esc(AIR_UI_KO.a2a)} ${strengthKo(s.airToAir, a.airToAir)} · ${esc(AIR_UI_KO.a2g)} ${strengthKo(s.airToGround, a.airToGround)}</span></div>
-      <div class="muted small">${esc(a.name)} · ${esc(aircraftNames(ctx, a))}</div>
-      <p class="tags">${tags}</p>
-      <div class="seg three" role="group">${seg}</div>
+    <li class="air-row m${a.mission}" title="${esc(`${a.name} · ${MISSION_KO[a.mission]}`)}">
+      <span class="letter">${String.fromCharCode(65 + (k % 26))}</span>
+      <span class="name">${esc(airUnitNameKo(a.name))}</span>
+      <span class="nums">${esc(AIR_UI_KO.a2a)} ${strengthKo(s.airToAir, a.airToAir)} · ${esc(AIR_UI_KO.a2g)} ${strengthKo(s.airToGround, a.airToGround)}</span>
+      <span class="sub" title="${esc(sub)}">${esc(sub)}</span>
+      <div class="seg three mini" role="group">${seg}</div>
     </li>`;
 }
 
@@ -342,33 +364,48 @@ export function renderAirOps(el: HTMLElement, ctx: PanelContext, message: PanelM
   const units = airUnitsOf(g, p);
   const lock = editable ? '' : airLockReason(g, p);
   const proj = airProjections(g, p);
+  // "Mission Effects Projections" first and large: they are what the mission buttons change
   const stats = [
     [AIR_UI_KO.strikesAvailable, `${proj.strikes}회`],
     [AIR_UI_KO.interdictionLevel, String(proj.interdiction)],
     ...(proj.cilNow !== null ? [[AIR_UI_KO.cilNow, String(proj.cilNow)], [AIR_UI_KO.cilNext, String(proj.cilNext)]] : []),
     ...(proj.superiority !== null ? [[AIR_UI_KO.superiority, String(proj.superiority)]] : []),
-  ].map(([l, v]) => `<div><span class="label">${esc(l)}</span><span class="value small">${esc(v)}</span></div>`).join('');
+  ].map(([l, v]) => `<div><span class="label">${esc(l)}</span><span class="value">${esc(v)}</span></div>`).join('');
+  const mix = [0, 1, 2].map((m) => `${esc(MISSION_KO[m])} <b class="m${m}">${units.filter((a) => a.mission === m).length}</b>`).join(' · ');
   let changes = '';
   if (g.scenarioNo < 4 && p === 2) {
+    // the original lists Expected Withdrawals and Reinforcements under the units; here by date, the next few in view
     const { withdrawals, reinforcements } = expectedAirChanges(g);
-    const li = (a: AirUnitState, turn: number) => `<li><span class="muted">${esc(dateOfTurn(g, turn))}</span>${esc(airUnitNameKo(a.name))}</li>`;
-    changes = withdrawals.length || reinforcements.length
-      ? `${withdrawals.length ? `<h3>${esc(AIR_UI_KO.withdrawals)}</h3><ul class="news">${withdrawals.map((a) => li(a, a.exitTurn)).join('')}</ul>` : ''}
-         ${reinforcements.length ? `<h3>${esc(AIR_UI_KO.reinforcements)}</h3><ul class="news">${reinforcements.slice(0, 10).map((a) => li(a, a.entryTurn)).join('')}</ul>` : ''}`
+    const all = [
+      ...withdrawals.map((a) => ({ a, turn: a.exitTurn, out: true })),
+      ...reinforcements.map((a) => ({ a, turn: a.entryTurn, out: false })),
+    ].sort((x, y) => x.turn - y.turn);
+    const li = (c: (typeof all)[number]) => `<li><span class="d">${esc(dateOfTurn(g, c.turn))}</span><span class="t ${c.out ? 'out' : 'in'}">${esc(c.out ? AIR_READ_KO.withdrawTag : AIR_READ_KO.reinforceTag)}</span><span>${esc(airUnitNameKo(c.a.name))}</span></li>`;
+    changes = all.length
+      ? `<h3>${esc(AIR_READ_KO.changes(withdrawals.length, reinforcements.length))}</h3>
+         <ul class="air-changes">${all.slice(0, 6).map(li).join('')}</ul>
+         ${all.length > 6 ? `<details class="more" ${keep('air-changes')}><summary>${esc(AIR_READ_KO.moreChanges(all.length - 6))}</summary><ul class="air-changes">${all.slice(6).map(li).join('')}</ul></details>` : ''}`
       : `<p class="muted small">${esc(AIR_UI_KO.noChanges)}</p>`;
   }
   el.innerHTML = `
     ${messageCard(message)}
     <section class="card air-ops">
-      <p class="eyebrow">${esc(PLAYER_KO[p])} · ${esc(PHASE_KO[g.phase] ?? '')} · ${esc(AIR_WEATHER_KO[g.sky] ?? '-')}</p>
+      <p class="eyebrow">${esc(PLAYER_KO[p])} · ${esc(PHASE_KO[g.phase] ?? '')}</p>
       <header class="orders-head"><h2>${esc(AIR_UI_KO.title)}</h2><button class="btn small" data-action="air-close">${esc(AIR_UI_KO.close)}</button></header>
-      ${lock ? `<p class="note warn">${esc(lock)}</p>` : `<p class="muted small">${esc(AIR_UI_KO.hint)}</p>`}
-      <ul class="air-units">${units.map((a) => airUnitRow(ctx, a, editable)).join('')}</ul>
+      <div class="air-weather s${g.sky}"><i>${SKY_ICON[g.sky] ?? ''}</i><div><b>${esc(AIR_READ_KO.weatherHead(AIR_WEATHER_KO[g.sky] ?? '-'))}</b><br><span>${esc(AIR_READ_KO.weatherEffect[g.sky] ?? '')}</span></div></div>
+      <h3>${esc(AIR_UI_KO.projections)}</h3>
+      <div class="stats proj">${stats}</div>
+      <p class="mission-mix">${mix}</p>
+      ${lock ? `<p class="note warn">${esc(lock)}</p>` : ''}
+      <details class="hint" ${keep('air-rules')}><summary>${esc(AIR_READ_KO.rules)}</summary>
+        <p>${esc(AIR_UI_KO.hint)} ${esc(AIR_READ_KO.rowHint)}</p>
+        <p>${esc(g.scenarioNo < 4 ? AIR_UI_KO.migAlleyNote : AIR_UI_KO.migAlley1995)}</p>
+        <p>${MISSION_KO.map((m, k) => `<b>${esc(m)}</b>: ${esc(MISSION_HINT_KO[k])}`).join('<br>')}</p>
+      </details>
     </section>
     <section class="card">
-      <h3>${esc(AIR_UI_KO.projections)}</h3>
-      <div class="stats compact two">${stats}</div>
-      <p class="muted small">${esc(g.scenarioNo < 4 ? AIR_UI_KO.migAlleyNote : AIR_UI_KO.migAlley1995)}</p>
+      <h3>${esc(AIR_READ_KO.listTitle(units.length))}</h3>
+      <ul class="air-rows">${units.map((a, k) => airUnitRow(ctx, a, editable, k)).join('')}</ul>
     </section>
     ${changes ? `<section class="card">${changes}</section>` : ''}`;
 }
@@ -377,11 +414,23 @@ function strikeTargetName(ctx: PanelContext, r: AirStrikeResult): string {
   return placeName(ctx, r.target[1] * ctx.game.width + r.target[0]);
 }
 
+/**
+ * Exact losses of a strike are shown only when the viewer may know them: the original reports just "Enemy unit
+ * slightly / moderately / heavily damaged" (AIRCMBT, manual 4.13: estimates that may be exaggerated).
+ */
+function strikeExact(ctx: PanelContext, r: AirStrikeResult): boolean {
+  const enemyHit = (r.player === 2) === (ctx.viewer() === 'un');
+  return !(fogActive(ctx.game) && enemyHit);
+}
+
+const booms = (n: number) => '✸'.repeat(Math.max(0, Math.min(3, n)));
+
 function strikeResultHtml(ctx: PanelContext, r: AirStrikeResult): string {
   const g = ctx.game;
   const a = g.airUnits.find((x) => x.id === r.airUnit);
+  const exact = strikeExact(ctx, r);
   const forces = r.found
-    ? r.forces.map((f) => `<li>${esc(f.named ? forceTitle(g, f.leader) : AIR_UI_KO.enemyUnit)}: <b>${esc(STRIKE_SEVERITY_KO[f.severity])}</b> · ${esc(AIR_UI_KO.strikeLethality)} ${f.lethality}% · ${esc(AIR_UI_KO.equipmentLost(f.equipmentLost))}${f.readinessLost ? ` · ${esc(AIR_UI_KO.readinessLost(f.readinessLost))}` : ''}</li>`).join('')
+    ? r.forces.map((f) => `<li>${esc(f.named ? forceTitle(g, f.leader) : AIR_UI_KO.enemyUnit)}: <b>${esc(STRIKE_SEVERITY_KO[f.severity])}</b>${exact ? ` · ${esc(AIR_UI_KO.strikeLethality)} ${f.lethality}% · ${esc(AIR_UI_KO.equipmentLost(f.equipmentLost))}${f.readinessLost ? ` · ${esc(AIR_UI_KO.readinessLost(f.readinessLost))}` : ''}` : ''}</li>`).join('')
     : `<li class="muted">${esc(AIR_UI_KO.noTarget)}</li>`;
   const aa = r.aaHit ? `<li class="warn">${esc(AIR_UI_KO.aaHit)}${r.airUnitDestroyed ? ` · ${esc(AIR_UI_KO.aaDestroyed)}` : ''}</li>` : '';
   return `<article class="report strike ${r.found ? 'win' : 'hold'}">
@@ -397,25 +446,44 @@ export function renderAirstrikes(el: HTMLElement, ctx: PanelContext, hover: [num
   const next = pendingAirstrike(g);
   const p = air.players[Math.min(air.index, air.players.length - 1)];
   const side = air.report.sides.find((s) => s.player === p);
+  // like the original's message box: "Airstrikes: N available. <unit>. Current Strike Lethality X%.", then the
+  // result line "Target hex: x,y. Enemy unit slightly damaged." with 1-3 explosions on the map
+  const last = side?.strikes[side.strikes.length - 1];
+  const lastLine = last ? `
+    <div class="strike-last ${last.found ? '' : 'none'}">
+      <p class="eyebrow">${esc(AIR_READ_KO.lastStrike)} · ${esc(airUnitNameKo(g.airUnits.find((x) => x.id === last.airUnit)?.name ?? ''))}</p>
+      <b>${esc(strikeTargetName(ctx, last))}</b> — ${last.found
+        ? `${esc(last.forces.length > 1 ? `${AIR_UI_KO.enemyUnit} ${last.forces.length}개` : last.forces[0]?.named ? forceTitle(g, last.forces[0].leader) : AIR_UI_KO.enemyUnit)} <b>${esc(STRIKE_SEVERITY_KO[Math.max(...last.forces.map((f) => f.severity))])}</b><span class="boom">${booms(last.explosions)}</span>`
+        : esc(AIR_UI_KO.noTarget)}${last.aaHit ? `<br><span class="warn">${esc(AIR_UI_KO.aaHit)}</span>` : ''}
+    </div>` : '';
   let head: string;
   if (next) {
     const a = next.unit;
     const k = next.planned - next.left + 1;
     const hoverPct = hover ? strikeLethalityAt(g, a, hover) : null;
+    const queue = air.queue.map((id, n) => {
+      const u = g.airUnits.find((x) => x.id === id);
+      return u ? `<li class="${n === 0 ? 'now' : ''}"><span>${esc(airUnitNameKo(u.name))}</span><b>${groundAttackStrength(g, u, 0, 99)}%</b></li>` : '';
+    }).join('');
     head = `
       <section class="card orders strike-card">
         <p class="eyebrow">${esc(PHASE_KO[2])} · ${esc(AIR_UI_KO.strikeTitle(PLAYER_KO[next.player]))}</p>
-        <header class="orders-head"><div><h2>${esc(AIR_UI_KO.strikeN(k, next.planned))}</h2><span class="muted">${esc(airUnitNameKo(a.name))} · ${esc(aircraftNames(ctx, a))} · ${esc(BASE_KO[a.base] ?? '')}</span></div></header>
+        <header class="orders-head"><h2>${esc(AIR_UI_KO.strikeN(k, next.planned))}</h2></header>
+        <p class="strike-unit">${esc(airUnitNameKo(a.name))}<span>${esc(aircraftNames(ctx, a))} · ${esc(BASE_KO[a.base] ?? '')}</span></p>
         <div class="mp">
           <div class="mp-num"><b>${hoverPct ?? groundAttackStrength(g, a, 0, 99)}</b><span>%</span></div>
-          <div class="mp-label">${esc(AIR_UI_KO.strikeLethality)}${hover ? ` <span class="muted">· ${esc(placeName(ctx, hover[1] * g.width + hover[0]))}</span>` : ''}</div>
+          <div class="mp-label">${esc(AIR_UI_KO.strikeLethality)}${hover ? ` <span class="muted">· ${esc(hoverPct === null ? AIR_READ_KO.notTarget : placeName(ctx, hover[1] * g.width + hover[0]))}</span>` : ''}</div>
         </div>
-        <p class="muted small">${esc(AIR_UI_KO.strikeHint)}</p>
-        <p class="muted small">${esc(AIR_UI_KO.strikeLethalityNote)}</p>
+        ${lastLine}
         <div class="actions"><button class="btn" data-action="strike-auto">${esc(AIR_UI_KO.auto)}</button><button class="btn ghost" data-action="strike-auto-all">${esc(AIR_UI_KO.autoAll)}</button></div>
-      </section>`;
+        <details class="hint" ${keep('strike-rules')}><summary>${esc(LAYOUT_KO.help)}</summary>
+          <p>${esc(AIR_UI_KO.strikeHint)}</p><p>${esc(AIR_UI_KO.strikeLethalityNote)}</p>${fogActive(g) ? `<p>${esc(AIR_READ_KO.severityOnly)}</p>` : ''}
+        </details>
+      </section>
+      <section class="card"><h3>${esc(AIR_READ_KO.queueTitle(air.queue.length))}</h3><ul class="strike-queue">${queue}</ul></section>`;
   } else {
     head = `<section class="card"><p class="eyebrow">${esc(PHASE_KO[2])}</p><h2>${esc(AIR_UI_KO.allFlown)}</h2>
+      ${lastLine}
       <div class="actions"><button class="btn primary" data-action="strike-continue">${esc(AIR_UI_KO.continue)}</button></div></section>`;
   }
   const done = side ? side.strikes.slice().reverse().map((r) => strikeResultHtml(ctx, r)).join('') : '';
@@ -514,6 +582,7 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
   const a = allowance(g, o.leader);
   const r = o.reach;
   const avgReady = Math.trunc(members.reduce((s, u) => s + u.readiness, 0) / members.length);
+  const st = shownStrength(g, members);
   const railOk = canEntrain(g, o.leader);
   const seaWhy = seaMoveBlock(g, o.leader);
   const airWhy = airMoveBlock(g, o.leader);
@@ -541,8 +610,13 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
       <p class="muted small">${esc(NAVAL_UI_KO.drops)} ${reachable}개</p>
       <p class="note">${esc(NAVAL_UI_KO.airlift)}</p>`;
   } else {
-    body = `<p class="muted small">${esc(MOVE_UI_KO.hint)} ${ctx.forcesAt(ox, oy).length > 1 ? esc(MOVE_UI_KO.cycleHint) : ''}</p>
-      <p class="muted small">${esc(o.mode === 'rail' ? MOVE_UI_KO.railStops : MOVE_UI_KO.reachable)} ${reachable}개${!a.moved && o.mode === 'tactical' ? ` · ${esc(MOVE_UI_KO.minMoveNote)}` : ''}</p>`;
+    // how to give orders is folded ("도움말"); how many hexes can be reached stays in view
+    body = `<p class="muted small">${esc(o.mode === 'rail' ? MOVE_UI_KO.railStops : MOVE_UI_KO.reachable)} <b>${reachable}개</b></p>
+      <details class="hint" ${keep('orders-help')}><summary>${esc(LAYOUT_KO.help)}</summary>
+        <p>${esc(MOVE_UI_KO.hint)} ${ctx.forcesAt(ox, oy).length > 1 ? esc(MOVE_UI_KO.cycleHint) : ''}</p>
+        ${!a.moved && o.mode === 'tactical' ? `<p>${esc(MOVE_UI_KO.minMoveNote)}</p>` : ''}
+        ${o.mode === 'tactical' ? `<p>${esc(COMBAT_UI_KO.hint)}</p>` : ''}
+      </details>`;
   }
   const modeBtn = (mode: MoveMode, ok: boolean, why: string | null) =>
     `<button type="button" data-action="mode" data-mode="${mode}" aria-pressed="${o.mode === mode}" ${ok || o.mode === mode ? '' : `disabled title="${esc(BLOCK_KO[why ?? ''] ?? why ?? '')}"`}>${esc(MOVE_MODE_KO[mode])}</button>`;
@@ -557,16 +631,16 @@ function ordersCards(ctx: PanelContext, o: OrdersView): string {
       <p class="eyebrow">${esc(MOVE_UI_KO.orders)} · ${esc(MOVE_MODE_KO[o.mode])}</p>
       <header class="orders-head"><span class="chip" style="background:${NATION_COLOR[lead.nation]}"></span>
         <div><h2>${esc(forceTitle(g, o.leader))}</h2><span class="muted">${esc(NATION_KO[lead.nation])} · ${esc(SIDE_KO[sideOf(lead)])} · 유닛 ${members.length}개</span></div></header>
-      <div class="mp">
-        <div class="mp-num"><b>${a.remaining}</b><span>/ ${a.rate} ${esc(MOVE_UI_KO.points)}</span></div>
-        <div class="mp-label">${esc(MOVE_UI_KO.remaining)}<span class="muted"> · ${esc(MOVE_UI_KO.readiness)} ${avgReady}%</span></div>
-        <div class="bar mp-bar"><i style="width:${pct}%"></i></div>
+      <div class="key-stats">
+        <div title="${esc(MOVE_UI_KO.remaining)}"><b>${a.remaining}<small> / ${a.rate}</small></b><span>${esc(MOVE_UI_KO.remaining)}</span></div>
+        <div class="str" title="${esc(LAYOUT_KO.strengthTitle)}"><b>${st.L}-${st.S}</b><span>${esc(LAYOUT_KO.strength)}</span></div>
+        <div><b>${avgReady}<small>%</small></b><span>${esc(LAYOUT_KO.readiness)}</span></div>
       </div>
+      <div class="bar mp-bar"><i style="width:${pct}%"></i></div>
       <p class="tags">${status}</p>
       <div class="seg modes" role="group">${buttons}</div>
       ${body}
       ${plotLine(ctx, o.leader)}
-      ${!r.cannot && o.mode === 'tactical' ? `<p class="muted small">${esc(COMBAT_UI_KO.hint)}</p>` : ''}
       ${g.undo ? `<button class="btn ghost" data-action="undo">↶ ${esc(MOVE_UI_KO.undo)} <span class="muted small">Ctrl+Z</span></button>` : ''}
     </section>`;
   return card + (o.assault ? assaultCard(ctx, o) : previewCard(ctx, o));
@@ -843,7 +917,6 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         ${feature ? `<dt>${esc(NATURE_KO[feature.kind])}</dt><dd>${esc(feature.ko)}${feature.elevation ? ` · ${esc(NATURE_KO.elevation(feature.elevation))}` : ''}${feature.historic ? ` <span class="muted">(${esc(NATURE_KO.historic(feature.historic))})</span>` : ''}${feature.built ? ` <span class="muted small">· ${esc(NATURE_KO.built(feature.built))}</span>` : ''}${feature.estimated ? ` <span class="tag">${esc(NATURE_KO.estimated)}</span>` : ''}${feature.note ? `<br><span class="muted small">${esc(feature.note)}</span>` : ''}</dd>` : ''}
         ${place ? `<dt>지명</dt><dd>${esc(place.ko)}${place.historic ? ` <span class="muted">(옛 이름: ${esc(place.historic)})</span>` : ''}${place.original ? ` <span class="muted small">· 원작 표기 ${esc(place.original)}</span>` : ''}</dd>` : ''}
         ${place?.note ? `<dt>비고</dt><dd>${esc(place.note)}</dd>` : ''}
-        <dt>실제 위치</dt><dd>${latLonKo(x, y)} <span class="muted small">(헥스 보정 추정, 오차 약 10km)</span></dd>
         <dt>지형</dt><dd>${esc(TERRAIN_KO[hex.terrain])}${hex.closed ? ' <span class="tag">험한 지형</span>' : ''}</dd>
         <dt>지형 요소</dt><dd>${features.length ? esc(features.join(', ')) : '없음'}</dd>
         <dt>점령</dt><dd>${owner ? `<span class="${owner === 1 ? 'un' : 'red'}">${POSSESSION_KO[owner]}</span>` : '-'}</dd>
@@ -852,12 +925,18 @@ function hexCard(ctx: PanelContext, x: number, y: number, activeLeader: number |
         ${airfield ? `<dt>비행장</dt><dd>${esc(airfield.ko)}${airfield.code ? ` (${airfield.code})` : ''} · 등급 ${afState?.current ?? 0}/${afState?.best ?? airfield.best}</dd>` : ''}
         ${supply ? '<dt>보급 거점</dt><dd>공산군 보급 거점</dd>' : ''}
         ${owner && hex.code < 0xa5 ? `<dt>보급망</dt><dd>${net ? `<span class="${net === 1 ? 'un' : 'red'}">${esc(TURN_UI_KO.inNet(net === 1 ? '유엔군' : '공산군'))}</span>` : `<span class="tag warn">${esc(TURN_UI_KO.outOfNet)}</span>`}</dd>` : ''}
-        <dt>${esc(HELP_KO.codeRow)}</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(terrainCodeKo(hex.label))} <span class="en">${esc(hex.label)}</span></dd>
       </dl>
+      <details class="more" ${keep('hex-more')}><summary>${esc(LAYOUT_KO.hexMore)}</summary>
+        <dl class="facts">
+          <dt>실제 위치</dt><dd>${latLonKo(x, y)} <span class="muted small">(헥스 보정 추정, 오차 약 10km)</span></dd>
+          <dt>${esc(HELP_KO.codeRow)}</dt><dd class="muted">0x${hex.code.toString(16).padStart(2, '0')} · ${esc(terrainCodeKo(hex.label))} <span class="en">${esc(hex.label)}</span></dd>
+        </dl>
+      </details>
     </section>
     ${forces.length ? `<section class="card"><div class="forces-head"><h3>부대 <span class="muted">${forces.length}개 편성${anyFog ? '' : ` · ${unitCount}개 유닛`}</span></h3>
       ${organizeBlock(g, x, y) === null ? `<button class="btn small" data-action="organize" data-x="${x}" data-y="${y}" title="${esc(FORCES_UI_KO.buttonTitle)}">${esc(FORCES_UI_KO.button)}</button>` : ''}</div>
-      ${forces.map((f) => (fogged(ctx, f.leader) ? fogForceCard(ctx, f) : forceCard(g, f, f.leader === activeLeader))).join('')}</section>` : ''}`;
+      ${forces.map((f) => (fogged(ctx, f.leader) ? fogForceCard(ctx, f) : forceCard(g, f, f.leader === activeLeader))).join('')}
+      ${anyFog ? `<details class="hint" ${keep('fog-note')}><summary>${esc(LAYOUT_KO.fogNote)}</summary><p>${esc(INTEL_UI_KO.reportHint)}</p></details>` : ''}</section>` : ''}`;
 }
 
 /** An enemy force under limited intelligence: type (level 1), name and strength report (level 2). */
@@ -873,7 +952,7 @@ function fogForceCard(ctx: PanelContext, f: Force): string {
         <div><b>${esc(title)}</b><span class="muted">${esc(NATION_KO[lead.nation])} · ${esc(SIDE_KO[sideOf(lead)])}${report ? ` · ${esc(report)}` : ''}</span></div>
         <span class="tag scout">${esc(INTEL_UI_KO.level(level))}</span>
       </header>
-      <p class="intel-line">${esc(INTEL_UI_KO.unitsUnknown)}${level >= 2 ? ` · ${esc(INTEL_UI_KO.reportHint)}` : ''}</p>
+      <p class="intel-line">${esc(INTEL_UI_KO.unitsUnknown)}</p>
     </article>`;
 }
 

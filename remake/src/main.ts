@@ -8,7 +8,7 @@
 import type { MapData, Scenario } from './data/types.ts';
 import { MapView, forcesInHex } from './ui/mapView.ts';
 import type { Layers, StrikeMarker } from './ui/mapView.ts';
-import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstrikes, renderBriefing } from './ui/panel.ts';
+import { renderPanel, renderSummary, renderTurnView, renderAirOps, renderAirstrikes, renderBriefing, rememberDetails } from './ui/panel.ts';
 import type { PanelContext, PanelMessage, TurnView } from './ui/panel.ts';
 import { createGameState, forceHex, idx, unit, sideOf, activeSide } from './engine/state.ts';
 import type { GameState } from './engine/state.ts';
@@ -46,7 +46,7 @@ import { gameDate } from './engine/weather.ts';
 import {
   TERRAIN_KO, POSSESSION_KO, dateKo, TEMPERATURE_KO, SKY_KO, BLOCK_KO, MOVE_UI_KO, COMBAT_UI_KO, TURN_UI_KO, PHASE_KO,
   PLAYER_KO, END_REASON_KO, victoryKo, unitNameKo, newsKo, AIR_UI_KO, STRIKE_SEVERITY_KO, NAVAL_UI_KO, INTEL_UI_KO,
-  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO,
+  SCENARIO_INFO_KO, OPTIONS_UI_KO, SAVE_UI_KO, FORCES_UI_KO, LAYOUT_KO, SKY_ICON,
 } from './i18n/ko.ts';
 import { placeAt, featureAt } from './data/places.ts';
 
@@ -294,14 +294,21 @@ async function main() {
     if (!game) return;
     const d = gameDate(game);
     const info = SCENARIO_INFO_KO[game.scenarioNo - 1];
+    // the original's status box: phase, weather, date and victory level are always in view (scenario name is minor)
     $('#scenario-name').textContent = `${game.scenarioNo}. ${info?.title ?? ''}`;
     // the edition is in the settings line of the summary and the scenario report
     $('#scenario-name').title = scenario?.variant === 'S' ? OPTIONS_UI_KO.deployment : '';
-    $('#date').textContent = `${dateKo(d.year, d.month, d.day)} · ${game.turn}턴`;
+    $('#date').innerHTML = `<b>${esc(dateKo(d.year, d.month, d.day))}</b><span>${esc(LAYOUT_KO.turn(game.turn))}</span>`;
     const t = TEMPERATURE_KO[game.temperature];
-    const freeze = game.freezeLine > 0 ? ` · 결빙선 ${game.freezeLine}행` : '';
-    $('#weather').textContent = (t ? `${t} · ${SKY_KO[game.sky] ?? '-'}` : '-') + freeze;
-    $('#weather').title = `승리 수준 ${game.victoryVoid ? '-' : victoryKo(territoryBalance(game))}`;
+    const wx = $('#weather');
+    wx.className = `top-chip wx s${game.sky}`;
+    wx.innerHTML = t ? `<i>${SKY_ICON[game.sky] ?? ''}</i>${esc(`${t} · ${SKY_KO[game.sky] ?? '-'}`)}${game.freezeLine > 0 ? ' <span class="frz">❄</span>' : ''}` : '-';
+    wx.title = LAYOUT_KO.weatherTitle(game.freezeLine);
+    const lvl = territoryBalance(game);
+    const vc = $('#victory');
+    vc.className = `top-chip victory ${game.victoryVoid ? '' : lvl > 0 ? 'un' : lvl < 0 ? 'red' : ''}`;
+    vc.innerHTML = `<span>${esc(LAYOUT_KO.victoryShort)}</span><b>${esc(game.victoryVoid ? '-' : victoryKo(lvl))}</b>`;
+    vc.title = LAYOUT_KO.victoryTitle;
     const pill = $('#phase');
     const ordersPhase = game.phase === 1 || game.phase === 3;
     pill.className = `phase-pill ${ordersPhase ? (game.player === 2 ? 'un' : 'red') : ''}`;
@@ -344,6 +351,8 @@ async function main() {
   function render() {
     syncView();
     renderSide();
+    // the status line under the mouse follows the new state (it said "airstrike target" after the strikes ended)
+    if (view.hover && game && ctx) view.onHover(view.hover[0], view.hover[1]);
     renderHeader();
     renderBanner();
     renderDialog();
@@ -905,7 +914,10 @@ async function main() {
     if (!r.found) return AIR_UI_KO.strikeDone(place, AIR_UI_KO.noTarget);
     const worst = Math.max(...r.forces.map((f) => f.severity));
     const lost = r.forces.reduce((s, f) => s + f.equipmentLost, 0);
-    return AIR_UI_KO.strikeDone(place, `${STRIKE_SEVERITY_KO[worst]} · ${AIR_UI_KO.equipmentLost(lost)}${r.aaHit ? ` · ${AIR_UI_KO.aaHit}` : ''}`);
+    // limited intelligence: the original reports only how badly the enemy was hit, not the equipment count
+    const enemyHit = (r.player === 2) === (viewer() === 'un');
+    const exact = !(game && fogActive(game) && enemyHit);
+    return AIR_UI_KO.strikeDone(place, `${STRIKE_SEVERITY_KO[worst]}${exact ? ` · ${AIR_UI_KO.equipmentLost(lost)}` : ''}${r.aaHit ? ` · ${AIR_UI_KO.aaHit}` : ''}`);
   }
 
   function strikeAt(x: number, y: number) {
@@ -916,7 +928,8 @@ async function main() {
       message = { kind: 'error', text: res.error === 'manchuria' ? AIR_UI_KO.manchuria : AIR_UI_KO.friendly };
     } else {
       strikeMarks = [...strikeMarks, marker(res.result)];
-      message = { kind: res.result.found ? 'ok' : 'warn', text: strikeText(res.result) };
+      // the strike card shows the result as the original's message line; a toast only when nothing was found
+      message = res.result.found ? null : { kind: 'warn', text: strikeText(res.result) };
     }
     render();
   }
@@ -1297,6 +1310,13 @@ async function main() {
   $('#save-game').addEventListener('click', () => { if (saveOpen) closeSave(); else openSave(); });
   $('#reports-btn').addEventListener('click', () => { if (reportsOpen) closeReports(); else openReports(); });
 
+  // the layer toggles sit in a small drop-down (minor controls); a click elsewhere folds it
+  rememberDetails(panel);
+  const layersMenu = $('#layers-menu') as HTMLDetailsElement;
+  $('#layers-btn').title = LAYOUT_KO.layersTitle;
+  document.addEventListener('pointerdown', (e) => {
+    if (layersMenu.open && !layersMenu.contains(e.target as Node)) layersMenu.open = false;
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-layer]').forEach((btn) => {
     const key = btn.dataset.layer as keyof Layers;
     btn.setAttribute('aria-pressed', String(view.layers[key]));

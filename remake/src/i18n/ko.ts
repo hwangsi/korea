@@ -355,8 +355,8 @@ export const MOVE_UI_KO = {
   confirm: '이동 확정',
   cancel: '취소',
   undo: '되돌리기',
-  bugOut: '버그아웃 (장비 손실, 6점 이동)',
-  bugOutConfirm: '버그아웃을 명령할까요? 장비 일부를 잃고 준비도가 50 이하로 떨어집니다.',
+  bugOut: '급속패퇴 (장비 손실, 6점 이동)',
+  bugOutConfirm: '급속패퇴를 명령할까요? 장비 일부를 잃고 준비도가 50 이하로 떨어집니다.',
   select: '이동',
   selected: '선택됨',
   preview: '경로 미리보기',
@@ -377,8 +377,8 @@ export const MOVE_UI_KO = {
   undone: '이동을 되돌렸습니다',
   failed: '이동할 수 없음',
   interdicted: '철도 수송 중 적 항공 차단으로 선두 유닛 장비 손실',
-  bugOutDone: '버그아웃: 장비를 버리고 후퇴합니다 (6점 이동 가능)',
-  bugOutMoving: '전선을 따라 이동하던 신병 유닛이 버그아웃 (후퇴했던 부대, 장비 손실)',
+  bugOutDone: '급속패퇴: 장비를 버리고 후퇴합니다 (6점 이동 가능)',
+  bugOutMoving: '전선을 따라 이동하던 신병 유닛이 급속패퇴 (후퇴했던 부대, 장비 손실)',
   points: '점',
   unlimited: '무제한',
   cannotStopHere: '멈출 수 없음 (통과만)',
@@ -395,7 +395,7 @@ export const NAVAL_UI_KO = {
   sealiftUsed: (used: number, max: number) => `이번 턴 해상 수송 ${used}/${max}점 사용`,
   sealiftLabel: '해상 수송 점수',
   sealift1995: '1995년: 턴당 단독 미 해병 1개',
-  startCost: (pts: number) => (pts === 0 ? '바다에서 출발: 0점' : pts === 2 ? '항구에서 승선: 2점' : '해안에서 승선: 3점 (선두 유닛 버그아웃 손실)'),
+  startCost: (pts: number) => (pts === 0 ? '바다에서 출발: 0점' : pts === 2 ? '항구에서 승선: 2점' : '해안에서 승선: 3점 (선두 유닛 급속패퇴 손실)'),
   portRefund: '항구에 상륙: 1점 반환',
   seaAssaults: (n: number) => `이번 턴 상륙 공격 명령 ${n}/2`,
   airlift: '공수하면 턴 끝 유엔 비축이 2 줄어요 (공중 수송 수요)',
@@ -413,12 +413,12 @@ export const NAVAL_UI_KO = {
   confirmSea: '상륙 확정',
   confirmAir: '낙하 확정',
   seaWarn: '해상 이동은 되돌릴 수 없고, 상륙하면 이번 턴에 더 움직일 수 없어요. 준비도는 줄지 않습니다.',
-  beachWarn: '항구가 아닌 해안에서 승선하면 선두 유닛이 버그아웃 손실(장비 일부, 준비도 50 이하)을 입어요.',
+  beachWarn: '항구가 아닌 해안에서 승선하면 선두 유닛이 급속패퇴 손실(장비 일부, 준비도 50 이하)을 입어요.',
   seaDone: (pts: number) => `상륙 완료 · 해상 수송 ${pts}점`,
   airDone: (loss: number) => `낙하 완료 · 장비 손실률 ${loss}%`,
   airDestroyed: '공수 부대가 적 부대 한가운데 낙하해 전멸했습니다',
   seaAssaultPreview: '상륙 공격 미리보기',
-  seaAssaultNote: '전투 단계에서 바다에서 공격합니다. 방어 부대를 후퇴시키면 그 헥스로 상륙 전진, 못 하면 모든 유닛이 버그아웃 손실을 입고 일본으로 철수해요. 명령은 취소할 수 없어요.',
+  seaAssaultNote: '전투 단계에서 바다에서 공격합니다. 방어 부대를 후퇴시키면 그 헥스로 상륙 전진, 못 하면 모든 유닛이 급속패퇴 손실을 입고 일본으로 철수해요. 명령은 취소할 수 없어요.',
   seaAssaultLast: '이번 턴 상륙 공격 명령을 다 썼어요. 돌파에 실패하면 부대가 바다에 남고 이번 턴 이동이 끝납니다.',
   seaOverrun: '돌파 가능: 50% 확률로 방어 부대를 즉시 격멸하고 상륙, 실패하면 상륙 공격 명령',
   seaPlotted: '상륙 공격 명령을 내렸습니다. 부대는 바다에서 전투 단계를 기다립니다',
@@ -497,7 +497,7 @@ export const REPLAY_KO = {
   unitEliminated: (name: string, force: string) => `${name} 제거됨${force && force !== name ? ` (${force})` : ''}`,
   retreat: (name: string, place: string) => `${name} 후퇴 → ${place}`,
   blocked: (name: string) => `${name}: 후퇴로가 막혀 추가 손실`,
-  bugout: (name: string) => `${name} 버그아웃: 장비를 버리고 흩어짐`,
+  bugout: (name: string) => `${name} 급속패퇴: 장비를 버리고 흩어짐`,
   advance: (name: string, place: string) => `${name} 전진 → ${place}`,
   moveInLine: (name: string, place: string) => `${name} 진입 → ${place}`,
   evacuated: (name: string) => `${name}: 상륙 실패, 장비를 잃고 일본으로 철수`,
@@ -513,7 +513,7 @@ export const REPLAY_KO = {
   replayOne: '다시 보기',
   mapEliminated: '괴멸',
   mapBlocked: '후퇴 불가',
-  mapBugout: '버그아웃',
+  mapBugout: '급속패퇴',
   mapRetreat: '후퇴',
 };
 
@@ -606,10 +606,10 @@ export function combatEventKo(e: { kind: string; name?: string; to?: [number, nu
     case 'eliminated': return `${unitNameKo(e.name ?? '')} 괴멸`;
     case 'retreat': return `${forceName(leader ?? 0)} 후퇴 → (${e.to?.[0]}, ${e.to?.[1]})`;
     case 'blocked': return `${forceName(leader ?? 0)} 후퇴로 막힘: 추가 손실`;
-    case 'bugout': return `${unitNameKo(e.name ?? '')} 버그아웃 (장비 버리고 도주)`;
+    case 'bugout': return `${unitNameKo(e.name ?? '')} 급속패퇴 (장비 버리고 도주)`;
     case 'moveIn': return `${forceName(leader ?? 0)} 진입 → (${e.to?.[0]}, ${e.to?.[1]})`;
     case 'advance': return `${forceName(leader ?? 0)} 전진 → (${e.to?.[0]}, ${e.to?.[1]})`;
-    case 'evacuated': return `${forceName(leader ?? 0)} 상륙 실패: 버그아웃 손실 후 일본으로 철수 (${e.to?.[0]}, ${e.to?.[1]})`;
+    case 'evacuated': return `${forceName(leader ?? 0)} 상륙 실패: 급속패퇴 손실 후 일본으로 철수 (${e.to?.[0]}, ${e.to?.[1]})`;
     case 'lostAtSea': return `${forceName(leader ?? 0)} 상륙 실패: 일본에 자리가 없어 괴멸`;
     default: return '';
   }
@@ -1080,4 +1080,49 @@ export const SCENARIO_BRIEF_KO: Record<1 | 2 | 3 | 4, ScenarioBrief> = {
       { name: 'U.S. State Dept.: Perry testimony (1999)', url: 'https://1997-2001.state.gov/policy_remarks/1999/991012_perry_nkorea.html' },
     ],
   },
+};
+
+
+// ---------- readability pass (2026-10-17): top bar chips, folded details, air screens like the original ----------
+
+export const LAYOUT_KO = {
+  layers: '지도 표시 ▾',
+  layersTitle: '지도에 그릴 것 고르기: 점령지 · 보급망 · 부대 · 지명 · 산·호수 · 격자 · 좌표',
+  turn: (n: number) => `${n}턴`,
+  victoryShort: '승리',
+  victoryTitle: '승리 수준 (원작 Victory Level): 양쪽이 쥔 도시·헥스를 견준 값. 숫자가 클수록 그 진영이 유리',
+  weatherTitle: (freeze: number) => `이번 턴 날씨${freeze > 0 ? ` · 결빙선 ${freeze}행 (그 북쪽 강은 얼어 건널 수 있음)` : ''}`,
+  help: '도움말',
+  hexMore: '헥스 자세히 (실제 위치 · 원본 코드)',
+  summaryMore: '예보 · 항공 수준 · 게임 설정',
+  keyVictory: '승리 수준',
+  keyVictorySub: '도시·점령지 균형',
+  strength: '전투력',
+  strengthTitle: '살상력-생존력 (원작 표기, 1/10), 부대 전체 합계',
+  readiness: '준비도',
+  moves: '이동력',
+  fogNote: '정찰 보고 읽는 법',
+};
+
+/** One-word missions for the compact air unit rows (MISSION_KO is the full name in the tooltip). */
+export const MISSION_SHORT_KO = ['제공', '지상', '차단'];
+export const SKY_ICON: Record<number, string> = { 1: '☀', 2: '☁', 3: '⛈' };
+
+export const AIR_READ_KO = {
+  weatherHead: (w: string) => `날씨: ${w}`,
+  /** What the sky does to air units (manual 3.21 table, docs/rules/air.md 2). */
+  weatherEffect: { 1: '약화 없음 (일본 기지 단거리 부대만 절반)', 2: '전천후가 아닌 부대 약화', 3: '모든 부대 약화' } as Record<number, string>,
+  listTitle: (n: number) => `항공대 ${n}개`,
+  rowHint: '버튼으로 임무를 바로 고릅니다 (원작은 다시 눌러 순환).',
+  changes: (w: number, r: number) => `예정 변화 · 철수 ${w} · 증원 ${r}`,
+  withdrawTag: '철수',
+  reinforceTag: '증원',
+  moreChanges: (n: number) => `${n}개 더 보기`,
+  rules: '규칙 설명',
+  queueTitle: (n: number) => `남은 공습 ${n}회`,
+  current: '지금',
+  lastStrike: '직전 공습',
+  severityOnly: '원작처럼 피해 정도만 보고됩니다 (정보 제한).',
+  aimHere: (place: string, pct: number) => `${place} 조준 · 살상률 ${pct}%`,
+  notTarget: '공습할 수 없는 헥스',
 };
