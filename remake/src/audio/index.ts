@@ -8,7 +8,7 @@ import type { Arrangement } from './arrange.ts';
 import { Synth } from './synth.ts';
 import { playSfx } from './sfx.ts';
 import type { SfxName, SfxOptions } from './sfx.ts';
-import { BUILTIN_SONGS } from './songs.ts';
+import { BUILTIN_SONGS, medleyOrder } from './songs.ts';
 import type { SongEntry } from './songs.ts';
 
 /** 'medley': every song in turn; 'side': the songs of the side whose phase it is; or one song id (repeated). */
@@ -99,13 +99,14 @@ export class AudioManager {
   /** Songs the current choice plays, in order. */
   private playlist(): SongEntry[] {
     const c = this.settings.choice;
-    if (c === 'medley') return this.songs;
+    const all = medleyOrder(this.songs);
+    if (c === 'medley') return all;
     if (c === 'side') {
-      const list = this.songs.filter((s) => s.side === this.side || s.side === 'any');
-      return list.length ? list : this.songs;
+      const list = all.filter((s) => s.side === this.side || s.side === 'any');
+      return list.length ? list : all;
     }
     const one = this.songs.find((s) => s.id === c);
-    return one ? [one] : this.songs;
+    return one ? [one] : all;
   }
 
   private arrangement(s: SongEntry): Arrangement {

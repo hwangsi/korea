@@ -317,7 +317,8 @@ pre { background: #1f2328; color: #fff; padding: 8px 10px; border-radius: 8px; f
 .snd-row input[type="range"] { width: 100%; }
 .snd-now { font-size: 12px; margin: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
 .snd-now .btn.small { margin-left: auto; }
-.snd-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; }
+.snd-list { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
+.snd-group { margin: 8px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: 2px; }
 .snd-choice { font: inherit; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 9px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
 .snd-choice span { font-size: 13px; font-weight: 600; }
 .snd-choice small { font-size: 11px; color: var(--muted); }

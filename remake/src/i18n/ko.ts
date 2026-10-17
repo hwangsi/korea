@@ -860,7 +860,8 @@ export const SOUND_UI_KO = {
   medley: '메들리 (전체 연속)',
   medleyHint: '모든 곡을 차례로',
   bySide: '진영별',
-  bySideHint: '공산군 단계는 인터내셔널가, 유엔군 단계는 유엔 쪽 곡',
+  bySideHint: '공산군 단계는 공산 쪽 곡(소련·중공군), 유엔군 단계는 유엔 쪽 곡(유엔군·국군)',
+  groups: { un: '유엔군', rok: '국군', soviet: '소련군', pva: '중공군 (중국인민지원군)', common: '공산 진영 공통' } as Record<string, string>,
   playTitle: '진행',
   speed: '진행 속도',
   speedValues: { 1: '빠름', 2: '보통', 3: '느림' } as Record<number, string>,
@@ -872,7 +873,7 @@ export const SOUND_UI_KO = {
   countersPicture: '말: 그림',
   countersTitle: '부대 말 앞면: NATO 기호(원작처럼) 또는 병종 그림(보병·전차·야포·공수)',
   playNote: '부대가 움직이는 속도입니다(원작 Speed). 따라가기를 켜면 지도가 움직이는 부대를 계속 가운데에 둡니다(원작 Mvmnt Centering). 꺼 두면 부대가 화면 밖으로 나갈 때만 옮깁니다. C 키: 선택한 부대로 지도 이동.',
-  note: '1990년대 초 FM 사운드카드 느낌으로 직접 편곡한 연주곡(가사 없음)입니다. 저작권이 끝난 곡만 저장소에 들어 있고, 6.25의 노래는 개인 데이터(data/private)에 있을 때만 나옵니다.',
+  note: '1990년대 초 FM 사운드카드 느낌으로 직접 편곡한 연주곡(가사 없음)입니다. 저작권이 끝난 곡만 저장소에 들어 있고, 저작권이 남은 곡(6.25의 노래, 국군·소련군·중공군 군가 등)은 개인 데이터(data/private)에 있을 때만 나옵니다.',
 } as const;
 
 // ---------- report screens (docs/rules/reports.md) ----------

@@ -5,6 +5,7 @@
 import type { AudioManager } from '../audio/index.ts';
 import type { PlaySettings } from './playSettings.ts';
 import { SOUND_UI_KO as T } from '../i18n/ko.ts';
+import { SONG_GROUPS, groupOf } from '../audio/songs.ts';
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -16,7 +17,12 @@ export function renderSoundPanel(el: HTMLElement, a: AudioManager, play: PlaySet
     `<button type="button" class="snd-choice" data-snd="choice" data-value="${esc(value)}" aria-pressed="${s.choice === value}">
        <span>${a.current?.id === value ? '♪ ' : ''}${esc(label)}</span>${sub ? `<small>${esc(sub)}</small>` : ''}
      </button>`;
-  const songs = a.songs.map((x) => choice(x.id, x.title, `${x.en} · ${x.credit}`)).join('');
+  // grouped by army like the song list it came from (UN / ROK / Soviet / Chinese); songs without a group by side
+  const songs = SONG_GROUPS.map((g) => {
+    const list = a.songs.filter((x) => groupOf(x) === g);
+    if (!list.length) return '';
+    return `<p class="snd-group">${esc(T.groups[g])}</p>${list.map((x) => choice(x.id, x.title, `${x.en} · ${x.credit}`)).join('')}`;
+  }).join('');
   el.innerHTML = `
     <div class="snd-box" role="dialog" aria-label="${esc(T.title)}">
       <div class="snd-row">

@@ -92,7 +92,8 @@ export function arrange(song: AbcSong, style: ArrangeStyle = {}): Arrangement {
       const inBar = ((q - start) % barQ + barQ) % barQ;
       const tones = chordAt(song, q);
       if (!tones.length) continue;
-      const strong = Math.round(inBar) % 2 === 0;
+      // 3/4 (Holy War): bass on one, chords on two and three; otherwise bass on one and three
+      const strong = barQ === 3 ? inBar < EPS : Math.round(inBar) % 2 === 0;
       if (strong) {
         const root = lift((tones[0] + tr + 120) % 12, 36);
         const pitch = alt % 2 === 0 ? root : root + 7 > 50 ? root - 5 : root + 7;

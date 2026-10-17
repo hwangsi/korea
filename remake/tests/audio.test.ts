@@ -6,7 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseAbc, keySignature, chordTones } from '../src/audio/abc.ts';
 import { arrange } from '../src/audio/arrange.ts';
-import { BUILTIN_SONGS, privateSongs } from '../src/audio/songs.ts';
+import { BUILTIN_SONGS, privateSongs, medleyOrder, SONG_GROUPS } from '../src/audio/songs.ts';
 import type { SongEntry } from '../src/audio/songs.ts';
 
 const PRIVATE = join(import.meta.dirname, '..', 'data', 'private', 'music.json');
@@ -60,15 +60,31 @@ function checkSong(s: SongEntry) {
   assert.ok(seconds > 50 && seconds < 240, `${s.id}: ${seconds.toFixed(0)} s`);
 }
 
-test('public-domain songs: Internationale, Colonel Bogey, Caisson Song', () => {
-  assert.deepEqual(BUILTIN_SONGS.map((s) => s.id), ['internationale', 'bogey', 'caisson']);
-  for (const s of BUILTIN_SONGS) { assert.ok(s.publicDomain); checkSong(s); }
+test('public-domain songs: Internationale, US Army/Marine/Navy songs, British and Australian songs, Three Rules', () => {
+  assert.deepEqual(BUILTIN_SONGS.map((s) => s.id),
+    ['internationale', 'caisson', 'marines', 'anchors', 'bogey', 'grenadiers', 'matilda', 'three_rules']);
+  for (const s of BUILTIN_SONGS) { assert.ok(s.publicDomain); assert.ok(s.group && SONG_GROUPS.includes(s.group), s.id); checkSong(s); }
+  // both sides have public songs for the "by side" choice
+  assert.ok(BUILTIN_SONGS.some((s) => s.side === 'un') && BUILTIN_SONGS.some((s) => s.side === 'communist'));
+});
+
+test('medley takes one song from each army in turn', () => {
+  const order = medleyOrder(BUILTIN_SONGS).map((s) => s.id);
+  assert.equal(order.length, BUILTIN_SONGS.length);
+  assert.deepEqual(new Set(order), new Set(BUILTIN_SONGS.map((s) => s.id)));
+  // UN, Chinese, common (Internationale), then UN again
+  assert.deepEqual(order.slice(0, 4), ['caisson', 'three_rules', 'internationale', 'marines']);
+  const priv = privateSongs({ songs: [{ id: 'r', abc: 'X:1', side: 'un', group: 'rok' }, { id: 's', abc: 'X:1', side: 'communist', group: 'soviet' }] });
+  assert.deepEqual(medleyOrder([...priv, ...BUILTIN_SONGS]).slice(0, 5).map((s) => s.id), ['r', 'caisson', 's', 'three_rules', 'internationale']);
+  assert.equal(privateSongs({ songs: [{ id: 'x', abc: 'X:1', group: 'nope' }] })[0].group, undefined);
 });
 
 test('private songs (data/private/music.json, not in the repository)', { skip: existsSync(PRIVATE) ? false : 'no data/private/music.json' }, () => {
   const list = privateSongs(JSON.parse(readFileSync(PRIVATE, 'utf8')));
   assert.ok(list.length >= 1);
   for (const s of list) { assert.equal(s.publicDomain, false); checkSong(s); }
+  // no id shared with a public song
+  for (const s of list) assert.ok(!BUILTIN_SONGS.some((b) => b.id === s.id), s.id);
   assert.deepEqual(privateSongs(null), []);
   assert.deepEqual(privateSongs({ songs: [{ id: 'x' }] }), []);
 });
